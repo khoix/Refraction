@@ -19,8 +19,12 @@ without ever moving.
 
 ## Status
 
-**M0 — Foundation.** Toolchain, geometry contract, and the depth-colour system,
-all under test. The playfield arrives in M1–M2.
+**M2 — First Light.** The game is playable: pieces fall, lines clear, the board
+turns, and Refraction Clears work. Rendered in 3D with continuous spectrum depth
+shading. Feel, progression and modes come next.
+
+Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
+`C` to hold, `←`/`→` to choose a face when the Shift meter fills.
 
 See [`release_notes.md`](release_notes.md) for the milestone log and
 [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.

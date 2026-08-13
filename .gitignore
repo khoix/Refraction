@@ -15,3 +15,6 @@ blob-report/
 .idea/
 .vscode/*
 !.vscode/extensions.json
+
+# Screenshot output from scripts/capture.mjs
+captures/

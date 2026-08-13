@@ -30,7 +30,7 @@ continuous and in-gamut; production build succeeds; e2e suite green.
 
 ---
 
-## M1 — Voxel Core
+## M1 — Voxel Core ✅ _shipped_
 
 **Goal:** the entire game, playable headlessly, with no renderer at all.
 
@@ -57,7 +57,7 @@ input log, with the outcome reproducible from its seed.
 
 ---
 
-## M2 — First Light
+## M2 — First Light ✅ _shipped_
 
 **Goal:** the board becomes visible, and beautiful.
 
@@ -71,6 +71,12 @@ input log, with the outcome reproducible from its seed.
 
 **Exit criteria:** a complete game is playable on the Front face alone, at a
 locked 60 fps, and it already looks like a finished game.
+
+**Landed early:** the 750 ms camera turn, with continuous recolouring and
+parallax, arrived here rather than in M3. The camera code needed the yaw
+interpolation anyway, and colour is computed from live camera distance, so the
+continuous recolour came for free. M3 keeps the rest: eligible lines glowing
+during the turn, animated cascades, and the chain-scoring presentation.
 
 ---
 

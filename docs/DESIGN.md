@@ -119,18 +119,34 @@ The proposal describes four tiers but never enumerates the pieces.
 In 3D, a rotation about a piece's long axis is legal, which means **J and L are
 the same tetracube**, and so are **S and Z**. The honest free-tetracube set is 8:
 
-| Tier        | Pieces                                                        | Introduced |
-| ----------- | ------------------------------------------------------------- | ---------- |
-| 1 — Flat    | I, O, L, T, S (the 5 planar tetracubes), single lane          | Stage 1    |
-| 2 — Bent    | a planar tetracube with one cube pushed ±1 lane               | Stage 2    |
-| 3 — Folded  | tripod, screw-left, screw-right (the 3 non-planar tetracubes) | Stage 4    |
-| 4 — Complex | full set, spawn orientations chosen for projection ambiguity  | Stage 6    |
+| Tier        | Pieces                                                       | Introduced |
+| ----------- | ------------------------------------------------------------ | ---------- |
+| 1 — Flat    | I, O, L, T, S — the 5 planar tetracubes, one lane deep       | Stage 1    |
+| 2 — Bent    | screw-left and screw-right — the two chiral quarter-helices  | Stage 2    |
+| 3 — Folded  | tripod — a cube with three mutually perpendicular arms       | Stage 4    |
+| 4 — Complex | full set, spawn orientations chosen for projection ambiguity | Stage 6    |
 
 Because J/L and S/Z are the same object, spawn orientation is randomised so they
 still _present_ as J or L, S or Z. Players get the familiar seven silhouettes;
 the board keeps its honest geometry. This is a feature, not a compromise — the
 first time a player rotates an "L" into a "J", they have learned something true
 about the board.
+
+#### Correction: tier 2 as originally specified is impossible
+
+This spec first described tier 2 as "a planar tetracube with one cube pushed one
+lane forward or back". That construction cannot exist. Move a cube from
+`(x, y, 0)` to `(x, y, 1)` and it shares a face with none of the remaining
+cubes — every one of them now differs from it in two coordinates at once — so
+the piece always falls apart. `tests/unit/pieces.test.ts` proves it exhaustively
+over every planar piece and every possible push.
+
+The screws are what that tier actually wanted: each is a four-cube chain whose
+every turn is perpendicular to the last, which reads exactly as "a familiar
+piece with a cube bent out of plane" while being a real tetracube. They are also
+the reason the catalogue has eight pieces rather than seven — the two screws are
+mirror images that no rotation can superimpose, so unlike J/L and S/Z they stay
+distinct in 3D.
 
 ### 4.2 Depth-lane assignment **[GAP — most consequential]**
 
@@ -261,6 +277,13 @@ The escalating on-screen language from the proposal is preserved:
 - Lock delay resets on move or rotate, up to **15 resets**, then locks hard.
 - **DAS** 150 ms, **ARR** 33 ms.
 - Soft drop is 20× gravity; hard drop is instant with a 100 ms settle.
+
+### 5.3 Spawn position
+
+Pieces spawn inside the visible field, with their top row at `y = 17`, rather
+than in the buffer above it. A piece hovering above the well reads as detached
+from the board — it looks like UI, not like a falling block. The three-row buffer
+exists to catch locked cells that end up too high, not to stage pieces in.
 
 ## 8. Failure
 
