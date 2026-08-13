@@ -1,0 +1,17 @@
+node_modules/
+dist/
+coverage/
+.vite/
+*.local
+.DS_Store
+
+# Playwright
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+
+# Editors
+.idea/
+.vscode/*
+!.vscode/extensions.json
