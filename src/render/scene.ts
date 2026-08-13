@@ -1,17 +1,32 @@
-/**
- * Scene, camera and the static furniture of the well.
- *
- * The camera is near-orthographic on purpose: a narrow 22 degree field of view
- * from far away keeps columns reading as columns, while the small 8 degree
- * elevation shows a sliver of each cube's top face. That sliver is what makes
- * depth legible in a still frame, so colour is not carrying the whole load.
- */
+/** Scene, camera and the static furniture of the well. */
 
 import * as THREE from 'three';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 
-export const CAMERA_FOV = 22;
-export const CAMERA_ELEVATION_DEG = 8;
+/**
+ * The board presents as flat 2D and only becomes visibly three-dimensional
+ * while it turns.
+ *
+ * A cube viewed dead-on through an orthographic camera is indistinguishable
+ * from a flat square, so nothing about the geometry changes between the two
+ * looks. What changes is the camera and the lighting:
+ *
+ *              settled             mid-turn
+ *   field      5 deg (near-ortho)  30 deg (real perspective)
+ *   elevation  0 deg (dead-on)     14 deg (tops of cubes visible)
+ *   lighting   flat ambient        directional key and rim
+ *   size       uniform             scaled by depth
+ *   well       flat frame only     floor, grid and far posts
+ *
+ * The camera distance is refitted as the field of view opens, so the board
+ * holds its apparent size and the change reads as perspective arriving rather
+ * than as a zoom.
+ */
+export const FLAT_FOV = 5;
+export const TURN_FOV = 30;
+export const FLAT_ELEVATION_DEG = 0;
+export const TURN_ELEVATION_DEG = 14;
+
 /** Empty space kept around the well when fitting the camera. */
 const FIT_MARGIN = 1.6;
 
@@ -29,20 +44,39 @@ export function toSceneZ(z: number): number {
 export interface SceneBundle {
   readonly scene: THREE.Scene;
   readonly camera: THREE.PerspectiveCamera;
-  readonly well: THREE.Group;
+  readonly well: Well;
   readonly lights: SceneLights;
+}
+
+export interface Well {
+  readonly group: THREE.Group;
+  /** The flat silhouette of the playfield. Visible in both looks. */
+  readonly frame: THREE.LineSegments;
+  /** Floor, grid and the far posts -- all of which read as depth cues. */
+  readonly depthFurniture: THREE.Object3D[];
 }
 
 export interface SceneLights {
   readonly key: THREE.DirectionalLight;
   readonly rim: THREE.DirectionalLight;
+  /** Shadowless fill. At full strength every face lights alike and cubes read flat. */
+  readonly fill: THREE.AmbientLight;
 }
 
 /** Light positions at yaw 0, rotated with the camera by `orientLights`. */
 const KEY_LIGHT_BASE: readonly [number, number, number] = [6, 18, 14];
 const RIM_LIGHT_BASE: readonly [number, number, number] = [-10, 6, -12];
 
-function buildWell(): THREE.Group {
+function lineSegments(points: number[], color: number, opacity: number): THREE.LineSegments {
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute('position', new THREE.Float32BufferAttribute(points, 3));
+  return new THREE.LineSegments(
+    geometry,
+    new THREE.LineBasicMaterial({ color, transparent: true, opacity })
+  );
+}
+
+function buildWell(): Well {
   const group = new THREE.Group();
 
   const halfW = BOARD_WIDTH / 2;
@@ -50,8 +84,18 @@ function buildWell(): THREE.Group {
   const floorY = toSceneY(0) - 0.5;
   const topY = toSceneY(BOARD_HEIGHT - 1) + 0.5;
 
-  // Floor grid. This is the anchor that makes depth absolute rather than
-  // relative -- you can count lanes back from the front edge.
+  // The frame is the playfield's flat silhouette: two uprights and a floor line,
+  // drawn at the near edge so it stays a clean rectangle head-on.
+  const framePoints: number[] = [];
+  for (const sx of [-1, 1]) {
+    framePoints.push(sx * halfW, floorY, halfD, sx * halfW, topY, halfD);
+  }
+  framePoints.push(-halfW, floorY, halfD, halfW, floorY, halfD);
+  const frame = lineSegments(framePoints, 0x323b5c, 0.7);
+  group.add(frame);
+
+  // Everything below is a depth cue and is therefore hidden while the board is
+  // presenting itself as flat. It fades in exactly as the cubes gain volume.
   const gridPoints: number[] = [];
   for (let i = 0; i <= BOARD_WIDTH; i += 1) {
     gridPoints.push(-halfW + i, floorY, -halfD, -halfW + i, floorY, halfD);
@@ -59,64 +103,77 @@ function buildWell(): THREE.Group {
   for (let i = 0; i <= BOARD_DEPTH; i += 1) {
     gridPoints.push(-halfW, floorY, -halfD + i, halfW, floorY, -halfD + i);
   }
-  const gridGeometry = new THREE.BufferGeometry();
-  gridGeometry.setAttribute('position', new THREE.Float32BufferAttribute(gridPoints, 3));
-  group.add(
-    new THREE.LineSegments(
-      gridGeometry,
-      new THREE.LineBasicMaterial({ color: 0x2a3350, transparent: true, opacity: 0.85 })
-    )
-  );
+  const grid = lineSegments(gridPoints, 0x2a3350, 0.85);
 
-  // Four vertical corner posts, so the playfield reads as a volume.
-  const postPoints: number[] = [];
+  const backPostPoints: number[] = [];
   for (const sx of [-1, 1]) {
-    for (const sz of [-1, 1]) {
-      postPoints.push(sx * halfW, floorY, sz * halfD, sx * halfW, topY, sz * halfD);
-    }
+    backPostPoints.push(sx * halfW, floorY, -halfD, sx * halfW, topY, -halfD);
   }
-  const postGeometry = new THREE.BufferGeometry();
-  postGeometry.setAttribute('position', new THREE.Float32BufferAttribute(postPoints, 3));
-  group.add(
-    new THREE.LineSegments(
-      postGeometry,
-      new THREE.LineBasicMaterial({ color: 0x323b5c, transparent: true, opacity: 0.55 })
-    )
-  );
+  const backPosts = lineSegments(backPostPoints, 0x323b5c, 0.45);
 
-  // A dark floor plane to catch light and ground the stack.
   const floor = new THREE.Mesh(
     new THREE.PlaneGeometry(BOARD_WIDTH, BOARD_DEPTH),
-    new THREE.MeshStandardMaterial({ color: 0x0a0d18, roughness: 0.9, metalness: 0 })
+    new THREE.MeshStandardMaterial({
+      color: 0x0a0d18,
+      roughness: 0.9,
+      metalness: 0,
+      transparent: true,
+    })
   );
   floor.rotation.x = -Math.PI / 2;
   floor.position.y = floorY - 0.01;
-  floor.receiveShadow = true;
-  group.add(floor);
 
-  return group;
+  group.add(grid, backPosts, floor);
+
+  return { group, frame, depthFurniture: [grid, backPosts, floor] };
+}
+
+/**
+ * Keep the flat frame on the near edge of whichever face is being viewed.
+ *
+ * The frame is built along one edge, which is only correct for the front face:
+ * from the left face both of its uprights would collapse onto the same screen
+ * position and the playfield would lose an edge. Rotating it with the camera
+ * works because the footprint is square, so the frame always overlays the
+ * board's silhouette exactly.
+ */
+export function orientWell(well: Well, yawDegrees: number): void {
+  well.frame.rotation.y = THREE.MathUtils.degToRad(yawDegrees);
+}
+
+/** Hide the well's depth cues while the board is presenting as flat. */
+export function setWellFlatness(well: Well, flatness: number): void {
+  const dimensional = 1 - THREE.MathUtils.clamp(flatness, 0, 1);
+  for (const object of well.depthFurniture) {
+    const material = (object as THREE.Mesh | THREE.LineSegments).material as THREE.Material & {
+      userData: { baseOpacity?: number };
+    };
+    material.userData.baseOpacity ??= material.opacity;
+    material.opacity = (material.userData.baseOpacity ?? 1) * dimensional;
+    object.visible = dimensional > 0.01;
+  }
 }
 
 export function createScene(): SceneBundle {
   const scene = new THREE.Scene();
   scene.background = new THREE.Color(0x05060a);
-  scene.fog = new THREE.Fog(0x05060a, 60, 130);
+  // No fog: the near-orthographic camera sits far enough away that any
+  // distance-based fade would swallow the whole board.
 
-  const camera = new THREE.PerspectiveCamera(CAMERA_FOV, 1, 0.1, 500);
+  const camera = new THREE.PerspectiveCamera(FLAT_FOV, 1, 10, 700);
 
-  // Cool sky over a warm floor bounce keeps the spectrum readable without
-  // washing any band out.
-  scene.add(new THREE.HemisphereLight(0x9fb4ff, 0x241a2e, 1.15));
+  const fill = new THREE.AmbientLight(0xffffff, 1);
+  const key = new THREE.DirectionalLight(0xffffff, 0);
+  const rim = new THREE.DirectionalLight(0x8fa6ff, 0);
+  scene.add(fill, key, rim);
 
-  const key = new THREE.DirectionalLight(0xffffff, 1.5);
-  const rim = new THREE.DirectionalLight(0x6f8dff, 0.75);
-  scene.add(key, rim);
-
-  const lights: SceneLights = { key, rim };
+  const lights: SceneLights = { key, rim, fill };
   orientLights(lights, 0);
+  setLightingFlatness(lights, 1);
 
   const well = buildWell();
-  scene.add(well);
+  scene.add(well.group);
+  setWellFlatness(well, 1);
 
   return { scene, camera, well, lights };
 }
@@ -143,9 +200,26 @@ export function orientLights(lights: SceneLights, yawDegrees: number): void {
   place(lights.rim, RIM_LIGHT_BASE);
 }
 
-/** Distance at which the whole well fits the viewport at this aspect ratio. */
-export function fitDistance(aspect: number): number {
-  const halfFovY = THREE.MathUtils.degToRad(CAMERA_FOV) / 2;
+/**
+ * Blend the lighting between flat and dimensional.
+ *
+ * `flatness` of 1 is pure ambient: every face of every cube receives identical
+ * light, so a cube seen dead-on is a flat coloured square with no shading to
+ * betray its volume. At 0 the directional key and rim take over and the cubes
+ * are unmistakably solid.
+ */
+export function setLightingFlatness(lights: SceneLights, flatness: number): void {
+  const flat = THREE.MathUtils.clamp(flatness, 0, 1);
+  const dimensional = 1 - flat;
+
+  lights.fill.intensity = THREE.MathUtils.lerp(0.5, 1.18, flat);
+  lights.key.intensity = 1.65 * dimensional;
+  lights.rim.intensity = 0.8 * dimensional;
+}
+
+/** Distance at which the whole well fits the viewport at this field of view. */
+export function fitDistance(aspect: number, fovDegrees: number): number {
+  const halfFovY = THREE.MathUtils.degToRad(fovDegrees) / 2;
   const neededForHeight = (BOARD_HEIGHT / 2 + FIT_MARGIN) / Math.tan(halfFovY);
   const halfFovX = Math.atan(Math.tan(halfFovY) * aspect);
   // The widest silhouette is the board's diagonal, seen at 45 degrees of yaw.
@@ -164,10 +238,11 @@ export function fitDistance(aspect: number): number {
 export function positionCamera(
   camera: THREE.PerspectiveCamera,
   yawDegrees: number,
-  distance: number
+  distance: number,
+  elevationDegrees: number
 ): void {
   const yaw = THREE.MathUtils.degToRad(yawDegrees);
-  const elevation = THREE.MathUtils.degToRad(CAMERA_ELEVATION_DEG);
+  const elevation = THREE.MathUtils.degToRad(elevationDegrees);
   const horizontal = distance * Math.cos(elevation);
 
   camera.position.set(

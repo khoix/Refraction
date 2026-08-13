@@ -69,13 +69,49 @@ test.describe('boot', () => {
 });
 
 test.describe('rendering', () => {
-  test('actually draws a 3D scene rather than a blank canvas', async ({ page }) => {
+  test('draws the board rather than a blank canvas', async ({ page }) => {
     // Reading pixels back needs preserveDrawingBuffer, which is on in debug only.
     await page.goto('/?debug=1&seed=render');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    await page.waitForTimeout(500);
-    // A lit, shaded scene produces many distinct colours; a blank canvas gives one.
-    expect(await distinctCanvasColours(page)).toBeGreaterThan(20);
+    for (let i = 0; i < 4; i += 1) {
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(60);
+    }
+    await page.waitForTimeout(300);
+    // Flat tiles plus the frame and background. A blank canvas gives one colour.
+    expect(await distinctCanvasColours(page)).toBeGreaterThan(4);
+  });
+
+  test('looks flat when settled and gains volume only during the turn', async ({ page }) => {
+    // The central visual rule: the board reads as 2D until it rotates. Flat
+    // tiles are unshaded, so they yield few distinct colours; lit cubes with
+    // visible tops and sides yield many more.
+    await page.goto('/?debug=1&seed=flatness');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) {
+        for (let z = 0; z < 8; z += 1) {
+          if ((x + z) % 3 !== 0) game.board.fill({ x, y: 0, z });
+        }
+      }
+      game.shiftMeter = game.stage.linesPerTurn;
+      game.status = 'awaitingTurn';
+    });
+    await page.waitForTimeout(250);
+    const flat = await distinctCanvasColours(page);
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(370); // the midpoint of the 750ms turn
+    const midTurn = await distinctCanvasColours(page);
+
+    await page.waitForTimeout(900); // settled on the new face
+    const settled = await distinctCanvasColours(page);
+
+    expect(midTurn).toBeGreaterThan(flat * 1.5);
+    expect(settled).toBeLessThan(midTurn);
   });
 
   test('the board changes as pieces land', async ({ page }) => {

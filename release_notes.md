@@ -32,8 +32,8 @@ only exists along the hidden axis clears when you turn onto it.
 
 **M2 — the renderer**
 
-- Three.js scene: near-orthographic 22° camera at 8° elevation, driven from
-  `FACE_YAW` so it can never disagree with the engine's geometry.
+- Three.js scene driven from `FACE_YAW`, so the camera can never disagree with
+  the engine's geometry.
 - One `InstancedMesh` of bevelled cubes for the whole board — a single draw call.
 - Colour and apparent size recomputed every frame from **live camera distance**,
   not from the snapped face.
@@ -47,9 +47,25 @@ recolouring and parallax separation. The camera needed yaw interpolation
 regardless, and because colour follows live camera distance the continuous
 recolour came free.
 
+**Flat until it turns.** The board presents as flat 2D and becomes visibly
+three-dimensional only while rotating — the Fez rule. Nothing about the geometry
+changes between the two looks: a cube viewed dead-on through an orthographic
+camera is already a flat square. What animates is the field of view (5° → 30°),
+the elevation (0° → 14°), the lighting (flat ambient → directional key and rim),
+the apparent-size falloff, and the well's own depth cues, all driven by a single
+`flatness` value following a half sine across the turn. Camera distance is
+refitted as the field opens so the board holds its apparent size and the change
+reads as perspective arriving rather than as a zoom. See `docs/DESIGN.md` §2.1.
+
+The consequence worth noting: while settled, **colour is the only depth
+channel**. Uniform cube size is what lets a near cube cover the ones behind it
+exactly, so the apparent-size falloff exists only during the turn. That puts the
+full weight on the spectrum ramp, and makes the luminance-monotonic
+accessibility ramps load-bearing rather than optional.
+
 ### Tested
 
-**138 unit tests, 16 end-to-end tests.** Coverage on `src/core`: 94.6%
+**138 unit tests, 17 end-to-end tests.** Coverage on `src/core`: 94.6%
 statements, 87.7% branches, 96.4% lines.
 
 Highlights beyond the obvious:
@@ -66,6 +82,9 @@ Highlights beyond the obvious:
 - **Overhangs survive clears** — gravity must not compact columns, or structures
   bridging two columns are silently destroyed.
 - **The camera rotates rather than cutting**, asserted from real screenshots.
+- **Flat when settled, dimensional only mid-turn**, sampled from real pixels:
+  unshaded tiles yield few distinct colours, and the midpoint of a turn yields
+  far more once the cubes are lit and showing their tops.
 
 ### Design decisions validated, and one corrected
 

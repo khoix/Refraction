@@ -9,8 +9,20 @@ import * as THREE from 'three';
 import type { Game } from '@core/game';
 import { FACE_YAW, turnYawDelta } from '@core/projection';
 import type { TurnDirection } from '@core/types';
-import type { SceneLights } from './scene';
-import { createScene, fitDistance, orientLights, positionCamera } from './scene';
+import type { SceneLights, Well } from './scene';
+import {
+  FLAT_ELEVATION_DEG,
+  FLAT_FOV,
+  TURN_ELEVATION_DEG,
+  TURN_FOV,
+  createScene,
+  fitDistance,
+  orientLights,
+  orientWell,
+  positionCamera,
+  setLightingFlatness,
+  setWellFlatness,
+} from './scene';
 import { VoxelLayer } from './voxels';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
@@ -28,6 +40,7 @@ export class GameRenderer {
   private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
   private readonly ghost = new VoxelLayer({ opacity: 0.3, ghost: true, maxInstances: 8 });
   private readonly lights: SceneLights;
+  private readonly well: Well;
 
   /** Yaw the camera is easing away from, and the one it is heading to. */
   private yawFrom = FACE_YAW.front;
@@ -56,6 +69,7 @@ export class GameRenderer {
     this.scene = bundle.scene;
     this.camera = bundle.camera;
     this.lights = bundle.lights;
+    this.well = bundle.well;
 
     this.scene.add(this.locked.mesh, this.active.mesh, this.ghost.mesh);
     this.resize();
@@ -88,20 +102,50 @@ export class GameRenderer {
     this.camera.updateProjectionMatrix();
   }
 
+  /**
+   * How flat the board currently looks: 1 while settled on a face, easing to 0
+   * at the midpoint of a turn and back to 1 on arrival.
+   *
+   * A half sine rather than the eased yaw, so the board is fully flat the
+   * instant it settles and the dimensional peak lands exactly halfway through
+   * the rotation, where the parallax is most legible.
+   */
+  get flatness(): number {
+    if (!this.isTurning) return 1;
+    return 1 - Math.sin(Math.PI * (this.turnElapsed / TURN_DURATION_MS));
+  }
+
   render(game: Game, deltaMs: number): void {
     if (this.isTurning) {
       this.turnElapsed = Math.min(TURN_DURATION_MS, this.turnElapsed + deltaMs);
     }
 
     const yaw = this.yaw;
-    positionCamera(this.camera, yaw, fitDistance(this.camera.aspect));
-    orientLights(this.lights, yaw);
+    const flatness = this.flatness;
+    const dimensional = 1 - flatness;
 
-    this.locked.update(game.board.filledCells(), yaw);
-    this.active.update(game.activeCells(), yaw);
-    // The ghost is drawn slightly smaller so it reads as a projection rather
-    // than as a real stack of cubes.
-    this.ghost.update(game.status === 'falling' ? game.ghostCells() : [], yaw, 0.82);
+    const fov = THREE.MathUtils.lerp(FLAT_FOV, TURN_FOV, dimensional);
+    const elevation = THREE.MathUtils.lerp(FLAT_ELEVATION_DEG, TURN_ELEVATION_DEG, dimensional);
+
+    if (this.camera.fov !== fov) {
+      this.camera.fov = fov;
+      this.camera.updateProjectionMatrix();
+    }
+    // Refit as the field of view opens so the board keeps its apparent size and
+    // the effect reads as perspective arriving, not as a zoom.
+    positionCamera(this.camera, yaw, fitDistance(this.camera.aspect, fov), elevation);
+    orientLights(this.lights, yaw);
+    setLightingFlatness(this.lights, flatness);
+    setWellFlatness(this.well, flatness);
+    orientWell(this.well, yaw);
+
+    this.locked.update(game.board.filledCells(), yaw, { depthSizing: dimensional });
+    this.active.update(game.activeCells(), yaw, { depthSizing: dimensional });
+    // The ghost is inset so it reads as a target rather than as a real block.
+    this.ghost.update(game.status === 'falling' ? game.ghostCells() : [], yaw, {
+      scaleBias: 0.78,
+      depthSizing: dimensional,
+    });
 
     this.renderer.render(this.scene, this.camera);
   }

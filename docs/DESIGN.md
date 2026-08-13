@@ -63,19 +63,47 @@ left:   front → right → back  → left  → front
 Turning right moves the camera towards −θ; turning left towards +θ. The camera
 animates the way the player asked, never the short way round.
 
-### 2.1 Camera elevation **[GAP]**
+### 2.1 Presentation: flat until it turns **[GAP]**
 
-The proposal implies a head-on view. A dead-on camera makes depth almost
-unreadable in still frames — colour would be doing all the work alone.
+The board presents as **flat 2D** and becomes visibly three-dimensional only
+while it is turning. This is the Fez rule, and it is the whole point: the player
+should read the settled board as an ordinary falling-block game, and the depth
+should be something the rotation _reveals_ rather than something the still frame
+already shows.
 
-**Resolution:** the camera sits **8° above** the board centre with a **22° FOV**
-at ~2.4× the board diagonal. That is near-orthographic (little perspective
-distortion) but shows a sliver of each cube's top face, which reads as depth
-instantly and gives real parallax during Peek.
+Nothing about the geometry changes between the two looks. A cube viewed dead-on
+through an orthographic camera is indistinguishable from a flat square, so the
+same voxels serve both. What changes is the camera, the lighting, and the well:
 
-This does not weaken the projection invariant: at 8°, world Y still maps
-monotonically to screen Y and every column stays a column. Row and column
-identity is unchanged; only the rendering is more legible.
+|               | Settled on a face             | Midpoint of a turn        |
+| ------------- | ----------------------------- | ------------------------- |
+| Field of view | 5° — effectively orthographic | 30° — real perspective    |
+| Elevation     | 0° — dead-on                  | 14° — cube tops visible   |
+| Lighting      | flat ambient only             | directional key and rim   |
+| Apparent size | uniform                       | scaled by depth           |
+| Well          | flat frame only               | floor, grid and far posts |
+
+The camera distance is refitted as the field of view opens, so the board holds
+its apparent size and the change reads as perspective _arriving_ rather than as
+a zoom.
+
+Flatness follows a half sine over the turn: 1 at the start, 0 at the midpoint,
+1 on arrival. The board is therefore fully flat the instant it settles, and the
+dimensional peak lands exactly where the parallax is most legible.
+
+Two consequences follow, and both are deliberate.
+
+**Apparent size stops encoding depth while settled.** Uniform size is what makes
+a nearer cube cover the ones behind it exactly; any depth falloff would leave a
+visible collar and the board would stop looking flat. So on a settled face,
+**colour is the only depth channel** — which is precisely the design's premise,
+and puts the whole weight on the spectrum.
+
+**Occlusion is real.** A near cube completely hides what is behind it, exactly as
+the proposal's occlusion section describes. The information is not lost: a tile's
+colour tells you the depth of the _nearest_ cube in that screen cell, so a violet
+tile proves every lane in front of it is empty. Everything else is recovered by
+turning, and later by Peek.
 
 ## 3. Lines
 
@@ -301,8 +329,9 @@ The board must never become unknowable. Every occluded cube is legible through
 at least two of:
 
 - **Spectrum colour** — the primary channel.
-- **Apparent size** — near cubes render at 1.00, far at 0.74, so a near cube can
-  never completely eclipse the one behind it. There is always a visible collar.
+- **Apparent size** — during a turn only. Near cubes scale to 1.00 and far to
+  0.74, which is what makes the stack visibly separate as it rotates. While
+  settled, size is uniform so the board stays flat.
 - **Rim light** — a fresnel edge tinted by the cube's own lane colour.
 - **Floor grid** — the well's floor is gridded and lane-tinted; it anchors depth
   absolutely rather than relatively.
@@ -317,7 +346,10 @@ Colour is the primary depth channel, so a colourblind player is not losing
 decoration, they are losing the game's core information. Depth is therefore
 _always_ redundantly encoded.
 
-- **Apparent size scaling** — always on, never a setting.
+- **Luminance-monotonic ramps** — every depth ramp, including the default, keeps
+  lightness monotonic from near to far, so ordering survives any colour vision.
+  This matters more than it would otherwise: while the board is settled, colour
+  is the only depth channel (see §2.1), so the ramp is doing all the work.
 - **Banded mode** — 7 hard-edged bands instead of a continuous ramp.
 - **Luminance mode** — depth as a light-to-dark ramp, no hue dependency.
 - **Alternate ramps** — deuteranopia-, protanopia- and tritanopia-safe palettes

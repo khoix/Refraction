@@ -11,6 +11,10 @@ Rotation never rearranges anything. It only changes which horizontal axis you
 are playing. A gap that looks unreachable may be trivial after a turn; a line
 you could not complete from the front may already be complete from the side.
 
+The board presents as flat 2D. Only while it turns do the tiles become visibly
+cubes — depth is something the rotation reveals, not something the still frame
+gives away.
+
 Depth is communicated through the visible spectrum — **red is near, violet is
 far** — so a cube can read red from one face and violet from the opposite one
 without ever moving.

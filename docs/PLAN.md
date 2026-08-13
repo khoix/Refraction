@@ -61,7 +61,8 @@ input log, with the outcome reproducible from its seed.
 
 **Goal:** the board becomes visible, and beautiful.
 
-- Three.js scene: near-orthographic camera at 22° FOV, 8° elevation.
+- Three.js scene, flat until it turns: 5° near-orthographic camera dead-on when
+  settled, opening to 30° and 14° elevation at the midpoint of a turn.
 - Single `InstancedMesh` of bevelled boxes; per-instance colour and scale.
 - Continuous spectrum shading driven by live camera distance.
 - The well: wireframe cage, lane-tinted floor grid, subtle contact shadows.

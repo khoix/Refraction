@@ -69,15 +69,27 @@ export class VoxelLayer {
    *
    * `yawDegrees` is the camera's *current* yaw, which during a turn is somewhere
    * between two faces. Depth, and therefore colour and size, follow it exactly.
+   *
+   * `depthSizing` blends the apparent-size falloff in and out. It must be 0
+   * while the board is settled: a nearer cube has to cover the ones behind it
+   * exactly, or the board stops looking flat. The falloff ramps in during the
+   * turn, which is what makes the stack visibly separate in depth.
    */
-  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1): void {
+  update(
+    cells: readonly Cell[],
+    yawDegrees: number,
+    options: { scaleBias?: number; depthSizing?: number } = {}
+  ): void {
+    const scaleBias = options.scaleBias ?? 1;
+    const depthSizing = THREE.MathUtils.clamp(options.depthSizing ?? 0, 0, 1);
     const count = Math.min(cells.length, this.mesh.instanceMatrix.count);
     this.mesh.count = count;
 
     for (let i = 0; i < count; i += 1) {
       const cell = cells[i] as Cell;
       const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
-      const size = depthScale(depth) * CUBE_GAP * scaleBias;
+      const falloff = THREE.MathUtils.lerp(1, depthScale(depth), depthSizing);
+      const size = falloff * CUBE_GAP * scaleBias;
 
       this.position.set(toSceneX(cell.x), toSceneY(cell.y), toSceneZ(cell.z));
       this.scaleVector.setScalar(size);
