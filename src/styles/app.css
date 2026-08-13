@@ -1,0 +1,160 @@
+/*
+ * Global shell styling. The game canvas arrives in M2; until then this file
+ * carries the shared design tokens so the visual language is settled early.
+ */
+
+:root {
+  /* Surfaces: near-black with a cool cast, so the spectrum reads as emissive. */
+  --surface-void: #05060a;
+  --surface-deep: #0a0c14;
+  --surface-raised: #121522;
+  --surface-line: #1e2334;
+
+  --text-primary: #e8ecf8;
+  --text-secondary: #99a2bd;
+  --text-dim: #5d6684;
+
+  /* Spectrum anchors, mirrored from src/core/spectrum.ts for static UI chrome. */
+  --spectrum-red: #ff4d3d;
+  --spectrum-orange: #ff9538;
+  --spectrum-yellow: #ffd94a;
+  --spectrum-green: #56d97a;
+  --spectrum-blue: #4a8dff;
+  --spectrum-indigo: #7b62ee;
+  --spectrum-violet: #a457e8;
+
+  --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
+
+  --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
+  --duration-turn: 750ms;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--surface-void);
+  color: var(--text-primary);
+  font-family: var(--font-display);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overscroll-behavior: none;
+}
+
+#app {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1.5rem;
+}
+
+.boot {
+  width: min(52rem, 100%);
+  text-align: center;
+}
+
+.boot__title {
+  margin: 0;
+  /* Letter-spacing scales with the type so the wordmark never outgrows the
+     viewport on narrow screens. */
+  font-size: clamp(2.4rem, 10.5vw, 7.5rem);
+  font-weight: 200;
+  letter-spacing: clamp(0.08em, 1.8vw, 0.22em);
+  text-indent: clamp(0.08em, 1.8vw, 0.22em);
+  line-height: 1;
+  background: linear-gradient(
+    100deg,
+    var(--spectrum-red),
+    var(--spectrum-orange),
+    var(--spectrum-yellow),
+    var(--spectrum-green),
+    var(--spectrum-blue),
+    var(--spectrum-indigo),
+    var(--spectrum-violet)
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.boot__tagline {
+  margin: 1.25rem 0 0;
+  font-size: clamp(0.9rem, 2.2vw, 1.1rem);
+  font-weight: 300;
+  color: var(--text-secondary);
+  letter-spacing: 0.04em;
+}
+
+.boot__ramp {
+  display: flex;
+  gap: 3px;
+  margin: 3rem auto 0;
+  width: min(34rem, 100%);
+  height: 4.5rem;
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.boot__lane {
+  flex: 1;
+  position: relative;
+  border-radius: 3px;
+  transition: transform 220ms var(--ease-snap);
+}
+
+.boot__lane::after {
+  content: attr(data-lane);
+  position: absolute;
+  inset-block-end: 0.4rem;
+  inset-inline: 0;
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  color: rgb(0 0 0 / 0.55);
+}
+
+.boot__legend {
+  display: flex;
+  justify-content: space-between;
+  width: min(34rem, 100%);
+  margin: 0.6rem auto 0;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+  text-transform: uppercase;
+}
+
+.boot__status {
+  margin: 3rem auto 0;
+  padding: 1rem 1.25rem;
+  max-width: 34rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 10px;
+  background: var(--surface-deep);
+  font-family: var(--font-mono);
+  font-size: clamp(0.66rem, 2.6vw, 0.8rem);
+  line-height: 1.7;
+  color: var(--text-secondary);
+  text-align: left;
+  /* A bare <pre> refuses to wrap and pushes the whole document sideways. */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.boot__status strong {
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}
