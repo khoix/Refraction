@@ -35,10 +35,15 @@ export default defineConfig({
   ],
   webServer: {
     command: 'npm run build && npm run preview',
+    // Must match the --host the preview script binds to. Leaving vite on its
+    // default `localhost` while polling 127.0.0.1 works on some machines and
+    // silently times out on others, depending on how localhost resolves.
     url: 'http://127.0.0.1:4173',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
-    stdout: 'ignore',
+    // Piped, not ignored: a server that never comes up is otherwise a blank
+    // three-minute wait with nothing to diagnose.
+    stdout: 'pipe',
     stderr: 'pipe',
   },
 });
