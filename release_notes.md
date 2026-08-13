@@ -35,9 +35,10 @@ only exists along the hidden axis clears when you turn onto it.
 - Three.js scene driven from `FACE_YAW`, so the camera can never disagree with
   the engine's geometry.
 - One `InstancedMesh` of bevelled cubes for the whole board — a single draw call.
-- Colour and apparent size recomputed every frame from **live camera distance**,
-  not from the snapped face.
-- The well: lane-tinted floor grid, corner posts, contact plane.
+- Colour recomputed every frame from **live camera distance**, not from the
+  snapped face, so the turn recolours continuously instead of crossfading.
+- The well: a flat frame that follows the camera, plus box posts that fade in
+  only while the board is turning.
 - Ghost piece at its true landing depth; active piece; HUD with score, lines,
   stage, face, Shift meter, next and hold; turn prompt and game-over overlay.
 - Keyboard input with DAS/ARR and soft-drop repeat, fixed-timestep loop.
@@ -47,25 +48,43 @@ recolouring and parallax separation. The camera needed yaw interpolation
 regardless, and because colour follows live camera distance the continuous
 recolour came free.
 
-**Flat until it turns.** The board presents as flat 2D and becomes visibly
-three-dimensional only while rotating — the Fez rule. Nothing about the geometry
-changes between the two looks: a cube viewed dead-on through an orthographic
-camera is already a flat square. What animates is the field of view (5° → 30°),
-the elevation (0° → 14°), the lighting (flat ambient → directional key and rim),
-the apparent-size falloff, and the well's own depth cues, all driven by a single
-`flatness` value following a half sine across the turn. Camera distance is
-refitted as the field opens so the board holds its apparent size and the change
-reads as perspective arriving rather than as a zoom. See `docs/DESIGN.md` §2.1.
+**Depth is colour, and nothing else.** A cube eight lanes back is exactly the
+same size on screen as one at the front. The projection is **orthographic and
+stays orthographic** — perspective foreshortening, size falloff and distance haze
+were each offering a second, more familiar depth cue, and a player would read
+distance instead of reading colour. All three are gone.
 
-The consequence worth noting: while settled, **colour is the only depth
-channel**. Uniform cube size is what lets a near cube cover the ones behind it
-exactly, so the apparent-size falloff exists only during the turn. That puts the
-full weight on the spectrum ramp, and makes the luminance-monotonic
-accessibility ramps load-bearing rather than optional.
+The board reads as flat 2D when settled: dead-on, orthographic, uniformly lit,
+so every cube is a flat coloured tile. Turning orbits the camera, and cubes
+become visibly cubes because their side and top faces come into view and the
+stack separates horizontally — consequences of the rotation, not distance cues.
+A single `flatness` value follows a half sine across the turn and drives the
+lighting, the elevation, the cube spacing and the well furniture.
+
+Two mid-turn adjustments are worth flagging because they look at first glance
+like the cues just removed:
+
+- **12° of elevation at the midpoint, 0° whenever settled.** Dead level, a cube
+  never shows its top face and the rotating stack reads as a squashed mosaic
+  rather than as cubes. Under orthographic projection this costs nothing against
+  the rule — a far cube is still exactly the size of a near one — and a face at
+  rest offers no spatial cue at all. `TURN_ELEVATION_DEG` is one constant; set it
+  to 0 to remove it.
+- **Cube spacing opens uniformly during the turn.** Packed flush they smear into
+  bands at an angle. Every cube shrinks by the same factor, so it carries no
+  depth information.
+
+`depthScale`, `NEAR_CUBE_SCALE` and `FAR_CUBE_SCALE` are deleted rather than left
+unused: size no longer encodes anything.
+
+The consequence worth noting: **colour is the only depth channel**. Uniform size
+is also what lets a near cube cover the ones behind it exactly, which keeps the
+settled board flat. That puts the full weight on the spectrum ramp, and makes
+the luminance-monotonic accessibility ramps load-bearing rather than optional.
 
 ### Tested
 
-**138 unit tests, 17 end-to-end tests.** Coverage on `src/core`: 94.6%
+**137 unit tests, 17 end-to-end tests.** Coverage on `src/core`: 94.6%
 statements, 87.7% branches, 96.4% lines.
 
 Highlights beyond the obvious:
@@ -114,6 +133,10 @@ Highlights beyond the obvious:
   dims the board to read as the deliberate modal beat it is.
 - The playability test exceeded the default 5s timeout under coverage
   instrumentation, which would have failed CI.
+- The turn duration is overridable via `?turnMs=` in debug builds. Screenshots
+  and assertions were landing at unpredictable points inside a 750ms rotation,
+  which made "capture the midpoint of the turn" a matter of luck; stretching the
+  turn makes a chosen moment reachable reliably.
 
 ### Next
 

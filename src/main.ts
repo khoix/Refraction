@@ -32,6 +32,7 @@ function randomSeed(): string {
  */
 interface DebugHandle {
   game: Game;
+  renderer: GameRenderer;
   restart: (seed?: string) => void;
 }
 
@@ -51,13 +52,18 @@ function boot(root: HTMLElement): void {
   const startingSeed = params.get('seed') ?? randomSeed();
 
   const debug = params.get('debug') === '1';
+  const turnMs = Number(params.get('turnMs'));
 
   let game = new Game({ seed: startingSeed });
-  const renderer = new GameRenderer(canvas, { preserveDrawingBuffer: debug });
+  const renderer = new GameRenderer(canvas, {
+    preserveDrawingBuffer: debug,
+    ...(debug && Number.isFinite(turnMs) && turnMs > 0 ? { turnDurationMs: turnMs } : {}),
+  });
 
   if (debug) {
     const handle: DebugHandle = {
       game,
+      renderer,
       restart: (seed?: string) => {
         game = new Game({ seed: seed ?? randomSeed() });
         handle.game = game;

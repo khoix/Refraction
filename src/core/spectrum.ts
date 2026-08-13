@@ -9,6 +9,10 @@
  * perceptual space matters here: a naive RGB or HSV lerp produces muddy,
  * uneven bands mid-turn, and the whole design depends on the player reading
  * small depth differences at a glance.
+ *
+ * Colour is the *only* thing depth changes. Cubes are never drawn smaller or
+ * further away with distance, so this ramp carries the entire channel on its
+ * own -- which is why it is worth defining carefully and testing hard.
  */
 
 import type { Rgb } from './types';
@@ -175,18 +179,6 @@ export function depthColorBanded(t: number): Rgb {
 export function laneToDepthParameter(lane: number, laneCount: number): number {
   if (laneCount <= 1) return 0;
   return clamp01(lane / (laneCount - 1));
-}
-
-/**
- * Apparent-size multiplier for a cube at normalised depth `t`.
- * Near cubes are drawn slightly larger than far ones so silhouettes stay
- * readable and stacked cubes never fully hide the ones behind them.
- */
-export const NEAR_CUBE_SCALE = 1;
-export const FAR_CUBE_SCALE = 0.74;
-
-export function depthScale(t: number): number {
-  return lerp(NEAR_CUBE_SCALE, FAR_CUBE_SCALE, clamp01(t));
 }
 
 /** `#rrggbb` for a normalised depth. */

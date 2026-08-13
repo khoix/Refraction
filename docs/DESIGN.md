@@ -63,47 +63,64 @@ left:   front → right → back  → left  → front
 Turning right moves the camera towards −θ; turning left towards +θ. The camera
 animates the way the player asked, never the short way round.
 
-### 2.1 Presentation: flat until it turns **[GAP]**
+### 2.1 Presentation: depth is colour, and nothing else **[GAP]**
 
-The board presents as **flat 2D** and becomes visibly three-dimensional only
-while it is turning. This is the Fez rule, and it is the whole point: the player
-should read the settled board as an ordinary falling-block game, and the depth
-should be something the rotation _reveals_ rather than something the still frame
-already shows.
+Depth here is a **game mechanic, not a simulation of space**. A cube eight lanes
+back is exactly the same size on screen as one at the front, and sits at the same
+height. Nothing about it says "far away". The only thing that changes with depth
+is colour.
 
-Nothing about the geometry changes between the two looks. A cube viewed dead-on
-through an orthographic camera is indistinguishable from a flat square, so the
-same voxels serve both. What changes is the camera, the lighting, and the well:
+This is the rule everything else defers to. Perspective foreshortening, size
+falloff and distance haze would each quietly undermine it by offering a second,
+more familiar depth cue — and players would read distance instead of reading
+colour, which is the skill the whole game is trying to teach.
 
-|               | Settled on a face             | Midpoint of a turn        |
-| ------------- | ----------------------------- | ------------------------- |
-| Field of view | 5° — effectively orthographic | 30° — real perspective    |
-| Elevation     | 0° — dead-on                  | 14° — cube tops visible   |
-| Lighting      | flat ambient only             | directional key and rim   |
-| Apparent size | uniform                       | scaled by depth           |
-| Well          | flat frame only               | floor, grid and far posts |
+So the projection is **orthographic and stays orthographic**.
 
-The camera distance is refitted as the field of view opens, so the board holds
-its apparent size and the change reads as perspective _arriving_ rather than as
-a zoom.
+The board reads as flat 2D when settled: dead-on, orthographic, uniformly lit,
+so every cube is a flat coloured tile. Turning orbits the camera. Cubes become
+visibly cubes because their side and top faces come into view and the stack
+separates horizontally — both genuine consequences of the rotation, neither of
+them a distance cue.
+
+|              | Settled on a face | Midpoint of a turn       |
+| ------------ | ----------------- | ------------------------ |
+| Projection   | orthographic      | orthographic — unchanged |
+| Cube size    | uniform           | uniform — unchanged      |
+| Yaw          | exactly on a face | sweeping 90°             |
+| Elevation    | 0° — dead-on      | 12°                      |
+| Lighting     | flat ambient      | directional key and rim  |
+| Cube spacing | flush             | opened uniformly         |
+| Well         | flat frame        | plus the box posts       |
 
 Flatness follows a half sine over the turn: 1 at the start, 0 at the midpoint,
-1 on arrival. The board is therefore fully flat the instant it settles, and the
-dimensional peak lands exactly where the parallax is most legible.
+1 on arrival. The board is fully flat the instant it settles.
+
+Two of those mid-turn changes deserve their reasoning stated, because both look
+at first glance like the depth cues this section just forbade:
+
+- **Elevation.** Dead level, a cube never shows its top face and the rotating
+  stack reads as a squashed mosaic rather than as cubes. Twelve degrees is
+  enough to tell them apart. It costs nothing against the rule — orthographic
+  means a far cube is still exactly the size of a near one — and it returns to
+  zero the moment the board settles, so a face at rest offers no spatial cue at
+  all. `TURN_ELEVATION_DEG` is a single constant; set it to 0 to remove it.
+- **Cube spacing.** Every cube shrinks by the _same_ factor as the board turns.
+  Packed flush they smear into bands at an angle; opening the gaps lets each one
+  read individually. Uniform is the important word: it is a legibility
+  adjustment applied equally to all of them, carrying no depth information.
 
 Two consequences follow, and both are deliberate.
 
-**Apparent size stops encoding depth while settled.** Uniform size is what makes
-a nearer cube cover the ones behind it exactly; any depth falloff would leave a
-visible collar and the board would stop looking flat. So on a settled face,
-**colour is the only depth channel** — which is precisely the design's premise,
-and puts the whole weight on the spectrum.
+**Colour is the only depth channel.** Uniform size is also what makes a nearer
+cube cover the ones behind it exactly, which is what keeps the settled board
+looking flat. The whole weight sits on the spectrum ramp.
 
-**Occlusion is real.** A near cube completely hides what is behind it, exactly as
-the proposal's occlusion section describes. The information is not lost: a tile's
-colour tells you the depth of the _nearest_ cube in that screen cell, so a violet
-tile proves every lane in front of it is empty. Everything else is recovered by
-turning, and later by Peek.
+**Occlusion is real.** A near cube completely hides what is behind it, exactly
+as the proposal's occlusion section describes. The information is not lost: a
+tile's colour is the depth of the _nearest_ cube in that screen cell, so a
+violet tile proves every lane in front of it is empty. Everything else is
+recovered by turning, and later by Peek.
 
 ## 3. Lines
 
@@ -329,9 +346,9 @@ The board must never become unknowable. Every occluded cube is legible through
 at least two of:
 
 - **Spectrum colour** — the primary channel.
-- **Apparent size** — during a turn only. Near cubes scale to 1.00 and far to
-  0.74, which is what makes the stack visibly separate as it rotates. While
-  settled, size is uniform so the board stays flat.
+- **Parallax during a turn** — the stack separates horizontally as the board
+  rotates, which is what reveals which cubes sit at which depth. Cube size never
+  varies with depth, at rest or mid-turn.
 - **Rim light** — a fresnel edge tinted by the cube's own lane colour.
 - **Floor grid** — the well's floor is gridded and lane-tinted; it anchors depth
   absolutely rather than relatively.

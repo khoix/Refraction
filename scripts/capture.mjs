@@ -51,7 +51,9 @@ async function main() {
       ...(existsSync(PREINSTALLED_CHROMIUM) ? { executablePath: PREINSTALLED_CHROMIUM } : {}),
     });
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
-    await page.goto(`${URL}/?debug=1&seed=capture`);
+    // A stretched turn makes a chosen moment of the rotation reachable: screenshot
+    // latency is unpredictable and would otherwise land wherever it lands.
+    await page.goto(`${URL}/?debug=1&seed=capture&turnMs=6000`);
     await page.waitForSelector('#app[data-ready="true"]');
     await sleep(700);
 
@@ -90,13 +92,21 @@ async function main() {
     if (await page.locator('.prompt').isVisible()) {
       await shot('03-shift-prompt');
 
-      // Catch the turn mid-flight: this is the frame where the depth colours are
-      // recomputing and parallax is separating the stack.
+      // Catch the turn mid-flight. Screenshots are not instant, so sample a few
+      // points across the 750ms rotation rather than trusting one sleep.
       await page.keyboard.press('ArrowRight');
-      await sleep(330);
-      await shot('04-mid-turn');
+      const started = Date.now();
+      for (const [name, target] of [
+        ['04-turn-early', 1500],
+        ['04-turn-mid', 3000],
+        ['04-turn-late', 4500],
+      ]) {
+        const wait = target - (Date.now() - started);
+        if (wait > 0) await sleep(wait);
+        await shot(name);
+      }
 
-      await sleep(900);
+      await sleep(2500);
       await shot('05-new-face');
     } else {
       console.warn('meter never filled; skipping turn captures');

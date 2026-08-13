@@ -16,8 +16,10 @@ cubes — depth is something the rotation reveals, not something the still frame
 gives away.
 
 Depth is communicated through the visible spectrum — **red is near, violet is
-far** — so a cube can read red from one face and violet from the opposite one
-without ever moving.
+far** — and through nothing else. A cube eight lanes back is exactly the same
+size on screen as one at the front. The projection is orthographic throughout,
+so distance never shrinks anything; the same cube simply reads red from one face
+and violet from the opposite one without ever moving.
 
 > **Position is absolute. Colour is relative.**
 

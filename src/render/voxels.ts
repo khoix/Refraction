@@ -12,7 +12,7 @@ import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { depthParameterAtYaw } from '@core/projection';
-import { depthColor, depthScale } from '@core/spectrum';
+import { depthColor } from '@core/spectrum';
 import type { Cell } from '@core/types';
 import { toSceneX, toSceneY, toSceneZ } from './scene';
 
@@ -68,28 +68,23 @@ export class VoxelLayer {
    * Rewrite every instance for this frame.
    *
    * `yawDegrees` is the camera's *current* yaw, which during a turn is somewhere
-   * between two faces. Depth, and therefore colour and size, follow it exactly.
+   * between two faces. Depth follows it exactly, and depth drives **colour and
+   * nothing else**.
    *
-   * `depthSizing` blends the apparent-size falloff in and out. It must be 0
-   * while the board is settled: a nearer cube has to cover the ones behind it
-   * exactly, or the board stops looking flat. The falloff ramps in during the
-   * turn, which is what makes the stack visibly separate in depth.
+   * Every cube is the same size regardless of how far back it sits. A size
+   * falloff would be a second depth cue competing with the spectrum, and a
+   * familiar real-world one at that -- players would read distance instead of
+   * reading colour. It also has to be uniform for a near cube to cover the ones
+   * behind it exactly, which is what keeps the settled board looking flat.
    */
-  update(
-    cells: readonly Cell[],
-    yawDegrees: number,
-    options: { scaleBias?: number; depthSizing?: number } = {}
-  ): void {
-    const scaleBias = options.scaleBias ?? 1;
-    const depthSizing = THREE.MathUtils.clamp(options.depthSizing ?? 0, 0, 1);
+  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1): void {
     const count = Math.min(cells.length, this.mesh.instanceMatrix.count);
     this.mesh.count = count;
+    const size = CUBE_GAP * scaleBias;
 
     for (let i = 0; i < count; i += 1) {
       const cell = cells[i] as Cell;
       const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
-      const falloff = THREE.MathUtils.lerp(1, depthScale(depth), depthSizing);
-      const size = falloff * CUBE_GAP * scaleBias;
 
       this.position.set(toSceneX(cell.x), toSceneY(cell.y), toSceneZ(cell.z));
       this.scaleVector.setScalar(size);
