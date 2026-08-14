@@ -25,11 +25,12 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M4 — Feel.** The game is playable, the reveal is visible, and it has sound and
-weight: lines that exist only along the hidden axis glow through the whole
-rotation and clear on arrival, and closing a four-face chain blooms the board
-toward white. Rendered in 3D with continuous spectrum depth
-shading. Feel, progression and modes come next.
+**M5 — Progression.** The game is playable, the reveal is visible, it has sound
+and weight, and it now has an arc: lines that exist only along the hidden axis
+glow through the whole rotation and clear on arrival, closing a four-face chain
+blooms the board toward white, and a run climbs Red → Violet and out into the
+endless Ultraviolet tier. Each stage announces itself in its own colour. Modes,
+persistence and the comprehension tools come next.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
 `C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute.

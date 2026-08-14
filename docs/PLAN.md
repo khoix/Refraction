@@ -121,7 +121,7 @@ photosensitivity settings verified.
 
 ---
 
-## M5 — Progression
+## M5 — Progression ✅ _shipped_
 
 **Goal:** the Red → Violet arc.
 
@@ -132,6 +132,11 @@ photosensitivity settings verified.
 
 **Exit criteria:** the first depth-offset piece lands without explanation, and
 the first turn lands as a revelation rather than a confusion.
+
+**Note:** the tuning pass moved `LINES_PER_STAGE` from 10 to 15. At ten, the
+greedy agent walked the whole spectrum inside one game, which made reaching
+Violet routine. The reveal schedule is now pinned by test rather than by
+intention — see `tests/unit/progression.test.ts`.
 
 ---
 

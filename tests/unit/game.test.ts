@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Game, facePreview } from '@core/game';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { lineCells } from '@core/projection';
-import { stageForLines } from '@core/stages';
+import { LINES_PER_STAGE, stageForLines } from '@core/stages';
 import type { Board } from '@core/board';
 import type { Cell } from '@core/types';
 
@@ -161,12 +161,12 @@ describe('clearing', () => {
     expect(fresh.shiftMeter).toBeGreaterThanOrEqual(1);
   });
 
-  it('advances the stage every ten lines', () => {
+  it('advances the stage on the tuned line interval', () => {
     expect(stageForLines(0).index).toBe(1);
-    expect(stageForLines(9).index).toBe(1);
-    expect(stageForLines(10).index).toBe(2);
-    expect(stageForLines(69).index).toBe(7);
-    expect(stageForLines(70).name).toContain('Ultraviolet');
+    expect(stageForLines(LINES_PER_STAGE - 1).index).toBe(1);
+    expect(stageForLines(LINES_PER_STAGE).index).toBe(2);
+    expect(stageForLines(LINES_PER_STAGE * 7 - 1).index).toBe(7);
+    expect(stageForLines(LINES_PER_STAGE * 7).name).toContain('Ultraviolet');
   });
 });
 

@@ -11,7 +11,11 @@ import { DEPTH_LANES } from '@core/constants';
 import { PIECES_BY_ID, extent, normalize } from '@core/pieces';
 import type { PieceId } from '@core/pieces';
 import { depthColorHex, laneToDepthParameter } from '@core/spectrum';
+import { isUltraviolet, stageDepthParameter } from '@core/stages';
 import type { Cell, Face } from '@core/types';
+
+/** Past the end of the visible spectrum, so past the end of the ramp. */
+const ULTRAVIOLET_COLOUR = '#e6d8ff';
 
 const FACE_LABEL: Record<Face, string> = {
   front: 'FRONT',
@@ -73,6 +77,7 @@ export class Hud {
   private readonly chain = element('div', 'chain');
   private readonly popups = element('div', 'popups');
   private readonly mute = element('div', 'mute');
+  private readonly stageBanner = element('div', 'stage-banner');
   private readonly banner = element('div', 'banner');
   private readonly prompt = element('div', 'prompt');
   private readonly overlay = element('div', 'overlay');
@@ -80,6 +85,7 @@ export class Hud {
   readonly root = element('div', 'hud');
 
   private bannerTimer = 0;
+  private stageBannerTimer = 0;
 
   constructor() {
     const stats = element('div', 'hud__stats');
@@ -106,6 +112,7 @@ export class Hud {
     this.chain.hidden = true;
     this.mute.hidden = true;
     this.mute.textContent = 'MUTED';
+    this.stageBanner.hidden = true;
 
     const pill = element('div', 'prompt__pill');
     pill.append(
@@ -124,6 +131,7 @@ export class Hud {
       this.chain,
       this.popups,
       this.mute,
+      this.stageBanner,
       this.banner,
       this.prompt,
       this.overlay
@@ -148,6 +156,22 @@ export class Hud {
     this.mute.hidden = !muted;
   }
 
+  /**
+   * Announce a new stage in its own colour.
+   *
+   * Deliberately quieter than a scoring banner: the arc should be felt through
+   * the speed and the pieces, not narrated.
+   */
+  showStageBanner(name: string, colour: string): void {
+    this.stageBanner.textContent = name.toUpperCase();
+    this.stageBanner.style.color = colour;
+    this.stageBanner.hidden = false;
+    this.stageBanner.classList.remove('stage-banner--pulse');
+    void this.stageBanner.offsetWidth;
+    this.stageBanner.classList.add('stage-banner--pulse');
+    this.stageBannerTimer = 2000;
+  }
+
   showBanner(text: string): void {
     this.banner.textContent = text;
     this.banner.hidden = false;
@@ -162,6 +186,11 @@ export class Hud {
     this.score.textContent = game.score.toLocaleString('en-US');
     this.lines.textContent = String(game.lines);
     this.stage.textContent = game.stage.name;
+    // Each stage is named for a band, so it wears that band's colour. Past
+    // Violet there is no band left, so Ultraviolet goes to near-white.
+    this.stage.style.color = isUltraviolet(game.stage)
+      ? ULTRAVIOLET_COLOUR
+      : depthColorHex(stageDepthParameter(game.stage.index));
     this.face.textContent = FACE_LABEL[game.face];
 
     this.renderMeter(game);
@@ -185,6 +214,10 @@ export class Hud {
     if (this.bannerTimer > 0) {
       this.bannerTimer -= deltaMs;
       if (this.bannerTimer <= 0) this.banner.hidden = true;
+    }
+    if (this.stageBannerTimer > 0) {
+      this.stageBannerTimer -= deltaMs;
+      if (this.stageBannerTimer <= 0) this.stageBanner.hidden = true;
     }
   }
 

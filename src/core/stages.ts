@@ -86,8 +86,17 @@ export const STAGES: readonly StageConfig[] = [
   },
 ] as const;
 
-/** Cleared lines required to advance one stage. */
-export const LINES_PER_STAGE = 10;
+/**
+ * Cleared lines required to advance one stage.
+ *
+ * Tuned against the greedy agent in `playability.test.ts`. At ten, a competent
+ * run reached Violet inside a single game and spent most of its length past the
+ * end of the arc, which made completing the spectrum routine rather than an
+ * achievement. At fifteen the full arc is 90 lines, which sits at the top of
+ * what that agent manages -- so Violet is reachable but has to be earned, and
+ * Ultraviolet is genuinely the far end.
+ */
+export const LINES_PER_STAGE = 15;
 
 export const ULTRAVIOLET_NAME = 'Ultraviolet';
 
@@ -112,6 +121,31 @@ export function stageForLines(lines: number): StageConfig {
     maxTier: 4,
     depthNudge: true,
   };
+}
+
+/** Stages named after the spectrum, so the arc and the colour system agree. */
+export const NAMED_STAGE_COUNT = STAGES.length;
+
+/**
+ * Where a stage sits on the spectrum ramp, 0 (Red) to 1 (Violet).
+ *
+ * The stages are named for the bands, so this is what lets the HUD colour a
+ * stage with its own band. Ultraviolet is past the end of the visible range by
+ * definition and clamps to Violet; callers distinguish it with `isUltraviolet`.
+ */
+export function stageDepthParameter(index: number): number {
+  const clamped = Math.min(Math.max(index, 1), NAMED_STAGE_COUNT);
+  return (clamped - 1) / (NAMED_STAGE_COUNT - 1);
+}
+
+/** True once the run has passed Violet into the endless tier. */
+export function isUltraviolet(stage: StageConfig): boolean {
+  return stage.index > NAMED_STAGE_COUNT;
+}
+
+/** How far into Ultraviolet a stage is, 1-based. Zero before it. */
+export function ultravioletDepth(stage: StageConfig): number {
+  return Math.max(0, stage.index - NAMED_STAGE_COUNT);
 }
 
 /** Milliseconds per gravity step at this stage. */

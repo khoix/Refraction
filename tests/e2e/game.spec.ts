@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { LINES_PER_STAGE } from '../../src/core/stages';
 
 /** Wait for the first rendered frame. */
 async function boot(page: Page): Promise<void> {
@@ -348,6 +349,72 @@ test.describe('feel', () => {
   test('reduced motion suppresses the shake entirely', async ({ page }) => {
     await frozenBoard(page, '&reducedMotion=1');
     expect(await peakShake(page)).toBe(0);
+  });
+});
+
+test.describe('progression', () => {
+  /** Advance the run to a chosen stage by handing it cleared lines. */
+  async function reachStage(page: Page, stageIndex: number): Promise<void> {
+    await page.goto('/?debug=1&seed=arc');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(
+      ({ index, perStage }) => {
+        const game = window.__refraction?.game;
+        if (!game) throw new Error('debug hook unavailable');
+        // One short of the boundary, so a single clear crosses it and fires the
+        // stage event exactly the way real play would.
+        game.lines = perStage * (index - 1) - 1;
+        for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
+      },
+      { index: stageIndex, perStage: LINES_PER_STAGE }
+    );
+    await page.keyboard.press('Space');
+  }
+
+  test('announces a new stage in that stage colour', async ({ page }) => {
+    await reachStage(page, 2);
+    const banner = page.locator('.stage-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveText('ORANGE');
+  });
+
+  test('colours the stage readout with its own band', async ({ page }) => {
+    await page.goto('/?debug=1&seed=colour');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const parse = async (): Promise<number[]> => {
+      const value = await page
+        .locator('.stat__value')
+        .nth(2)
+        .evaluate((el) => {
+          return getComputedStyle(el).color;
+        });
+      return (value.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+    };
+
+    // Red at stage 1.
+    const [r1, g1, b1] = (await parse()) as [number, number, number];
+    expect(r1).toBeGreaterThan(g1);
+    expect(r1).toBeGreaterThan(b1);
+
+    // Blue by stage 5.
+    await page.evaluate((perStage) => {
+      const game = window.__refraction?.game;
+      if (game) game.lines = perStage * 4;
+    }, LINES_PER_STAGE);
+    await page.waitForTimeout(120);
+    const [r5, , b5] = (await parse()) as [number, number, number];
+    expect(b5).toBeGreaterThan(r5);
+  });
+
+  test('reaches Ultraviolet past the end of the named stages', async ({ page }) => {
+    await page.goto('/?debug=1&seed=uv');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate((perStage) => {
+      const game = window.__refraction?.game;
+      if (game) game.lines = perStage * 7;
+    }, LINES_PER_STAGE);
+    await expect(page.locator('.stat__value').nth(2)).toContainText('Ultraviolet');
   });
 });
 

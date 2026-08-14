@@ -112,6 +112,23 @@ async function main() {
       console.warn('meter never filled; skipping turn captures');
     }
 
+    // Stage transition. Hand the run one line short of a boundary and clear it,
+    // so the banner fires exactly the way it does in play.
+    await page.evaluate(() => {
+      const handle = window.__refraction;
+      if (!handle) return;
+      handle.restart('stage');
+      const game = handle.game;
+      // Green: far enough along the ramp that the banner colour is obviously
+      // not the default text colour.
+      game.lines = 15 * 3 - 1;
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
+    });
+    await sleep(150);
+    await page.keyboard.press('Space');
+    await sleep(500);
+    await shot('06-stage-banner');
+
     // Full Spectrum: drive a clear on all four faces in one revolution.
     await page.evaluate(async () => {
       const handle = window.__refraction;
@@ -147,7 +164,7 @@ async function main() {
     await sleep(6300); // the turn, then the bloom
     await shot('07-full-spectrum');
 
-    if (await page.locator('.overlay').isVisible()) await shot('06-game-over');
+    if (await page.locator('.overlay').isVisible()) await shot('08-game-over');
 
     await browser.close();
   } finally {

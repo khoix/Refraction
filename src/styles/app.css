@@ -234,6 +234,38 @@ body {
   color: var(--text-dim);
 }
 
+.stage-banner {
+  position: absolute;
+  inset-inline: 0;
+  top: 30vh;
+  text-align: center;
+  font-size: clamp(1.6rem, 5vw, 3.2rem);
+  font-weight: 200;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+}
+
+@keyframes stage-banner-pulse {
+  0% {
+    opacity: 0;
+    letter-spacing: 0.6em;
+  }
+  22% {
+    opacity: 1;
+    letter-spacing: 0.42em;
+  }
+  72% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.stage-banner--pulse {
+  animation: stage-banner-pulse 2000ms var(--ease-snap) forwards;
+}
+
 .chain {
   position: absolute;
   inset-inline: 0;

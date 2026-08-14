@@ -334,6 +334,23 @@ The escalating on-screen language from the proposal is preserved:
 - **DAS** 150 ms, **ARR** 33 ms.
 - Soft drop is 20× gravity; hard drop is instant with a 100 ms settle.
 
+### 7.1 Stage length **[GAP — proposal gives no threshold]**
+
+A stage lasts **15 cleared lines** (`LINES_PER_STAGE`). The named arc is
+therefore 90 lines from Red to the start of Violet, and Ultraviolet begins at 105.
+
+This was set by measurement rather than taste. The greedy agent in
+`playability.test.ts` is the closest thing the project has to a competent
+player, and it clears 71–103 lines in a run. At ten lines per stage that agent
+reached Violet inside a single game and spent most of the run past the end of
+the arc, which made completing the spectrum routine rather than an achievement.
+At fifteen the full arc sits at the top of what the agent manages: Violet is
+reachable but has to be earned, and Ultraviolet is genuinely the far end.
+
+The tuning knob is deliberately a single constant. Retuning it is a one-line
+change, and every test that depends on the pacing is parameterised on it rather
+than hard-coding line counts.
+
 ### 5.3 Spawn position
 
 Pieces spawn inside the visible field, with their top row at `y = 17`, rather

@@ -7,6 +7,107 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M5 — Progression
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The game now has an arc rather than just a loop.
+
+### Shipped
+
+- **Stage transitions announce themselves.** Crossing into a new stage puts its
+  name on screen **in its own band of the spectrum** — Red arrives red, Green
+  arrives green — with the letters spacing outward as it fades. The stage
+  readout in the HUD is tinted the same way, so the number in the corner and the
+  banner agree. Past Violet the colour goes to a pale lilac that reads as "off
+  the end of the ramp".
+- **`stageDepthParameter(index)`** maps the seven named stages onto the same
+  0 → 1 depth ramp the board uses, so stage colour and depth colour come from
+  one source. There is no second palette to drift out of sync.
+- **Ultraviolet** is now addressable rather than merely reachable:
+  `isUltraviolet(stage)` and `ultravioletDepth(stage)` number the endless tiers
+  from one, which is what the HUD and the banner need to say `Ultraviolet 3`.
+- **The reveal schedule is pinned by test.** Stage 1 can only deal flat pieces,
+  the screws arrive at Orange, the tripod no earlier than Green, and Depth Nudge
+  unlocks at Green. These were true before; now they cannot quietly stop being
+  true.
+
+### The tuning pass, and what it changed
+
+`LINES_PER_STAGE` went from **10 to 15**.
+
+This is the one balance change in the milestone, and it came from measurement
+rather than taste. The greedy agent in `playability.test.ts` is the closest
+thing the project has to a competent player. At ten lines per stage it reported:
+
+```
+arc: 200 pieces, 65 lines, stage 7 (Violet)
+```
+
+— the entire Red → Violet spectrum consumed inside a single 200-piece run, with
+most of the run spent past the end of the arc in Ultraviolet. That makes
+completing the spectrum the default outcome rather than an achievement, which is
+the wrong shape for a game whose whole reveal is the spectrum.
+
+At fifteen the same agent reports:
+
+```
+arc: 200 pieces, 52 lines, stage 4 (Green)
+```
+
+The full arc is now 90 lines, which sits at the top of the 71–103 lines that
+agent manages across seeds. Violet is reachable but has to be earned, and
+Ultraviolet is genuinely the far end.
+
+Every test that depended on the old pacing is now **parameterised on the
+constant** instead of hard-coding line counts, so the next retune is a one-line
+change rather than an afternoon of chasing failures.
+
+### Tested
+
+**177 unit tests, 26 end-to-end tests.**
+
+New in `progression.test.ts` (15), organised around the schedule rather than
+around the functions:
+
+- **The reveal schedule** — every piece available at stage 1 is planar; tier 2 is
+  the screws and arrives at Orange; the tripod arrives no earlier than Green;
+  Depth Nudge unlocks only once the player can already read depth; a piece once
+  introduced is never withdrawn.
+- **The dealer respects the schedule** — deals only stage-appropriate pieces
+  across 300 deals at every tier, still touches all eight lanes, and brings a
+  newly unlocked piece in promptly instead of after the current bag drains.
+- **Ultraviolet** — begins only after Violet is complete, numbers its tiers from
+  one, and keeps accelerating over six full arcs without stalling, overflowing or
+  returning a non-finite interval.
+- **Stage colour** — the seven named stages span the ramp end to end and are
+  strictly increasing, and out-of-range indices clamp rather than running off it.
+
+In `playability.test.ts`, the run result now reports the stage reached, and a new
+test asserts a competent 200-piece run climbs at least to stage 3 — the arc only
+means something if ordinary play actually travels it.
+
+At browser level: the banner shows the right name in the right colour, the HUD
+readout is tinted to match, and Ultraviolet is reachable.
+
+### Decisions worth revisiting
+
+- **Fifteen is tuned against one agent.** The greedy search is a decent player
+  but not a human one — it never panics, never misreads a colour, and never
+  wastes a piece. If real play is slower than the agent, 15 will feel long and
+  should come down. This is exactly the knob to revisit once M6 gives us
+  persistence and real scores to look at.
+- **The stage banner is a full-width overlay.** It is readable and gets out of
+  the way, but it is a second thing competing with the turn prompt for the same
+  screen real estate. If the two ever collide in play, the banner yields.
+
+### Next
+
+**M6 — Modes and Meta.** All six modes, title and mode select, versioned
+`localStorage` persistence with migration, and the settings menu.
+
+---
+
 ## M4 — Feel
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

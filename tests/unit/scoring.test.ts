@@ -11,7 +11,7 @@ import {
   clearLabel,
   scoreClear,
 } from '@core/scoring';
-import { STAGES, gravityIntervalMs, stageForLines } from '@core/stages';
+import { LINES_PER_STAGE, STAGES, gravityIntervalMs, stageForLines } from '@core/stages';
 
 const context = (overrides: Partial<Parameters<typeof scoreClear>[0]> = {}) => ({
   lines: 1,
@@ -134,9 +134,10 @@ describe('stages', () => {
   });
 
   it('continues past Violet into Ultraviolet, accelerating', () => {
-    const violet = stageForLines(69);
-    const beyond = stageForLines(70);
-    const further = stageForLines(80);
+    const lastNamedLine = LINES_PER_STAGE * STAGES.length;
+    const violet = stageForLines(lastNamedLine - 1);
+    const beyond = stageForLines(lastNamedLine);
+    const further = stageForLines(lastNamedLine + LINES_PER_STAGE);
     expect(violet.name).toBe('Violet');
     expect(beyond.name).toContain('Ultraviolet');
     expect(further.gravity).toBeGreaterThan(beyond.gravity);
