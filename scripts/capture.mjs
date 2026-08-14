@@ -112,6 +112,41 @@ async function main() {
       console.warn('meter never filled; skipping turn captures');
     }
 
+    // Full Spectrum: drive a clear on all four faces in one revolution.
+    await page.evaluate(async () => {
+      const handle = window.__refraction;
+      if (!handle) return;
+      handle.restart('prism');
+      const game = handle.game;
+      const settle = async () => {
+        for (let i = 0; i < 200; i += 1) {
+          if (game.status !== 'resolving' && game.status !== 'turning') return;
+          await new Promise((r) => setTimeout(r, 10));
+        }
+      };
+      for (let i = 0; i < 3; i += 1) {
+        const destination = { front: 'left', left: 'back', back: 'right', right: 'front' }[
+          game.face
+        ];
+        const alongX = destination === 'front' || destination === 'back';
+        for (let n = 0; n < 8; n += 1) {
+          game.board.fill(alongX ? { x: n, y: 0, z: 3 } : { x: 3, y: 0, z: n });
+        }
+        game.shiftMeter = game.stage.linesPerTurn;
+        game.status = 'awaitingTurn';
+        game.chooseTurn('right');
+        await settle();
+      }
+      // Arm the fourth and final face, then leave it for the capture to trigger.
+      for (let n = 0; n < 8; n += 1) game.board.fill({ x: n, y: 0, z: 3 });
+      game.shiftMeter = game.stage.linesPerTurn;
+      game.status = 'awaitingTurn';
+    });
+    await sleep(300);
+    await page.keyboard.press('ArrowRight');
+    await sleep(6300); // the turn, then the bloom
+    await shot('07-full-spectrum');
+
     if (await page.locator('.overlay').isVisible()) await shot('06-game-over');
 
     await browser.close();

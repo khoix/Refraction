@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Game } from '@core/game';
+import { Game, facePreview } from '@core/game';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { lineCells } from '@core/projection';
 import { stageForLines } from '@core/stages';
@@ -351,6 +351,62 @@ describe('seeing the turn happen', () => {
       expect(game.board.countFilled()).toBe(BOARD_DEPTH);
       game.tick(50);
     }
+  });
+});
+
+describe('event reporting', () => {
+  it('flags a clear with its cascade step and whether the turn caused it', () => {
+    const game = new Game({ seed: 'events', clearFlashMs: 10 });
+    fillLine(game.board, 0, 3, 'front');
+    game.hardDrop();
+    settle(game);
+
+    const clears = game.drainEvents().filter((event) => event.type === 'clear');
+    expect(clears.length).toBeGreaterThan(0);
+    expect(clears[0]!.refraction).toBe(false);
+    expect(clears[0]!.cascade).toBe(0);
+    expect(clears[0]!.prism).toBeUndefined();
+  });
+
+  it('marks a refraction clear as such', () => {
+    const game = new Game({ seed: 'refract-event', turnDurationMs: 10, clearFlashMs: 10 });
+    for (let z = 0; z < BOARD_DEPTH; z += 1) game.board.fill({ x: 3, y: 0, z });
+    game.drainEvents();
+
+    game.status = 'awaitingTurn';
+    game.chooseTurn('right');
+    settle(game);
+
+    const clears = game.drainEvents().filter((event) => event.type === 'clear');
+    expect(clears).toHaveLength(1);
+    expect(clears[0]!.refraction).toBe(true);
+  });
+
+  it('raises the Full Spectrum flag only after a clear on all four faces', () => {
+    const game = new Game({ seed: 'prism', turnDurationMs: 10, clearFlashMs: 10 });
+    const seenPrism: boolean[] = [];
+
+    // Plant a line that is complete on the face the turn is heading *to*, not
+    // the one being left. Front and Back count lines along X; Left and Right
+    // count them along Z.
+    for (let turnIndex = 0; turnIndex < 4; turnIndex += 1) {
+      const destination = facePreview(game.face, 'right');
+      const countsAlongX = destination === 'front' || destination === 'back';
+      for (let i = 0; i < BOARD_DEPTH; i += 1) {
+        game.board.fill(countsAlongX ? { x: i, y: 0, z: 3 } : { x: 3, y: 0, z: i });
+      }
+      game.drainEvents();
+      game.status = 'awaitingTurn';
+      game.chooseTurn('right');
+      settle(game);
+      seenPrism.push(
+        game.drainEvents().some((event) => event.type === 'clear' && event.prism === true)
+      );
+    }
+
+    // Nothing before the revolution closes; the flag lands on the fourth face.
+    expect(seenPrism.slice(0, 3).every((flag) => flag === false)).toBe(true);
+    expect(seenPrism[3]).toBe(true);
   });
 });
 

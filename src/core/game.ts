@@ -50,6 +50,12 @@ export interface GameEvent {
   /** Which way the board turned. Present on 'turn' events; drives the camera. */
   readonly direction?: TurnDirection;
   readonly cleared?: readonly Line[];
+  /** True on the clear that completed a four-face revolution. */
+  readonly prism?: boolean;
+  /** 0 for the initial clear of a resolution, 1+ for each cascade after it. */
+  readonly cascade?: number;
+  /** True when the turn itself made these lines eligible. */
+  readonly refraction?: boolean;
 }
 
 export interface GameOptions {
@@ -537,6 +543,9 @@ export class Game {
       lines: complete.length,
       score: gained,
       cleared: complete,
+      cascade: this.cascadeIndex,
+      refraction: this.resolveRefraction,
+      ...(prism ? { prism: true } : {}),
       ...(label ? { label } : {}),
     });
 

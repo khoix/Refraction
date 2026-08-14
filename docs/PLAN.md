@@ -104,7 +104,7 @@ rotation, and they clear on arrival.
 
 ---
 
-## M4 — Feel
+## M4 — Feel ✅ _shipped_
 
 **Goal:** make it satisfying rather than merely correct.
 

@@ -46,7 +46,9 @@ src/
     game-renderer.ts    per-frame update and the turn camera
   ui/hud.ts             HUD
   input.ts              keyboard, DAS/ARR
-  audio/                (M4) WebAudio
+  audio/
+    tones.ts            what to play, as pure data -- tested
+    audio.ts            WebAudio plumbing, deliberately thin
   main.ts               composition root, fixed-timestep loop
 tests/
   unit/                 Vitest, against src/core

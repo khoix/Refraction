@@ -25,13 +25,14 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M3 — The Turn.** The game is playable and the reveal is visible: lines that
-exist only along the hidden axis glow through the whole rotation and clear on
-arrival. Rendered in 3D with continuous spectrum depth
+**M4 — Feel.** The game is playable, the reveal is visible, and it has sound and
+weight: lines that exist only along the hidden axis glow through the whole
+rotation and clear on arrival, and closing a four-face chain blooms the board
+toward white. Rendered in 3D with continuous spectrum depth
 shading. Feel, progression and modes come next.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
-`C` to hold, `←`/`→` to choose a face when the Shift meter fills.
+`C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute.
 
 See [`release_notes.md`](release_notes.md) for the milestone log and
 [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.

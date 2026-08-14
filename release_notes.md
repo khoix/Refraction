@@ -7,6 +7,74 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M4 — Feel
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Correct became satisfying.
+
+### Shipped
+
+- **Procedural audio.** `tones.ts` holds every decision as pure data —
+  frequencies, envelopes, gains — and `audio.ts` is a thin WebAudio layer over
+  it. The organising idea mirrors the visual one: **depth is pitch**, near lanes
+  low and far lanes high, matching the direction the spectrum runs. Lanes walk a
+  minor pentatonic scale so adjacent lanes never clash.
+- **Full Spectrum.** On a chain that closes a four-face revolution the board
+  blooms toward white — the colour metaphor stated literally, since the visible
+  spectrum combined _is_ white light — with every band sounding at once.
+- **Clear dissolve.** Lines being removed swell slightly as they go instead of
+  vanishing between frames.
+- **Screen shake**, scaled by how much cleared and hardest on a Full Spectrum.
+- **Score popups** and a **mute indicator**; `M` toggles sound.
+- The engine now reports `prism`, `cascade` and `refraction` on clear events, so
+  the presentation reads flags instead of parsing the label string.
+
+### Accessibility
+
+`prefers-reduced-motion` is honoured, and `?reducedMotion=1` forces it for
+testing. Under it the shake is suppressed **entirely** and the Full Spectrum
+bloom is capped well below white and ramped rather than flashed — that cap is
+the photosensitivity guard, not just a motion preference.
+
+Sound is worth calling out as an accessibility gain rather than decoration:
+§2.1 leaves colour carrying depth alone, so pitch is a genuinely redundant
+channel for it.
+
+### Tested
+
+**160 unit tests, 23 end-to-end tests.**
+
+- **Tones (17)** — pitch rises monotonically from the near lane to the far one,
+  every lane is distinct, everything stays in a sane register and within gain
+  limits, the Full Spectrum chord cannot clip, and the lock sound stays quiet
+  enough to hear over since it fires on every piece.
+- **Full Spectrum fires only on the fourth face.** The test turns through a full
+  revolution, clearing on each face, and asserts the flag is absent on the first
+  three and present on the fourth.
+- Clear events carry their cascade index and whether a turn caused them.
+- Shake displaces the camera by a felt-but-not-disorienting amount, and reduced
+  motion suppresses it to exactly zero.
+
+### A testing trap worth recording
+
+Both the shake test and, earlier, the mid-turn capture were defeated by the same
+thing: **a Playwright screenshot round-trip takes longer than the effect being
+measured**. A 380 ms shake sampled by screenshot is always sampled after it has
+died, which reads as "the feature is broken". Instrumenting directly showed the
+camera moving exactly as intended.
+
+The renderer now exposes `shakeOffset`, and the test samples it across animation
+frames inside the page. The general lesson: for anything shorter than about half
+a second, assert on state, not pixels.
+
+### Next
+
+**M5 — Progression.** The Red → Violet arc, piece tiers arriving on schedule,
+and the Ultraviolet endless tier.
+
+---
+
 ## M3 — The Turn
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

@@ -15,6 +15,9 @@ export const ARR_MS = 33;
 export interface InputHandlers {
   readonly onRestart: () => void;
   readonly onTurn: (direction: 'left' | 'right') => void;
+  /** Any key at all. Browsers refuse to start audio outside a user gesture. */
+  readonly onInteract: () => void;
+  readonly onToggleMute: () => void;
 }
 
 interface RepeatState {
@@ -48,6 +51,13 @@ export class InputController {
 
   private handleDown(event: KeyboardEvent): void {
     const game = this.game();
+    this.handlers.onInteract();
+
+    if (event.code === 'KeyM') {
+      this.handlers.onToggleMute();
+      event.preventDefault();
+      return;
+    }
 
     // The turn prompt takes over the arrow keys while it is up.
     if (game.status === 'awaitingTurn') {

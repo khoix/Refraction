@@ -390,6 +390,32 @@ _always_ redundantly encoded.
 `Blind Spectrum` mode removes depth colour deliberately. It is an unlockable
 expert challenge and is never the default.
 
+## 10.1 Sound **[GAP]**
+
+The proposal does not describe audio. The resolution mirrors the visual rule:
+**depth is pitch**. A cube's lane picks its note, near lanes low and far lanes
+high — the same direction the spectrum runs, since red sits at the low end of
+the visible range and violet at the high end. Lanes walk a minor pentatonic
+scale so no two adjacent lanes clash.
+
+That makes sound a genuinely redundant channel for depth, which matters more
+here than it normally would: §2.1 leaves colour carrying the depth information
+alone, so a second channel is worth having for players still learning to read
+the spectrum, and for anyone whose colour vision makes the ramp harder.
+
+| Event         | Sound                                                             |
+| ------------- | ----------------------------------------------------------------- |
+| Lock          | short, soft, pitched by the piece's nearest lane                  |
+| Clear         | one note per line, rising; brighter with each cascade step        |
+| Turn          | a filtered sweep, falling when turning right and rising when left |
+| Full Spectrum | every band at once — the audible form of white light              |
+| Game over     | a single low fall                                                 |
+
+Decisions live in `src/audio/tones.ts` as pure data and are unit-tested;
+`audio.ts` only turns them into sound. Audio starts on the first key press,
+because a browser will not open an `AudioContext` outside a user gesture. `M`
+mutes.
+
 ## 11. Modes
 
 | Mode               | Description                                                     |

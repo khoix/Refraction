@@ -178,7 +178,8 @@ export function fitCamera(camera: THREE.OrthographicCamera, aspect: number): voi
 export function positionCamera(
   camera: THREE.OrthographicCamera,
   yawDegrees: number,
-  elevationDegrees: number
+  elevationDegrees: number,
+  shake: { readonly x: number; readonly y: number } = { x: 0, y: 0 }
 ): void {
   const yaw = THREE.MathUtils.degToRad(yawDegrees);
   const elevation = THREE.MathUtils.degToRad(elevationDegrees);
@@ -190,6 +191,15 @@ export function positionCamera(
     horizontal * Math.cos(yaw)
   );
   camera.lookAt(0, 0, 0);
+
+  // Shake pans the camera after it is aimed, so the view slides rather than
+  // tilting. Under orthographic projection a pan is a pure translation, which
+  // keeps every cube exactly the size it was.
+  if (shake.x !== 0 || shake.y !== 0) {
+    const right = new THREE.Vector3(Math.cos(yaw), 0, -Math.sin(yaw));
+    const up = new THREE.Vector3(0, 1, 0).applyAxisAngle(right, elevation);
+    camera.position.addScaledVector(right, shake.x).addScaledVector(up, shake.y);
+  }
 }
 
 /**

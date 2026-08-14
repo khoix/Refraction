@@ -12,6 +12,8 @@ import type { TurnDirection } from '@core/types';
 import { GameRenderer } from '@render/game-renderer';
 import { InputController } from './input';
 import { Hud } from '@ui/hud';
+import { Audio } from './audio/audio';
+import { toView } from '@core/projection';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
 const STEP_MS = 1000 / 60;
@@ -42,6 +44,16 @@ declare global {
   }
 }
 
+/** Depth lane of the shallowest filled cell, used to pitch a sound. */
+function nearestLane(game: Game): number {
+  let nearest = Number.POSITIVE_INFINITY;
+  for (const cell of game.board.filledCells()) {
+    nearest = Math.min(nearest, toView(game.face, cell).lane);
+    if (nearest === 0) break;
+  }
+  return Number.isFinite(nearest) ? nearest : 0;
+}
+
 function boot(root: HTMLElement): void {
   const canvas = document.createElement('canvas');
   canvas.className = 'stage';
@@ -54,6 +66,12 @@ function boot(root: HTMLElement): void {
   const debug = params.get('debug') === '1';
   const turnMs = Number(params.get('turnMs'));
 
+  // Honour the OS setting, and let a query flag force it for testing. This is
+  // both the reduced-motion and the photosensitivity guard.
+  const reducedMotion =
+    params.get('reducedMotion') === '1' ||
+    window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
   // The engine owns the turn's duration and the renderer animates the camera
   // over the same span, so the snap and the clear land on the same frame.
   const turnDurationMs =
@@ -65,7 +83,9 @@ function boot(root: HTMLElement): void {
   const renderer = new GameRenderer(canvas, {
     preserveDrawingBuffer: debug,
     turnDurationMs,
+    reducedMotion,
   });
+  const audio = new Audio();
 
   if (debug) {
     const handle: DebugHandle = {
@@ -89,6 +109,10 @@ function boot(root: HTMLElement): void {
     onTurn: (direction: TurnDirection) => {
       game.chooseTurn(direction);
     },
+    // An AudioContext cannot start outside a user gesture, so the first key
+    // press is what brings the sound up.
+    onInteract: () => audio.resume(),
+    onToggleMute: () => hud.setMuted(audio.toggleMute()),
   });
 
   window.addEventListener('resize', () => renderer.resize());
@@ -110,8 +134,34 @@ function boot(root: HTMLElement): void {
     }
 
     for (const event of game.drainEvents()) {
-      if (event.type === 'turn' && event.direction) renderer.startTurn(event.direction);
-      if (event.type === 'clear' && event.label) hud.showBanner(event.label);
+      switch (event.type) {
+        case 'turn':
+          if (event.direction) {
+            renderer.startTurn(event.direction);
+            audio.turn(event.direction);
+          }
+          break;
+        case 'lock':
+          audio.lock(nearestLane(game));
+          break;
+        case 'clear': {
+          if (event.label) hud.showBanner(event.label);
+          hud.showScorePopup(event.score ?? 0);
+          audio.clear(event.lines ?? 1, event.cascade ?? 0, nearestLane(game));
+          // Bigger clears hit harder; a Full Spectrum shakes the hardest.
+          renderer.shake(event.prism ? 1 : Math.min((event.lines ?? 1) / 4, 0.7));
+          if (event.prism) {
+            renderer.startPrism();
+            audio.prism();
+          }
+          break;
+        }
+        case 'gameOver':
+          audio.gameOver();
+          break;
+        default:
+          break;
+      }
     }
 
     renderer.render(game, elapsed);
