@@ -263,6 +263,17 @@ The proposal does not say when the turn interrupts play.
 7. Refraction Clear evaluation on the new axis, then cascades.
 8. The next piece spawns.
 
+The engine owns this timing, not the renderer. `chooseTurn` flips the face and
+records `pendingClears` — the lines that will be eligible on arrival — but
+removes nothing. The board sits in a `turning` state for the turn's duration
+while those lines glow, and only then are they cleared. Resolution is staged
+too: each cascade step holds its completed lines lit for a flash before removing
+them, so the player can see which lines went and why.
+
+Putting the clock in the engine rather than the renderer is what keeps a run
+reproducible from `(seed, input log)`: a headless `tick` walks the identical
+sequence of steps, and the tests drive it that way.
+
 The next piece spawns only after the turn fully resolves. Landing a piece into
 a board that is still settling would be unreadable and unfair.
 

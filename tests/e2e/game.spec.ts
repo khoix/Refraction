@@ -210,6 +210,40 @@ test.describe('the turn', () => {
     await expect(page.locator('.banner')).toContainText('REFRACTION');
   });
 
+  test('holds the revealed lines lit until the board has finished turning', async ({ page }) => {
+    // A stretched turn makes the intermediate state observable at all.
+    await page.goto('/?debug=1&seed=reveal&turnMs=3000');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let z = 0; z < 8; z += 1) game.board.fill({ x: 3, y: 0, z });
+      game.shiftMeter = game.stage.linesPerTurn;
+      game.status = 'awaitingTurn';
+    });
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(900); // well inside the rotation
+
+    const midTurn = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      return {
+        status: game?.status,
+        pending: game?.pendingClears.length ?? 0,
+        filled: game?.board.countFilled() ?? 0,
+        lines: game?.lines ?? 0,
+      };
+    });
+
+    // The line is still physically on the board, flagged for the glow, uncounted.
+    expect(midTurn.status).toBe('turning');
+    expect(midTurn.pending).toBe(1);
+    expect(midTurn.filled).toBe(8);
+    expect(midTurn.lines).toBe(0);
+
+    await expect(page.locator('.stat__value').nth(1)).toHaveText('1');
+  });
+
   test('the camera actually rotates rather than cutting', async ({ page }) => {
     await armTheTurn(page);
     await page.waitForTimeout(200);

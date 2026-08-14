@@ -70,6 +70,7 @@ export class Hud {
   private readonly meter = element('div', 'meter');
   private readonly nextSlot = element('div', 'slot__body');
   private readonly holdSlot = element('div', 'slot__body');
+  private readonly chain = element('div', 'chain');
   private readonly banner = element('div', 'banner');
   private readonly prompt = element('div', 'prompt');
   private readonly overlay = element('div', 'overlay');
@@ -100,6 +101,8 @@ export class Hud {
     const right = element('div', 'hud__column hud__column--right');
     right.append(this.face, next, hold);
 
+    this.chain.hidden = true;
+
     const pill = element('div', 'prompt__pill');
     pill.append(
       element('span', 'prompt__arrow', '←'),
@@ -111,7 +114,7 @@ export class Hud {
     this.overlay.hidden = true;
     this.banner.hidden = true;
 
-    this.root.append(left, right, this.banner, this.prompt, this.overlay);
+    this.root.append(left, right, this.chain, this.banner, this.prompt, this.overlay);
   }
 
   private stat(label: string, value: HTMLElement): HTMLElement {
@@ -138,6 +141,11 @@ export class Hud {
 
     this.renderMeter(game);
     this.renderSlots(game);
+
+    // The chain is the reward for turning into a clear over and over, so it is
+    // worth showing while it is alive rather than only in the score.
+    this.chain.hidden = game.refractionChain < 1;
+    this.chain.textContent = `REFRACTION CHAIN ×${game.refractionChain}`;
 
     this.prompt.hidden = game.status !== 'awaitingTurn';
     this.overlay.hidden = game.status !== 'gameOver';

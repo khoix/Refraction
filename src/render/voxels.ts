@@ -25,6 +25,8 @@ export interface VoxelLayerOptions {
   readonly emissive?: number;
   /** Draw only wireframe-ish shells, used for the ghost piece. */
   readonly ghost?: boolean;
+  /** Unlit and additively blended, for the glow on lines about to clear. */
+  readonly additive?: boolean;
   readonly maxInstances?: number;
 }
 
@@ -43,20 +45,27 @@ export class VoxelLayer {
     // The ghost is unlit on purpose: it has to show its landing lane's colour
     // truthfully from every face, and a shaded translucent cube over a near
     // black background just reads as a dead block.
-    const material = options.ghost
+    const material = options.additive
       ? new THREE.MeshBasicMaterial({
           transparent: true,
-          opacity: options.opacity ?? 0.3,
+          opacity: options.opacity ?? 0.5,
+          blending: THREE.AdditiveBlending,
           depthWrite: false,
         })
-      : new THREE.MeshStandardMaterial({
-          roughness: 0.34,
-          metalness: 0.08,
-          transparent,
-          opacity: options.opacity ?? 1,
-          emissiveIntensity: options.emissive ?? 0.22,
-          emissive: new THREE.Color(0x000000),
-        });
+      : options.ghost
+        ? new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: options.opacity ?? 0.3,
+            depthWrite: false,
+          })
+        : new THREE.MeshStandardMaterial({
+            roughness: 0.34,
+            metalness: 0.08,
+            transparent,
+            opacity: options.opacity ?? 1,
+            emissiveIntensity: options.emissive ?? 0.22,
+            emissive: new THREE.Color(0x000000),
+          });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, options.maxInstances ?? MAX_INSTANCES);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -98,6 +107,11 @@ export class VoxelLayer {
 
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  /** Vary the layer's overall strength, e.g. to pulse the clear glow. */
+  setOpacity(opacity: number): void {
+    (this.mesh.material as THREE.Material).opacity = THREE.MathUtils.clamp(opacity, 0, 1);
   }
 
   dispose(): void {

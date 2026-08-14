@@ -27,7 +27,7 @@ import type { StageConfig } from './stages';
 import { gravityIntervalMs, stageForLines } from './stages';
 import type { Cell, Face, TurnDirection } from './types';
 
-export type GameStatus = 'falling' | 'awaitingTurn' | 'gameOver';
+export type GameStatus = 'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'gameOver';
 
 /** How the player rotates the active piece. */
 export type RotationKind = 'roll' | 'yaw' | 'pitch';
@@ -58,9 +58,15 @@ export interface GameOptions {
   readonly forceDepthNudge?: boolean;
   /** Seconds the turn prompt waits before repeating the last direction. */
   readonly turnPromptTimeoutMs?: number;
+  /** How long the board spends turning. Must match the renderer's animation. */
+  readonly turnDurationMs?: number;
+  /** How long a completed line is held, lit, before it is removed. */
+  readonly clearFlashMs?: number;
 }
 
 const TURN_PROMPT_TIMEOUT_MS = 5000;
+export const DEFAULT_TURN_DURATION_MS = 750;
+export const DEFAULT_CLEAR_FLASH_MS = 170;
 const MAX_LOCK_RESETS = 15;
 const SOFT_DROP_MULTIPLIER = 20;
 
@@ -97,11 +103,31 @@ export class Game {
   private heldPiece: { def: PieceDef; lane: number } | null = null;
   private holdUsed = false;
 
+  /**
+   * Lines that are complete and are being held, lit, before removal. The
+   * renderer glows these; the engine removes them when the flash elapses.
+   */
+  clearingLines: readonly Line[] = [];
+  /**
+   * Lines that will be eligible the moment the board finishes turning.
+   *
+   * Populated when the turn starts, so the reveal can be *seen*: the lines glow
+   * through the whole rotation and clear on arrival. They are found by looking
+   * at the destination face, and nothing on the board has moved -- the turn only
+   * changes which axis counts.
+   */
+  pendingClears: readonly Line[] = [];
+
   private gravityTimer = 0;
   private lockTimer = 0;
   private lockResets = 0;
   private grounded = false;
   private turnPromptTimer = 0;
+  private turnTimer = 0;
+  private resolveTimer = 0;
+  private resolveRefraction = false;
+  private cascadeIndex = 0;
+  private linesThisResolve = 0;
   private lastTurnDirection: TurnDirection = 'right';
   private revolutionFaces = new Set<Face>();
   private events: GameEvent[] = [];
@@ -253,8 +279,22 @@ export class Game {
   /** Answer the Shift prompt. Ignored unless a turn is pending. */
   chooseTurn(direction: TurnDirection): boolean {
     if (this.status !== 'awaitingTurn') return false;
-    this.performTurn(direction);
+    this.beginTurn(direction);
     return true;
+  }
+
+  /** How far through the turn the board is, 0 to 1. */
+  get turnProgress(): number {
+    if (this.status !== 'turning') return 1;
+    return Math.min(1, this.turnTimer / this.turnDurationMs);
+  }
+
+  private get turnDurationMs(): number {
+    return this.options.turnDurationMs ?? DEFAULT_TURN_DURATION_MS;
+  }
+
+  private get clearFlashMs(): number {
+    return this.options.clearFlashMs ?? DEFAULT_CLEAR_FLASH_MS;
   }
 
   // -------------------------------------------------------------------- clock
@@ -265,7 +305,24 @@ export class Game {
     if (this.status === 'awaitingTurn') {
       this.turnPromptTimer += deltaMs;
       const timeout = this.options.turnPromptTimeoutMs ?? TURN_PROMPT_TIMEOUT_MS;
-      if (this.turnPromptTimer >= timeout) this.performTurn(this.lastTurnDirection);
+      if (this.turnPromptTimer >= timeout) this.beginTurn(this.lastTurnDirection);
+      return;
+    }
+
+    if (this.status === 'turning') {
+      this.turnTimer += deltaMs;
+      if (this.turnTimer >= this.turnDurationMs) this.completeTurn();
+      return;
+    }
+
+    if (this.status === 'resolving') {
+      this.resolveTimer += deltaMs;
+      // A single large tick may carry several cascade steps. Looping here keeps
+      // a headless `tick(1000)` equivalent to a second of real frames.
+      while (this.status === 'resolving' && this.resolveTimer >= this.clearFlashMs) {
+        this.resolveTimer -= this.clearFlashMs;
+        this.applyClearStep();
+      }
       return;
     }
 
@@ -381,7 +438,127 @@ export class Game {
     this.active = null;
     this.holdUsed = false;
 
-    this.resolveClears(false);
+    this.beginResolve(false);
+  }
+
+  /**
+   * Start the rotation.
+   *
+   * The face changes immediately -- that is what makes the other axis the live
+   * one -- but nothing is cleared yet. The lines that will be eligible on
+   * arrival are recorded in `pendingClears` so they can glow for the whole
+   * rotation, and they are removed only when the board finishes turning. This
+   * is the reveal, and it has to be visible to be worth anything.
+   */
+  private beginTurn(direction: TurnDirection): void {
+    this.lastTurnDirection = direction;
+    this.shiftMeter = Math.max(0, this.shiftMeter - this.stage.linesPerTurn);
+    this.face = turn(this.face, direction);
+    this.status = 'turning';
+    this.turnTimer = 0;
+    this.turnPromptTimer = 0;
+    this.pendingClears = this.board.findCompleteLines(this.face);
+    this.events.push({ type: 'turn', face: this.face, direction });
+  }
+
+  private completeTurn(): void {
+    this.pendingClears = [];
+    this.turnTimer = 0;
+    this.beginResolve(true);
+  }
+
+  /**
+   * Begin resolving completed lines on the current face.
+   *
+   * Resolution is staged rather than instantaneous: each cascade step holds its
+   * completed lines lit for `clearFlashMs` before removing them, so the player
+   * can see which lines went and why. The engine owns that timing, not the
+   * renderer, which keeps a run reproducible from `(seed, input log)` -- a
+   * headless `tick` walks through exactly the same steps.
+   */
+  private beginResolve(refraction: boolean): void {
+    this.resolveRefraction = refraction;
+    this.cascadeIndex = 0;
+    this.linesThisResolve = 0;
+    this.resolveTimer = 0;
+    this.advanceResolve();
+  }
+
+  /** Queue the next cascade step, or finish if the board is stable. */
+  private advanceResolve(): void {
+    const complete = this.board.findCompleteLines(this.face);
+    if (complete.length === 0) {
+      this.finishResolve();
+      return;
+    }
+    this.clearingLines = complete;
+    this.status = 'resolving';
+  }
+
+  /** Remove the lines currently lit, score them, and look for a cascade. */
+  private applyClearStep(): void {
+    const complete = this.clearingLines;
+    if (complete.length === 0) {
+      this.finishResolve();
+      return;
+    }
+
+    const stageBefore = this.stage.index;
+    this.board.clearLines(this.face, complete);
+    this.clearingLines = [];
+
+    this.lines += complete.length;
+    this.shiftMeter += complete.length;
+    this.linesThisResolve += complete.length;
+
+    let prism = false;
+    if (this.resolveRefraction) {
+      this.revolutionFaces.add(this.face);
+      if (this.revolutionFaces.size === 4) {
+        prism = true;
+        this.revolutionFaces.clear();
+      }
+    }
+
+    const context: ClearContext = {
+      lines: complete.length,
+      stage: this.stage.index,
+      cascadeIndex: this.cascadeIndex,
+      refraction: this.resolveRefraction,
+      chain: this.resolveRefraction ? this.refractionChain + 1 : 0,
+      prism,
+    };
+    const gained = scoreClear(context);
+    this.score += gained;
+
+    const label = clearLabel(context);
+    this.events.push({
+      type: 'clear',
+      lines: complete.length,
+      score: gained,
+      cleared: complete,
+      ...(label ? { label } : {}),
+    });
+
+    this.cascadeIndex += 1;
+    this.dealer.setTier(this.stage.maxTier);
+    if (this.stage.index !== stageBefore) this.events.push({ type: 'stage' });
+
+    this.advanceResolve();
+  }
+
+  /** Board is stable. Decide what happens next. */
+  private finishResolve(): void {
+    this.clearingLines = [];
+
+    if (this.resolveRefraction) {
+      if (this.linesThisResolve > 0) {
+        this.refractionChain += 1;
+      } else {
+        this.refractionChain = 0;
+        this.revolutionFaces.clear();
+      }
+    }
 
     if (this.board.isToppedOut()) {
       this.status = 'gameOver';
@@ -389,94 +566,16 @@ export class Game {
       return;
     }
 
+    // The meter can fill from the clears that just resolved, including the ones
+    // a turn produced -- which is what lets a chain run across several faces.
     if (this.shiftMeter >= this.stage.linesPerTurn) {
       this.status = 'awaitingTurn';
       this.turnPromptTimer = 0;
       return;
     }
 
-    this.spawn();
-  }
-
-  private performTurn(direction: TurnDirection): void {
-    this.lastTurnDirection = direction;
-    this.shiftMeter = Math.max(0, this.shiftMeter - this.stage.linesPerTurn);
-    this.face = turn(this.face, direction);
     this.status = 'falling';
-    this.turnPromptTimer = 0;
-    this.events.push({ type: 'turn', face: this.face, direction });
-
-    const cleared = this.resolveClears(true);
-    if (cleared > 0) {
-      this.refractionChain += 1;
-    } else {
-      this.refractionChain = 0;
-      this.revolutionFaces.clear();
-    }
-
-    if (this.board.isToppedOut()) {
-      this.status = 'gameOver';
-      this.events.push({ type: 'gameOver' });
-      return;
-    }
     this.spawn();
-  }
-
-  /**
-   * Clear every complete line on the current face, then cascade until stable.
-   * Returns the total number of lines removed.
-   */
-  private resolveClears(refraction: boolean): number {
-    let cascadeIndex = 0;
-    let totalLines = 0;
-    const stageBefore = this.stage.index;
-
-    for (;;) {
-      const complete = this.board.findCompleteLines(this.face);
-      if (complete.length === 0) break;
-
-      this.board.clearLines(this.face, complete);
-      totalLines += complete.length;
-      this.lines += complete.length;
-      this.shiftMeter += complete.length;
-
-      let prism = false;
-      if (refraction) {
-        this.revolutionFaces.add(this.face);
-        if (this.revolutionFaces.size === 4) {
-          prism = true;
-          this.revolutionFaces.clear();
-        }
-      }
-
-      const context: ClearContext = {
-        lines: complete.length,
-        stage: this.stage.index,
-        cascadeIndex,
-        refraction,
-        chain: refraction ? this.refractionChain + 1 : 0,
-        prism,
-      };
-      const gained = scoreClear(context);
-      this.score += gained;
-
-      const label = clearLabel(context);
-      this.events.push({
-        type: 'clear',
-        lines: complete.length,
-        score: gained,
-        cleared: complete,
-        ...(label ? { label } : {}),
-      });
-
-      cascadeIndex += 1;
-    }
-
-    this.dealer.setTier(this.stage.maxTier);
-    if (this.stage.index !== stageBefore) {
-      this.events.push({ type: 'stage' });
-    }
-    return totalLines;
   }
 }
 

@@ -7,6 +7,68 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M3 — The Turn
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The reveal is now something you can watch.
+
+### The bug this milestone existed to fix
+
+`chooseTurn` resolved the clears **synchronously**, before the camera moved a
+degree. By the time the rotation played, the cleared cells were already gone —
+so the single most important moment in the game, a line that exists only along
+the hidden axis being revealed by the turn, happened entirely off-screen. The
+score went up and the player never saw why.
+
+### Shipped
+
+- **The turn is a timed engine state.** `chooseTurn` flips the face and records
+  `pendingClears` — exactly the lines that will be eligible on arrival — but
+  removes nothing. The board sits in `turning` for the turn's duration, then
+  clears. `turnProgress` exposes how far through it is.
+- **Staged resolution.** Each cascade step holds its completed lines lit for
+  `clearFlashMs` before removing them, so the player can see which lines went
+  and why, one step at a time, instead of the board silently jumping to its
+  final state.
+- **The glow.** An additively blended layer lights the lines that are complete
+  or about to be, pulsing over the board. During a rotation these are the lines
+  the turn is revealing.
+- **Chain indicator** in the HUD while a Refraction Chain is alive.
+- The engine and the renderer now share one turn duration, so the camera's snap
+  and the clear land on the same frame. The renderer no longer gates the
+  simulation — the engine holds itself still while the board rotates.
+
+The clock lives in the engine rather than the renderer on purpose: that is what
+keeps a run reproducible from `(seed, input log)`. A headless `tick` walks the
+identical sequence of steps, and the tests drive it exactly that way.
+
+### Tested
+
+**143 unit tests, 18 end-to-end tests.**
+
+New, and all of them about the thing that was broken:
+
+- The eligible lines stay lit for the whole rotation and the cells stay on the
+  board — asserted at every 50 ms across a 600 ms turn, not just at the ends.
+- `pendingClears` predicts exactly the lines that do clear on arrival.
+- A completed line is held on the board while lit, then removed.
+- A cascade advances one step per flash rather than all at once.
+- `turnProgress` runs 0 → 1.
+- At browser level: mid-rotation the line is still physically present, flagged
+  for the glow, and uncounted; then it clears.
+
+Every existing test that assumed instant resolution now drives the clock through
+a `settle` helper, including the greedy playability agent — so the design test
+still holds against the staged engine.
+
+### Next
+
+**M4 — Feel.** Line-clear effects, selective bloom, procedural audio, and the
+Full Spectrum / Prism event.
+
+---
+
 ## M1 + M2 — Voxel Core and First Light
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

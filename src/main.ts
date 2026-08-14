@@ -7,7 +7,7 @@
  */
 
 import './styles/app.css';
-import { Game } from '@core/game';
+import { DEFAULT_TURN_DURATION_MS, Game } from '@core/game';
 import type { TurnDirection } from '@core/types';
 import { GameRenderer } from '@render/game-renderer';
 import { InputController } from './input';
@@ -54,10 +54,17 @@ function boot(root: HTMLElement): void {
   const debug = params.get('debug') === '1';
   const turnMs = Number(params.get('turnMs'));
 
-  let game = new Game({ seed: startingSeed });
+  // The engine owns the turn's duration and the renderer animates the camera
+  // over the same span, so the snap and the clear land on the same frame.
+  const turnDurationMs =
+    debug && Number.isFinite(turnMs) && turnMs > 0 ? turnMs : DEFAULT_TURN_DURATION_MS;
+
+  const newGame = (seed: string): Game => new Game({ seed, turnDurationMs });
+
+  let game = newGame(startingSeed);
   const renderer = new GameRenderer(canvas, {
     preserveDrawingBuffer: debug,
-    ...(debug && Number.isFinite(turnMs) && turnMs > 0 ? { turnDurationMs: turnMs } : {}),
+    turnDurationMs,
   });
 
   if (debug) {
@@ -65,7 +72,7 @@ function boot(root: HTMLElement): void {
       game,
       renderer,
       restart: (seed?: string) => {
-        game = new Game({ seed: seed ?? randomSeed() });
+        game = newGame(seed ?? randomSeed());
         handle.game = game;
       },
     };
@@ -74,7 +81,7 @@ function boot(root: HTMLElement): void {
 
   const input = new InputController(() => game, {
     onRestart: () => {
-      game = new Game({ seed: randomSeed() });
+      game = newGame(randomSeed());
       if (window.__refraction) window.__refraction.game = game;
     },
     // The camera is driven by the engine's 'turn' event alone. Starting it here
@@ -97,9 +104,9 @@ function boot(root: HTMLElement): void {
     while (accumulator >= STEP_MS) {
       accumulator -= STEP_MS;
       input.update(STEP_MS);
-      // Hold the simulation still while the camera is mid-turn, so the reveal
-      // is never competing with a falling piece for the player's attention.
-      if (!renderer.isTurning) game.tick(STEP_MS);
+      // The engine has its own turning state now, so it holds itself still while
+      // the board rotates. No need for the renderer to gate the simulation.
+      game.tick(STEP_MS);
     }
 
     for (const event of game.drainEvents()) {

@@ -25,8 +25,9 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M2 — First Light.** The game is playable: pieces fall, lines clear, the board
-turns, and Refraction Clears work. Rendered in 3D with continuous spectrum depth
+**M3 — The Turn.** The game is playable and the reveal is visible: lines that
+exist only along the hidden axis glow through the whole rotation and clear on
+arrival. Rendered in 3D with continuous spectrum depth
 shading. Feel, progression and modes come next.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,

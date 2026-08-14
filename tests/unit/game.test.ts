@@ -8,6 +8,21 @@ import type { Cell } from '@core/types';
 
 const newGame = (seed = 'test'): Game => new Game({ seed });
 
+/**
+ * Run the clock until the board is stable.
+ *
+ * Turns and line clears are staged over time now, so that the player can see
+ * what cleared and why. Tests drive that clock explicitly rather than assuming
+ * resolution is instantaneous.
+ */
+function settle(game: Game): void {
+  for (let i = 0; i < 400; i += 1) {
+    if (game.status !== 'resolving' && game.status !== 'turning') return;
+    game.tick(200);
+  }
+  throw new Error(`game never settled; stuck in ${game.status}`);
+}
+
 /** A stable fingerprint of everything a replay must reproduce. */
 function fingerprint(game: Game): string {
   const cells = game.board
@@ -140,6 +155,7 @@ describe('clearing', () => {
     const fresh = newGame();
     fillLine(fresh.board, 0, 3, 'front');
     fresh.hardDrop();
+    settle(fresh);
     expect(fresh.lines).toBeGreaterThanOrEqual(1);
     expect(fresh.score).toBeGreaterThan(0);
     expect(fresh.shiftMeter).toBeGreaterThanOrEqual(1);
@@ -161,6 +177,7 @@ describe('the turn', () => {
       fillLine(game.board, i, 3, 'front');
     }
     game.hardDrop();
+    settle(game);
     expect(game.status).toBe('awaitingTurn');
   });
 
@@ -197,6 +214,7 @@ describe('the turn', () => {
 
     game.status = 'awaitingTurn';
     game.chooseTurn('right');
+    settle(game);
 
     expect(game.face).toBe('left');
     expect(game.board.countFilled()).toBe(0);
@@ -210,6 +228,7 @@ describe('the turn', () => {
     for (let z = 0; z < BOARD_DEPTH; z += 1) refracted.board.fill({ x: 3, y: 0, z });
     refracted.status = 'awaitingTurn';
     refracted.chooseTurn('right');
+    settle(refracted);
 
     const plain = newGame();
     fillLine(plain.board, 0, 3, 'front');
@@ -224,11 +243,114 @@ describe('the turn', () => {
     for (let z = 0; z < BOARD_DEPTH; z += 1) game.board.fill({ x: 3, y: 0, z });
     game.status = 'awaitingTurn';
     game.chooseTurn('right');
+    settle(game);
     expect(game.refractionChain).toBe(1);
 
     game.status = 'awaitingTurn';
     game.chooseTurn('right');
+    settle(game);
     expect(game.refractionChain).toBe(0);
+  });
+});
+
+describe('seeing the turn happen', () => {
+  /** Eight cubes along Z at one X: no line from the front, a line from the left. */
+  function plantHiddenLine(game: Game, x = 3, y = 0): void {
+    for (let z = 0; z < BOARD_DEPTH; z += 1) game.board.fill({ x, y, z });
+  }
+
+  it('holds the eligible lines lit for the whole rotation', () => {
+    const game = new Game({ seed: 'reveal', turnDurationMs: 800, clearFlashMs: 100 });
+    plantHiddenLine(game);
+    game.status = 'awaitingTurn';
+    game.chooseTurn('right');
+
+    // The face flips immediately -- that is what makes the other axis live --
+    // but nothing has been removed yet.
+    expect(game.status).toBe('turning');
+    expect(game.face).toBe('left');
+    expect(game.pendingClears).toHaveLength(1);
+    expect(game.board.countFilled()).toBe(BOARD_DEPTH);
+
+    game.tick(400);
+    expect(game.status).toBe('turning');
+    expect(game.board.countFilled()).toBe(BOARD_DEPTH);
+
+    game.tick(500); // past the end of the rotation
+    expect(game.status).not.toBe('turning');
+    expect(game.pendingClears).toHaveLength(0);
+  });
+
+  it('reports turn progress from 0 to 1', () => {
+    const game = new Game({ seed: 'progress', turnDurationMs: 1000 });
+    expect(game.turnProgress).toBe(1);
+
+    game.status = 'awaitingTurn';
+    game.chooseTurn('right');
+    expect(game.turnProgress).toBe(0);
+
+    game.tick(500);
+    expect(game.turnProgress).toBeCloseTo(0.5, 2);
+  });
+
+  it('predicts exactly the lines that will clear on arrival', () => {
+    const game = new Game({ seed: 'predict', turnDurationMs: 100, clearFlashMs: 10 });
+    plantHiddenLine(game, 3, 0);
+    plantHiddenLine(game, 5, 0);
+
+    game.status = 'awaitingTurn';
+    game.chooseTurn('right');
+    const predicted = game.pendingClears.map((line) => `${line.y},${line.lane}`).sort();
+    expect(predicted).toHaveLength(2);
+
+    settle(game);
+    expect(game.lines).toBe(2);
+  });
+
+  it('holds each completed line lit before removing it', () => {
+    const game = new Game({ seed: 'flash', clearFlashMs: 200 });
+    fillLine(game.board, 0, 3, 'front');
+    game.board.clear({ x: 0, y: 0, z: 4 });
+    // Refill so the line is complete without needing the active piece.
+    game.board.fill({ x: 0, y: 0, z: 4 });
+    game.hardDrop();
+
+    expect(game.status).toBe('resolving');
+    expect(game.clearingLines.length).toBeGreaterThan(0);
+    // Still on the board while lit.
+    expect(game.board.countFilled()).toBeGreaterThanOrEqual(8);
+
+    game.tick(250);
+    expect(game.clearingLines).toHaveLength(0);
+    expect(game.lines).toBeGreaterThanOrEqual(1);
+  });
+
+  it('walks a cascade one step at a time', () => {
+    const game = new Game({ seed: 'cascade', clearFlashMs: 100 });
+    // Two complete lines stacked in the same lane clear as two separate steps.
+    fillLine(game.board, 0, 3, 'front');
+    fillLine(game.board, 1, 3, 'front');
+    game.hardDrop();
+
+    let steps = 0;
+    while (game.status === 'resolving' && steps < 10) {
+      steps += 1;
+      game.tick(120);
+    }
+    expect(steps).toBeGreaterThanOrEqual(1);
+    expect(game.lines).toBeGreaterThanOrEqual(2);
+  });
+
+  it('never removes a line before the board has finished turning', () => {
+    const game = new Game({ seed: 'notearly', turnDurationMs: 600, clearFlashMs: 50 });
+    plantHiddenLine(game);
+    game.status = 'awaitingTurn';
+    game.chooseTurn('right');
+
+    for (let elapsed = 0; elapsed < 600; elapsed += 50) {
+      expect(game.board.countFilled()).toBe(BOARD_DEPTH);
+      game.tick(50);
+    }
   });
 });
 
@@ -262,6 +384,7 @@ describe('failure', () => {
       game.board.fill({ x: 0, y, z: 0 });
     }
     game.hardDrop();
+    settle(game);
     expect(game.status).toBe('gameOver');
   });
 
@@ -283,7 +406,9 @@ describe('determinism', () => {
         if (i % 3 === 0) game.rotatePiece('roll');
         if (i % 5 === 0) game.hardDrop();
         game.tick(16);
+        settle(game);
         if (game.status === 'awaitingTurn') game.chooseTurn(i % 2 === 0 ? 'left' : 'right');
+        settle(game);
       }
     };
 
@@ -301,8 +426,9 @@ describe('determinism', () => {
       const game = newGame(seed);
       for (let i = 0; i < 40; i += 1) {
         game.hardDrop();
-        game.tick(16);
+        settle(game);
         if (game.status === 'awaitingTurn') game.chooseTurn('right');
+        settle(game);
       }
       return fingerprint(game);
     };
@@ -313,8 +439,9 @@ describe('determinism', () => {
     const game = newGame('endurance');
     for (let i = 0; i < 500 && game.status !== 'gameOver'; i += 1) {
       game.hardDrop();
-      game.tick(16);
+      settle(game);
       if (game.status === 'awaitingTurn') game.chooseTurn('right');
+      settle(game);
 
       for (const cell of game.board.filledCells()) {
         expect(cell.x).toBeGreaterThanOrEqual(0);

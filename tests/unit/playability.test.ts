@@ -86,16 +86,27 @@ function playGreedily(seed: string, maxPieces: number): RunResult {
   let pieces = 0;
   let turns = 0;
 
+  // Turns and clears resolve over time, so the agent has to run the clock the
+  // same way a player would rather than assuming instant resolution.
+  const settle = (): void => {
+    for (let i = 0; i < 400; i += 1) {
+      if (game.status !== 'resolving' && game.status !== 'turning') return;
+      game.tick(200);
+    }
+  };
+
   while (game.status !== 'gameOver' && pieces < maxPieces) {
     if (game.status === 'awaitingTurn') {
       game.chooseTurn(turns % 2 === 0 ? 'right' : 'left');
       turns += 1;
+      settle();
       continue;
     }
     const best = bestPlacement(game);
     if (!best || !game.active) break;
     game.active = { ...game.active, offsets: best.offsets, u: best.u, y: best.y };
     game.hardDrop();
+    settle();
     pieces += 1;
   }
 

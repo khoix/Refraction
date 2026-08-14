@@ -7,8 +7,8 @@
 
 import * as THREE from 'three';
 import type { Game } from '@core/game';
-import { FACE_YAW, turnYawDelta } from '@core/projection';
-import type { TurnDirection } from '@core/types';
+import { FACE_YAW, lineCells, turnYawDelta } from '@core/projection';
+import type { Cell, TurnDirection } from '@core/types';
 import type { SceneLights, Well } from './scene';
 import {
   TURN_ELEVATION_DEG,
@@ -39,6 +39,13 @@ export interface GameRendererOptions {
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
+/** Cells the renderer should light up: lines complete, or about to be. */
+function highlightCells(game: Game): Cell[] {
+  const lines = game.status === 'turning' ? game.pendingClears : game.clearingLines;
+  if (lines.length === 0) return [];
+  return lines.flatMap((line) => lineCells(game.face, line.y, line.lane));
+}
+
 export class GameRenderer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
@@ -47,6 +54,13 @@ export class GameRenderer {
   private readonly locked = new VoxelLayer();
   private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
   private readonly ghost = new VoxelLayer({ opacity: 0.3, ghost: true, maxInstances: 8 });
+  /**
+   * Lines that are complete and about to be removed, drawn additively over the
+   * board. During a turn these are the lines the rotation is *revealing* -- they
+   * glow for the whole rotation and go on arrival, which is the entire point of
+   * the mechanic and worth showing rather than resolving invisibly.
+   */
+  private readonly glow = new VoxelLayer({ additive: true, opacity: 0.5 });
   private readonly lights: SceneLights;
   private readonly well: Well;
 
@@ -55,6 +69,7 @@ export class GameRenderer {
   private yawTo = FACE_YAW.front;
   private turnElapsed: number;
   private aspect = 1;
+  private glowElapsed = 0;
   private readonly turnDurationMs: number;
 
   constructor(
@@ -83,7 +98,7 @@ export class GameRenderer {
     this.lights = bundle.lights;
     this.well = bundle.well;
 
-    this.scene.add(this.locked.mesh, this.active.mesh, this.ghost.mesh);
+    this.scene.add(this.locked.mesh, this.active.mesh, this.ghost.mesh, this.glow.mesh);
     this.resize();
   }
 
@@ -152,6 +167,10 @@ export class GameRenderer {
     orientWell(this.well, yaw);
 
     this.locked.update(game.board.filledCells(), yaw, separation);
+    this.glowElapsed += deltaMs;
+    this.glow.update(highlightCells(game), yaw, separation * 1.06);
+    // Pulse rather than hold steady, so a line about to go reads as urgent.
+    this.glow.setOpacity(0.3 + 0.28 * Math.sin(this.glowElapsed * 0.011));
     this.active.update(game.activeCells(), yaw, separation);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(game.status === 'falling' ? game.ghostCells() : [], yaw, 0.78 * separation);
@@ -163,6 +182,7 @@ export class GameRenderer {
     this.locked.dispose();
     this.active.dispose();
     this.ghost.dispose();
+    this.glow.dispose();
     this.renderer.dispose();
   }
 }

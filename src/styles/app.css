@@ -191,6 +191,18 @@ body {
 
 /* ------------------------------------------------------------------ messages */
 
+.chain {
+  position: absolute;
+  inset-inline: 0;
+  top: 9vh;
+  text-align: center;
+  font-family: var(--font-mono);
+  font-size: clamp(0.7rem, 1.6vw, 0.85rem);
+  letter-spacing: 0.28em;
+  color: var(--spectrum-yellow);
+  text-shadow: 0 0 18px rgb(249 211 50 / 0.45);
+}
+
 /* Messages overlay the playfield rather than participating in the HUD grid,
    which would push them into an implicit row below the columns. */
 .banner {
