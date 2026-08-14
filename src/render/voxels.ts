@@ -25,6 +25,8 @@ export interface VoxelLayerOptions {
   readonly emissive?: number;
   /** Draw only wireframe-ish shells, used for the ghost piece. */
   readonly ghost?: boolean;
+  /** Unlit and additively blended, for the glow on lines about to clear. */
+  readonly additive?: boolean;
   readonly maxInstances?: number;
 }
 
@@ -43,20 +45,27 @@ export class VoxelLayer {
     // The ghost is unlit on purpose: it has to show its landing lane's colour
     // truthfully from every face, and a shaded translucent cube over a near
     // black background just reads as a dead block.
-    const material = options.ghost
+    const material = options.additive
       ? new THREE.MeshBasicMaterial({
           transparent: true,
-          opacity: options.opacity ?? 0.3,
+          opacity: options.opacity ?? 0.5,
+          blending: THREE.AdditiveBlending,
           depthWrite: false,
         })
-      : new THREE.MeshStandardMaterial({
-          roughness: 0.34,
-          metalness: 0.08,
-          transparent,
-          opacity: options.opacity ?? 1,
-          emissiveIntensity: options.emissive ?? 0.22,
-          emissive: new THREE.Color(0x000000),
-        });
+      : options.ghost
+        ? new THREE.MeshBasicMaterial({
+            transparent: true,
+            opacity: options.opacity ?? 0.3,
+            depthWrite: false,
+          })
+        : new THREE.MeshStandardMaterial({
+            roughness: 0.34,
+            metalness: 0.08,
+            transparent,
+            opacity: options.opacity ?? 1,
+            emissiveIntensity: options.emissive ?? 0.22,
+            emissive: new THREE.Color(0x000000),
+          });
 
     this.mesh = new THREE.InstancedMesh(geometry, material, options.maxInstances ?? MAX_INSTANCES);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -77,10 +86,11 @@ export class VoxelLayer {
    * reading colour. It also has to be uniform for a near cube to cover the ones
    * behind it exactly, which is what keeps the settled board looking flat.
    */
-  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1): void {
+  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1, whiteout = 0): void {
     const count = Math.min(cells.length, this.mesh.instanceMatrix.count);
     this.mesh.count = count;
     const size = CUBE_GAP * scaleBias;
+    const toWhite = THREE.MathUtils.clamp(whiteout, 0, 1);
 
     for (let i = 0; i < count; i += 1) {
       const cell = cells[i] as Cell;
@@ -91,13 +101,25 @@ export class VoxelLayer {
       this.matrix.compose(this.position, this.quaternion, this.scaleVector);
       this.mesh.setMatrixAt(i, this.matrix);
 
+      // Full Spectrum drives every band toward white, which is the whole colour
+      // metaphor stated literally: the visible spectrum combined is white light.
       const { r, g, b } = depthColor(depth);
-      this.color.setRGB(r, g, b, THREE.SRGBColorSpace);
+      this.color.setRGB(
+        THREE.MathUtils.lerp(r, 1, toWhite),
+        THREE.MathUtils.lerp(g, 1, toWhite),
+        THREE.MathUtils.lerp(b, 1, toWhite),
+        THREE.SRGBColorSpace
+      );
       this.mesh.setColorAt(i, this.color);
     }
 
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+  }
+
+  /** Vary the layer's overall strength, e.g. to pulse the clear glow. */
+  setOpacity(opacity: number): void {
+    (this.mesh.material as THREE.Material).opacity = THREE.MathUtils.clamp(opacity, 0, 1);
   }
 
   dispose(): void {

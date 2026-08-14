@@ -81,7 +81,7 @@ during the turn, animated cascades, and the chain-scoring presentation.
 
 ---
 
-## M3 — The Turn
+## M3 — The Turn ✅ _shipped_
 
 **Goal:** the central mechanic — the reveal.
 
@@ -97,9 +97,14 @@ during the turn, animated cascades, and the chain-scoring presentation.
 _place → anticipate → rotate → reveal → clear → cascade._ A player who builds a
 Z-axis line on Front sees it clear on arrival at Left, every time.
 
+**Note:** the clear had been resolving _before_ the camera moved, so the player
+never actually saw the reveal. The turn is now a timed engine state: the face
+flips immediately, the eligible lines are recorded and glow for the whole
+rotation, and they clear on arrival.
+
 ---
 
-## M4 — Feel
+## M4 — Feel ✅ _shipped_
 
 **Goal:** make it satisfying rather than merely correct.
 

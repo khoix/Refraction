@@ -70,6 +70,9 @@ export class Hud {
   private readonly meter = element('div', 'meter');
   private readonly nextSlot = element('div', 'slot__body');
   private readonly holdSlot = element('div', 'slot__body');
+  private readonly chain = element('div', 'chain');
+  private readonly popups = element('div', 'popups');
+  private readonly mute = element('div', 'mute');
   private readonly banner = element('div', 'banner');
   private readonly prompt = element('div', 'prompt');
   private readonly overlay = element('div', 'overlay');
@@ -100,6 +103,10 @@ export class Hud {
     const right = element('div', 'hud__column hud__column--right');
     right.append(this.face, next, hold);
 
+    this.chain.hidden = true;
+    this.mute.hidden = true;
+    this.mute.textContent = 'MUTED';
+
     const pill = element('div', 'prompt__pill');
     pill.append(
       element('span', 'prompt__arrow', '←'),
@@ -111,13 +118,34 @@ export class Hud {
     this.overlay.hidden = true;
     this.banner.hidden = true;
 
-    this.root.append(left, right, this.banner, this.prompt, this.overlay);
+    this.root.append(
+      left,
+      right,
+      this.chain,
+      this.popups,
+      this.mute,
+      this.banner,
+      this.prompt,
+      this.overlay
+    );
   }
 
   private stat(label: string, value: HTMLElement): HTMLElement {
     const wrapper = element('div', 'stat');
     wrapper.append(element('span', 'stat__label', label), value);
     return wrapper;
+  }
+
+  /** A floating score gain, rising and fading beside the score. */
+  showScorePopup(amount: number): void {
+    if (amount <= 0) return;
+    const popup = element('span', 'popup', `+${amount.toLocaleString('en-US')}`);
+    this.popups.append(popup);
+    popup.addEventListener('animationend', () => popup.remove());
+  }
+
+  setMuted(muted: boolean): void {
+    this.mute.hidden = !muted;
   }
 
   showBanner(text: string): void {
@@ -138,6 +166,11 @@ export class Hud {
 
     this.renderMeter(game);
     this.renderSlots(game);
+
+    // The chain is the reward for turning into a clear over and over, so it is
+    // worth showing while it is alive rather than only in the score.
+    this.chain.hidden = game.refractionChain < 1;
+    this.chain.textContent = `REFRACTION CHAIN ×${game.refractionChain}`;
 
     this.prompt.hidden = game.status !== 'awaitingTurn';
     this.overlay.hidden = game.status !== 'gameOver';

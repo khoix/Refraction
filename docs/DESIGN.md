@@ -263,6 +263,17 @@ The proposal does not say when the turn interrupts play.
 7. Refraction Clear evaluation on the new axis, then cascades.
 8. The next piece spawns.
 
+The engine owns this timing, not the renderer. `chooseTurn` flips the face and
+records `pendingClears` — the lines that will be eligible on arrival — but
+removes nothing. The board sits in a `turning` state for the turn's duration
+while those lines glow, and only then are they cleared. Resolution is staged
+too: each cascade step holds its completed lines lit for a flash before removing
+them, so the player can see which lines went and why.
+
+Putting the clock in the engine rather than the renderer is what keeps a run
+reproducible from `(seed, input log)`: a headless `tick` walks the identical
+sequence of steps, and the tests drive it that way.
+
 The next piece spawns only after the turn fully resolves. Landing a piece into
 a board that is still settling would be unreadable and unfair.
 
@@ -378,6 +389,32 @@ _always_ redundantly encoded.
 
 `Blind Spectrum` mode removes depth colour deliberately. It is an unlockable
 expert challenge and is never the default.
+
+## 10.1 Sound **[GAP]**
+
+The proposal does not describe audio. The resolution mirrors the visual rule:
+**depth is pitch**. A cube's lane picks its note, near lanes low and far lanes
+high — the same direction the spectrum runs, since red sits at the low end of
+the visible range and violet at the high end. Lanes walk a minor pentatonic
+scale so no two adjacent lanes clash.
+
+That makes sound a genuinely redundant channel for depth, which matters more
+here than it normally would: §2.1 leaves colour carrying the depth information
+alone, so a second channel is worth having for players still learning to read
+the spectrum, and for anyone whose colour vision makes the ramp harder.
+
+| Event         | Sound                                                             |
+| ------------- | ----------------------------------------------------------------- |
+| Lock          | short, soft, pitched by the piece's nearest lane                  |
+| Clear         | one note per line, rising; brighter with each cascade step        |
+| Turn          | a filtered sweep, falling when turning right and rising when left |
+| Full Spectrum | every band at once — the audible form of white light              |
+| Game over     | a single low fall                                                 |
+
+Decisions live in `src/audio/tones.ts` as pure data and are unit-tested;
+`audio.ts` only turns them into sound. Audio starts on the first key press,
+because a browser will not open an `AudioContext` outside a user gesture. `M`
+mutes.
 
 ## 11. Modes
 

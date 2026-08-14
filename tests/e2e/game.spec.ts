@@ -210,6 +210,40 @@ test.describe('the turn', () => {
     await expect(page.locator('.banner')).toContainText('REFRACTION');
   });
 
+  test('holds the revealed lines lit until the board has finished turning', async ({ page }) => {
+    // A stretched turn makes the intermediate state observable at all.
+    await page.goto('/?debug=1&seed=reveal&turnMs=3000');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let z = 0; z < 8; z += 1) game.board.fill({ x: 3, y: 0, z });
+      game.shiftMeter = game.stage.linesPerTurn;
+      game.status = 'awaitingTurn';
+    });
+
+    await page.keyboard.press('ArrowRight');
+    await page.waitForTimeout(900); // well inside the rotation
+
+    const midTurn = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      return {
+        status: game?.status,
+        pending: game?.pendingClears.length ?? 0,
+        filled: game?.board.countFilled() ?? 0,
+        lines: game?.lines ?? 0,
+      };
+    });
+
+    // The line is still physically on the board, flagged for the glow, uncounted.
+    expect(midTurn.status).toBe('turning');
+    expect(midTurn.pending).toBe(1);
+    expect(midTurn.filled).toBe(8);
+    expect(midTurn.lines).toBe(0);
+
+    await expect(page.locator('.stat__value').nth(1)).toHaveText('1');
+  });
+
   test('the camera actually rotates rather than cutting', async ({ page }) => {
     await armTheTurn(page);
     await page.waitForTimeout(200);
@@ -223,6 +257,97 @@ test.describe('the turn', () => {
 
     expect(Buffer.compare(before, during)).not.toBe(0);
     expect(Buffer.compare(during, after)).not.toBe(0);
+  });
+});
+
+test.describe('feel', () => {
+  test('shows a score popup when a line clears', async ({ page }) => {
+    await page.goto('/?debug=1&seed=popup');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
+    });
+    await page.keyboard.press('Space');
+    await expect(page.locator('.popup').first()).toBeVisible();
+  });
+
+  test('M mutes and unmutes', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('.mute')).toBeHidden();
+    await page.keyboard.press('KeyM');
+    await expect(page.locator('.mute')).toBeVisible();
+    await page.keyboard.press('KeyM');
+    await expect(page.locator('.mute')).toBeHidden();
+  });
+
+  test('audio never throws, muted or not', async ({ page }) => {
+    const problems: string[] = [];
+    page.on('pageerror', (error) => problems.push(error.message));
+    await boot(page);
+    for (let i = 0; i < 5; i += 1) {
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(60);
+    }
+    await page.keyboard.press('KeyM');
+    for (let i = 0; i < 3; i += 1) {
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(60);
+    }
+    expect(problems).toEqual([]);
+  });
+
+  /**
+   * Freeze the board so a frame comparison measures only the effect under test.
+   * A falling piece changes the picture every tick, which would drown it out.
+   */
+  async function frozenBoard(page: Page, query: string): Promise<void> {
+    await page.goto(`/?debug=1&seed=calm${query}`);
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 5, z: 3 });
+      game.status = 'gameOver';
+    });
+    await page.waitForTimeout(250);
+  }
+
+  /**
+   * Shake the camera and report the largest displacement seen, in board cells.
+   *
+   * Sampled inside the page across animation frames rather than by comparing
+   * screenshots: the shake decays in under 400ms and a screenshot round-trip is
+   * slower than that, so pixels would always be sampled after it had died.
+   */
+  async function peakShake(page: Page): Promise<number> {
+    return page.evaluate(async () => {
+      const renderer = window.__refraction?.renderer;
+      if (!renderer) throw new Error('debug hook unavailable');
+      renderer.shake(1);
+
+      let peak = 0;
+      for (let i = 0; i < 20; i += 1) {
+        await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+        const { x, y } = renderer.shakeOffset;
+        peak = Math.max(peak, Math.abs(x), Math.abs(y));
+      }
+      return peak;
+    });
+  }
+
+  test('shake displaces the camera by default', async ({ page }) => {
+    await frozenBoard(page, '');
+    // Enough to be felt, nowhere near enough to lose track of the board.
+    const peak = await peakShake(page);
+    expect(peak).toBeGreaterThan(0.05);
+    expect(peak).toBeLessThan(1);
+  });
+
+  test('reduced motion suppresses the shake entirely', async ({ page }) => {
+    await frozenBoard(page, '&reducedMotion=1');
+    expect(await peakShake(page)).toBe(0);
   });
 });
 
