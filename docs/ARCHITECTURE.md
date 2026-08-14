@@ -33,13 +33,21 @@ src/
     projection.ts       THE projection contract — faces, turns, lines
     spectrum.ts         OKLCH depth ramp, gamut mapping, apparent size
     rng.ts              seeded deterministic RNG
-    board.ts            (M1) voxel occupancy, per-column gravity
-    pieces.ts           (M1) tetracube catalogue, rotation, kicks
-    game.ts             (M1) state machine, scoring, turn sequence
-  render/               (M2) Three.js — reads core state, never writes it
-  ui/                   (M2) HUD and menus
+    board.ts            voxel occupancy, per-column gravity, line clearing
+    pieces.ts           tetracube catalogue, rotation, orientations
+    dealer.ts           seeded piece bag and Lane Dealer
+    stages.ts           the Red -> Violet -> Ultraviolet curve
+    scoring.ts          line values, chain and cascade multipliers
+    game.ts             state machine, turn sequence, game over
+    ascii.ts            text rendering of any face, for tests
+  render/               Three.js — reads core state, never writes it
+    scene.ts            camera, lights, the well
+    voxels.ts           instanced cubes, per-frame colour and size
+    game-renderer.ts    per-frame update and the turn camera
+  ui/hud.ts             HUD
+  input.ts              keyboard, DAS/ARR
   audio/                (M4) WebAudio
-  main.ts               composition root
+  main.ts               composition root, fixed-timestep loop
 tests/
   unit/                 Vitest, against src/core
   e2e/                  Playwright, against the built bundle

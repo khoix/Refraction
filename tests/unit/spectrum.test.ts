@@ -1,7 +1,5 @@
 import { describe, expect, it } from 'vitest';
 import {
-  FAR_CUBE_SCALE,
-  NEAR_CUBE_SCALE,
   SPECTRUM_BAND_COUNT,
   SPECTRUM_STOPS,
   bandIndex,
@@ -9,7 +7,6 @@ import {
   depthColor,
   depthColorBanded,
   depthColorHex,
-  depthScale,
   laneToDepthParameter,
   oklchToRgb,
   rgbToHex,
@@ -147,15 +144,6 @@ describe('lane mapping', () => {
 
   it('degrades safely for a single-lane board', () => {
     expect(laneToDepthParameter(0, 1)).toBe(0);
-  });
-});
-
-describe('apparent size', () => {
-  it('shrinks with distance so far cubes never fully hide behind near ones', () => {
-    expect(depthScale(0)).toBe(NEAR_CUBE_SCALE);
-    expect(depthScale(1)).toBe(FAR_CUBE_SCALE);
-    expect(depthScale(0.5)).toBeLessThan(depthScale(0.25));
-    expect(FAR_CUBE_SCALE).toBeLessThan(NEAR_CUBE_SCALE);
   });
 });
 

@@ -29,5 +29,22 @@ export default tseslint.config(
     rules: {
       'no-console': 'off',
     },
+  },
+  {
+    // Dev scripts run under Node, and their page.evaluate bodies run in a browser.
+    files: ['scripts/**/*.mjs'],
+    languageOptions: {
+      globals: {
+        console: 'readonly',
+        document: 'readonly',
+        fetch: 'readonly',
+        process: 'readonly',
+        setTimeout: 'readonly',
+        window: 'readonly',
+      },
+    },
+    rules: {
+      'no-console': 'off',
+    },
   }
 );

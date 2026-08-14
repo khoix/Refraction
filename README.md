@@ -11,16 +11,26 @@ Rotation never rearranges anything. It only changes which horizontal axis you
 are playing. A gap that looks unreachable may be trivial after a turn; a line
 you could not complete from the front may already be complete from the side.
 
+The board presents as flat 2D. Only while it turns do the tiles become visibly
+cubes — depth is something the rotation reveals, not something the still frame
+gives away.
+
 Depth is communicated through the visible spectrum — **red is near, violet is
-far** — so a cube can read red from one face and violet from the opposite one
-without ever moving.
+far** — and through nothing else. A cube eight lanes back is exactly the same
+size on screen as one at the front. The projection is orthographic throughout,
+so distance never shrinks anything; the same cube simply reads red from one face
+and violet from the opposite one without ever moving.
 
 > **Position is absolute. Colour is relative.**
 
 ## Status
 
-**M0 — Foundation.** Toolchain, geometry contract, and the depth-colour system,
-all under test. The playfield arrives in M1–M2.
+**M2 — First Light.** The game is playable: pieces fall, lines clear, the board
+turns, and Refraction Clears work. Rendered in 3D with continuous spectrum depth
+shading. Feel, progression and modes come next.
+
+Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
+`C` to hold, `←`/`→` to choose a face when the Shift meter fills.
 
 See [`release_notes.md`](release_notes.md) for the milestone log and
 [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.

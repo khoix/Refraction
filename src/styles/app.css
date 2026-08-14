@@ -1,10 +1,12 @@
 /*
- * Global shell styling. The game canvas arrives in M2; until then this file
- * carries the shared design tokens so the visual language is settled early.
+ * Shell and HUD styling.
+ *
+ * The HUD is deliberately quiet: thin type, low-contrast chrome, no boxes
+ * competing with the board. The only saturated colour on screen should be the
+ * spectrum itself, because in this game colour carries information.
  */
 
 :root {
-  /* Surfaces: near-black with a cool cast, so the spectrum reads as emissive. */
   --surface-void: #05060a;
   --surface-deep: #0a0c14;
   --surface-raised: #121522;
@@ -14,20 +16,19 @@
   --text-secondary: #99a2bd;
   --text-dim: #5d6684;
 
-  /* Spectrum anchors, mirrored from src/core/spectrum.ts for static UI chrome. */
-  --spectrum-red: #ff4d3d;
-  --spectrum-orange: #ff9538;
-  --spectrum-yellow: #ffd94a;
-  --spectrum-green: #56d97a;
-  --spectrum-blue: #4a8dff;
-  --spectrum-indigo: #7b62ee;
-  --spectrum-violet: #a457e8;
+  /* Spectrum anchors, mirrored from src/core/spectrum.ts for static chrome. */
+  --spectrum-red: #eb493f;
+  --spectrum-orange: #fd8a02;
+  --spectrum-yellow: #f9d332;
+  --spectrum-green: #5eda80;
+  --spectrum-blue: #4495ea;
+  --spectrum-indigo: #6d50cd;
+  --spectrum-violet: #9521a6;
 
   --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
-  --duration-turn: 750ms;
 }
 
 * {
@@ -39,43 +40,173 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  overflow: hidden;
   background: var(--surface-void);
   color: var(--text-primary);
   font-family: var(--font-display);
   -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
   overscroll-behavior: none;
 }
 
 #app {
-  min-height: 100%;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.stage {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/* ----------------------------------------------------------------- HUD shell */
+
+.hud {
+  position: absolute;
+  inset: 0;
+  /* The well is only eight cells wide, so on a wide display the HUD is kept
+     near it rather than flung to the screen edges. */
+  width: min(100%, 64rem);
+  margin-inline: auto;
+  pointer-events: none;
+  padding: clamp(1rem, 3vw, 2.25rem);
   display: grid;
-  place-items: center;
-  padding: 2rem 1.5rem;
+  grid-template-columns: auto 1fr auto;
+  align-items: start;
 }
 
-.boot {
-  width: min(52rem, 100%);
-  text-align: center;
+.hud__column {
+  display: flex;
+  flex-direction: column;
+  gap: 1.75rem;
 }
 
-.boot__title {
-  margin: 0;
-  /* Letter-spacing scales with the type so the wordmark never outgrows the
-     viewport on narrow screens. */
-  font-size: clamp(2.4rem, 10.5vw, 7.5rem);
+.hud__column--left {
+  grid-column: 1;
+}
+
+.hud__column--right {
+  grid-column: 3;
+  align-items: flex-end;
+}
+
+.hud__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+  margin-bottom: 0.5rem;
+}
+
+/* --------------------------------------------------------------------- stats */
+
+.hud__stats {
+  display: flex;
+  flex-direction: column;
+  gap: 1.1rem;
+}
+
+.stat__label {
+  display: block;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+}
+
+.stat__value {
+  display: block;
+  font-size: clamp(1.4rem, 3.2vw, 2.1rem);
   font-weight: 200;
-  letter-spacing: clamp(0.08em, 1.8vw, 0.22em);
-  text-indent: clamp(0.08em, 1.8vw, 0.22em);
-  line-height: 1;
+  line-height: 1.1;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+/* --------------------------------------------------------------- shift meter */
+
+.meter {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.meter__pip {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  border: 1px solid var(--surface-line);
+  background: transparent;
+  transition:
+    background 200ms var(--ease-snap),
+    box-shadow 200ms var(--ease-snap);
+}
+
+.meter__pip--on {
+  background: var(--spectrum-yellow);
+  border-color: var(--spectrum-yellow);
+  box-shadow: 0 0 12px rgb(249 211 50 / 0.55);
+}
+
+/* --------------------------------------------------------- face and previews */
+
+.hud__face {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.34em;
+  color: var(--text-secondary);
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 4px;
+  background: rgb(10 12 20 / 0.6);
+}
+
+.slot {
+  text-align: right;
+}
+
+.slot__body {
+  display: flex;
+  justify-content: flex-end;
+  min-height: 3.2rem;
+  min-width: 4.5rem;
+}
+
+.piece {
+  display: grid;
+  gap: 2px;
+}
+
+.piece__cell {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 2px;
+  background: transparent;
+}
+
+.piece__cell--filled {
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.16);
+}
+
+/* ------------------------------------------------------------------ messages */
+
+/* Messages overlay the playfield rather than participating in the HUD grid,
+   which would push them into an implicit row below the columns. */
+.banner {
+  position: absolute;
+  inset-inline: 0;
+  top: 16vh;
+  font-size: clamp(1.5rem, 5vw, 3rem);
+  font-weight: 200;
+  letter-spacing: 0.2em;
+  text-align: center;
   background: linear-gradient(
     100deg,
     var(--spectrum-red),
-    var(--spectrum-orange),
     var(--spectrum-yellow),
     var(--spectrum-green),
     var(--spectrum-blue),
-    var(--spectrum-indigo),
     var(--spectrum-violet)
   );
   -webkit-background-clip: text;
@@ -83,77 +214,107 @@ body {
   color: transparent;
 }
 
-.boot__tagline {
-  margin: 1.25rem 0 0;
-  font-size: clamp(0.9rem, 2.2vw, 1.1rem);
-  font-weight: 300;
-  color: var(--text-secondary);
-  letter-spacing: 0.04em;
+@keyframes banner-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  18% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  80% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
 }
 
-.boot__ramp {
-  display: flex;
-  gap: 3px;
-  margin: 3rem auto 0;
-  width: min(34rem, 100%);
-  height: 4.5rem;
-  border-radius: 4px;
-  overflow: hidden;
+.banner--pulse {
+  animation: banner-pulse 1400ms var(--ease-snap) forwards;
 }
 
-.boot__lane {
-  flex: 1;
-  position: relative;
-  border-radius: 3px;
-  transition: transform 220ms var(--ease-snap);
-}
-
-.boot__lane::after {
-  content: attr(data-lane);
+/* Play is frozen while the player picks a face, so this reads as a deliberate
+   modal beat: the board dims and the choice sits dead centre. */
+.prompt {
   position: absolute;
-  inset-block-end: 0.4rem;
-  inset-inline: 0;
-  font-family: var(--font-mono);
-  font-size: 0.65rem;
-  color: rgb(0 0 0 / 0.55);
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgb(5 6 10 / 0.55);
 }
 
-.boot__legend {
+.prompt__pill {
   display: flex;
-  justify-content: space-between;
-  width: min(34rem, 100%);
-  margin: 0.6rem auto 0;
-  font-family: var(--font-mono);
-  font-size: 0.7rem;
-  letter-spacing: 0.14em;
-  color: var(--text-dim);
-  text-transform: uppercase;
-}
-
-.boot__status {
-  margin: 3rem auto 0;
-  padding: 1rem 1.25rem;
-  max-width: 34rem;
+  align-items: center;
+  gap: 1.5rem;
+  padding: 0.9rem 1.6rem;
   border: 1px solid var(--surface-line);
-  border-radius: 10px;
-  background: var(--surface-deep);
+  border-radius: 999px;
+  background: rgb(10 12 20 / 0.92);
   font-family: var(--font-mono);
-  font-size: clamp(0.66rem, 2.6vw, 0.8rem);
-  line-height: 1.7;
+  font-size: 0.78rem;
+  letter-spacing: 0.28em;
   color: var(--text-secondary);
-  text-align: left;
-  /* A bare <pre> refuses to wrap and pushes the whole document sideways. */
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
 }
 
-.boot__status strong {
-  color: var(--text-primary);
-  font-weight: 500;
+.prompt__arrow {
+  font-size: 1.3rem;
+  color: var(--spectrum-yellow);
+  animation: prompt-nudge 1.5s ease-in-out infinite;
+}
+
+@keyframes prompt-nudge {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.overlay {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  gap: 0.5rem;
+  text-align: center;
+  background: rgb(5 6 10 / 0.82);
+}
+
+.overlay__title {
+  margin: 0;
+  font-size: clamp(2.2rem, 8vw, 4.5rem);
+  font-weight: 200;
+  letter-spacing: 0.22em;
+}
+
+.overlay__score {
+  margin: 0;
+  font-family: var(--font-mono);
+  color: var(--spectrum-yellow);
+  letter-spacing: 0.1em;
+}
+
+.overlay__hint {
+  margin: 0.5rem 0 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.2em;
+  color: var(--text-dim);
+}
+
+[hidden] {
+  display: none !important;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  * {
+  *,
+  *::before,
+  *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
   }

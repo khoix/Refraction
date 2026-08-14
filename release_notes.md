@@ -7,6 +7,144 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M1 + M2 — Voxel Core and First Light
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The game is playable. Pieces fall, lines clear, the board turns, and a line that
+only exists along the hidden axis clears when you turn onto it.
+
+### Shipped
+
+**M1 — the engine, pure and headless**
+
+- `board.ts` — voxel occupancy, line detection per face, per-column gravity.
+- `pieces.ts` — the eight free tetracubes, rotation about all three axes,
+  orientation enumeration, connectivity and planarity tests.
+- `dealer.ts` — seeded piece bag plus the **Lane Dealer** that assigns each
+  piece its depth lane.
+- `stages.ts` — the Red → Violet curve and the endless Ultraviolet tier.
+- `scoring.ts` — line values, refraction, chain, cascade and Prism multipliers.
+- `game.ts` — state machine: gravity, lock delay with the 15-reset rule, hold,
+  kicks, the turn sequence, cascades, top-out and block-out.
+- `ascii.ts` — text rendering of any face, which is what makes the projection
+  testable by inspection.
+
+**M2 — the renderer**
+
+- Three.js scene driven from `FACE_YAW`, so the camera can never disagree with
+  the engine's geometry.
+- One `InstancedMesh` of bevelled cubes for the whole board — a single draw call.
+- Colour recomputed every frame from **live camera distance**, not from the
+  snapped face, so the turn recolours continuously instead of crossfading.
+- The well: a flat frame that follows the camera, plus box posts that fade in
+  only while the board is turning.
+- Ghost piece at its true landing depth; active piece; HUD with score, lines,
+  stage, face, Shift meter, next and hold; turn prompt and game-over overlay.
+- Keyboard input with DAS/ARR and soft-drop repeat, fixed-timestep loop.
+
+**Landed early from M3:** the 750 ms turn animation, with continuous
+recolouring and parallax separation. The camera needed yaw interpolation
+regardless, and because colour follows live camera distance the continuous
+recolour came free.
+
+**Depth is colour, and nothing else.** A cube eight lanes back is exactly the
+same size on screen as one at the front. The projection is **orthographic and
+stays orthographic** — perspective foreshortening, size falloff and distance haze
+were each offering a second, more familiar depth cue, and a player would read
+distance instead of reading colour. All three are gone.
+
+The board reads as flat 2D when settled: dead-on, orthographic, uniformly lit,
+so every cube is a flat coloured tile. Turning orbits the camera, and cubes
+become visibly cubes because their side and top faces come into view and the
+stack separates horizontally — consequences of the rotation, not distance cues.
+A single `flatness` value follows a half sine across the turn and drives the
+lighting, the elevation, the cube spacing and the well furniture.
+
+Two mid-turn adjustments are worth flagging because they look at first glance
+like the cues just removed:
+
+- **12° of elevation at the midpoint, 0° whenever settled.** Dead level, a cube
+  never shows its top face and the rotating stack reads as a squashed mosaic
+  rather than as cubes. Under orthographic projection this costs nothing against
+  the rule — a far cube is still exactly the size of a near one — and a face at
+  rest offers no spatial cue at all. `TURN_ELEVATION_DEG` is one constant; set it
+  to 0 to remove it.
+- **Cube spacing opens uniformly during the turn.** Packed flush they smear into
+  bands at an angle. Every cube shrinks by the same factor, so it carries no
+  depth information.
+
+`depthScale`, `NEAR_CUBE_SCALE` and `FAR_CUBE_SCALE` are deleted rather than left
+unused: size no longer encodes anything.
+
+The consequence worth noting: **colour is the only depth channel**. Uniform size
+is also what lets a near cube cover the ones behind it exactly, which keeps the
+settled board flat. That puts the full weight on the spectrum ramp, and makes
+the luminance-monotonic accessibility ramps load-bearing rather than optional.
+
+### Tested
+
+**137 unit tests, 17 end-to-end tests.** Coverage on `src/core`: 94.6%
+statements, 87.7% branches, 96.4% lines.
+
+Highlights beyond the obvious:
+
+- **Playability (`playability.test.ts`)** — a greedy placement agent plays real
+  games and must clear lines at a healthy rate. This is a design test, not a
+  unit test: it exists specifically to catch a change that makes the game
+  unplayable. In tuning runs a competent player clears 71–103 lines over
+  250–330 pieces.
+- **The tier-2 impossibility** — proves exhaustively that no planar tetracube
+  survives having one cube pushed a lane.
+- **Refraction Clear**, at both engine and browser level: eight cubes along Z
+  are not a line from the front and are already a line from the left.
+- **Overhangs survive clears** — gravity must not compact columns, or structures
+  bridging two columns are silently destroyed.
+- **The camera rotates rather than cutting**, asserted from real screenshots.
+- **Flat when settled, dimensional only mid-turn**, sampled from real pixels:
+  unshaded tiles yield few distinct colours, and the midpoint of a turn yields
+  far more once the cubes are lit and showing their tops.
+
+### Design decisions validated, and one corrected
+
+- **The Lane Dealer works.** This was flagged in M0 as the most consequential
+  gap filled and the one most worth challenging. It is now backed by evidence:
+  a competent player clears ~0.3 lines per piece with no depth control at all.
+  An early dumb-bot run reaching zero lines was the bot, not the design.
+- **Tier 2 as specified was impossible.** "A planar tetracube with one cube
+  pushed ±1 lane" always disconnects the piece. Corrected to the two chiral
+  screws, which is what that tier actually wanted. See `docs/DESIGN.md` §4.1.
+- **Pieces now spawn inside the visible field** rather than in the buffer above
+  it, where they rendered as detached from the board. §5.3.
+
+### Fixed during the milestone
+
+- **Lights were fixed in world space**, so orbiting to the Left or Back face lit
+  the board from behind and the stack went muddy. Two of four faces rendered
+  badly — fatal in a game where colour carries the depth information. The light
+  rig now rotates with the camera.
+- **The turn was started twice**, once from the input handler and once from the
+  engine event, which could overshoot 90°. The engine event is now the single
+  source of truth.
+- The ghost piece is unlit, so it shows its landing lane's true colour from
+  every face instead of going dark when backlit.
+- The HUD banner and turn prompt were falling into implicit grid rows and
+  landing on top of the stack; they now overlay properly, and the turn prompt
+  dims the board to read as the deliberate modal beat it is.
+- The playability test exceeded the default 5s timeout under coverage
+  instrumentation, which would have failed CI.
+- The turn duration is overridable via `?turnMs=` in debug builds. Screenshots
+  and assertions were landing at unpredictable points inside a 750ms rotation,
+  which made "capture the midpoint of the turn" a matter of luck; stretching the
+  turn makes a chosen moment reachable reliably.
+
+### Next
+
+**M3 — The Turn.** Eligible lines glowing during the rotation, animated
+cascades, and the chain-scoring presentation.
+
+---
+
 ## M0 — Foundation
 
 **Pushed:** 2026-08-13 · branch `claude/webapp-game-plan-vtrxqx`
