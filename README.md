@@ -28,9 +28,11 @@ and violet from the opposite one without ever moving.
 **M5 — Progression.** The game is playable, the reveal is visible, it has sound
 and weight, and it now has an arc: lines that exist only along the hidden axis
 glow through the whole rotation and clear on arrival, closing a four-face chain
-blooms the board toward white, and a run climbs Red → Violet and out into the
-endless Ultraviolet tier. Each stage announces itself in its own colour. Modes,
-persistence and the comprehension tools come next.
+blooms the board toward white, and a run climbs a seven-stage arc and on into an
+endless tail. Modes, persistence and the comprehension tools come next.
+
+Stages are numbered, not named, and the interface carries no hue at all: on this
+screen a colour is a claim about depth, so nothing else is allowed to make one.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
 `C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute.

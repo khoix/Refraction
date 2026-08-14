@@ -2,8 +2,15 @@
  * Shell and HUD styling.
  *
  * The HUD is deliberately quiet: thin type, low-contrast chrome, no boxes
- * competing with the board. The only saturated colour on screen should be the
- * spectrum itself, because in this game colour carries information.
+ * competing with the board.
+ *
+ * It is also deliberately achromatic. In this game a hue is a claim about
+ * depth, so the chrome makes no hue claims at all: everything here is drawn
+ * from a neutral ink ramp, and the only coloured pixels on screen belong to
+ * cubes -- on the board, or in the next-piece preview where the colour is that
+ * piece's actual lane. An amber Shift pip or a rainbow banner would be a
+ * second, contradictory colour language, and the player has no way to know
+ * which one a given colour is speaking.
  */
 
 :root {
@@ -16,14 +23,9 @@
   --text-secondary: #99a2bd;
   --text-dim: #5d6684;
 
-  /* Spectrum anchors, mirrored from src/core/spectrum.ts for static chrome. */
-  --spectrum-red: #eb493f;
-  --spectrum-orange: #fd8a02;
-  --spectrum-yellow: #f9d332;
-  --spectrum-green: #5eda80;
-  --spectrum-blue: #4495ea;
-  --spectrum-indigo: #6d50cd;
-  --spectrum-violet: #9521a6;
+  /* Chrome accent. Neutral by policy -- see the note above. */
+  --accent-ui: #f3f6ff;
+  --accent-ui-glow: 243 246 255;
 
   --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
@@ -144,9 +146,9 @@ body {
 }
 
 .meter__pip--on {
-  background: var(--spectrum-yellow);
-  border-color: var(--spectrum-yellow);
-  box-shadow: 0 0 12px rgb(249 211 50 / 0.55);
+  background: var(--accent-ui);
+  border-color: var(--accent-ui);
+  box-shadow: 0 0 12px rgb(var(--accent-ui-glow) / 0.45);
 }
 
 /* --------------------------------------------------------- face and previews */
@@ -205,7 +207,7 @@ body {
   font-family: var(--font-mono);
   font-size: 0.85rem;
   letter-spacing: 0.08em;
-  color: var(--spectrum-yellow);
+  color: var(--accent-ui);
   animation: popup-rise 1100ms var(--ease-snap) forwards;
 }
 
@@ -274,8 +276,8 @@ body {
   font-family: var(--font-mono);
   font-size: clamp(0.7rem, 1.6vw, 0.85rem);
   letter-spacing: 0.28em;
-  color: var(--spectrum-yellow);
-  text-shadow: 0 0 18px rgb(249 211 50 / 0.45);
+  color: var(--accent-ui);
+  text-shadow: 0 0 18px rgb(var(--accent-ui-glow) / 0.35);
 }
 
 /* Messages overlay the playfield rather than participating in the HUD grid,
@@ -288,17 +290,12 @@ body {
   font-weight: 200;
   letter-spacing: 0.2em;
   text-align: center;
-  background: linear-gradient(
-    100deg,
-    var(--spectrum-red),
-    var(--spectrum-yellow),
-    var(--spectrum-green),
-    var(--spectrum-blue),
-    var(--spectrum-violet)
-  );
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
+  /* This used to be a rainbow sweep, which read as "these scoring events are
+     colour-coded" -- a claim the game does not make. White is also the truer
+     image: the whole spectrum together is white light, which is exactly what
+     the board does when a Prism chain closes. */
+  color: var(--accent-ui);
+  text-shadow: 0 0 26px rgb(var(--accent-ui-glow) / 0.4);
 }
 
 @keyframes banner-pulse {
@@ -348,7 +345,7 @@ body {
 
 .prompt__arrow {
   font-size: 1.3rem;
-  color: var(--spectrum-yellow);
+  color: var(--accent-ui);
   animation: prompt-nudge 1.5s ease-in-out infinite;
 }
 
@@ -382,7 +379,7 @@ body {
 .overlay__score {
   margin: 0;
   font-family: var(--font-mono);
-  color: var(--spectrum-yellow);
+  color: var(--accent-ui);
   letter-spacing: 0.1em;
 }
 

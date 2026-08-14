@@ -81,7 +81,6 @@ interface RunResult {
   readonly turns: number;
   /** Highest stage the run reached. */
   readonly stage: number;
-  readonly stageName: string;
 }
 
 function playGreedily(seed: string, maxPieces: number): RunResult {
@@ -119,7 +118,6 @@ function playGreedily(seed: string, maxPieces: number): RunResult {
     score: game.score,
     turns,
     stage: game.stage.index,
-    stageName: game.stage.name,
   };
 }
 
@@ -155,16 +153,13 @@ describe('a competent player can actually play this', () => {
   );
 
   it(
-    'climbs the Red to Violet arc rather than stalling at the start',
+    'climbs the stage arc rather than stalling at the start',
     () => {
       // The arc only means anything if ordinary play actually travels it. Two
       // hundred pieces should carry a competent player several stages in.
       const result = playGreedily('arc', 200);
       expect(result.stage).toBeGreaterThanOrEqual(3);
-      // eslint-disable-next-line no-console
-      console.log(
-        `arc: ${result.pieces} pieces, ${result.lines} lines, stage ${result.stage} (${result.stageName})`
-      );
+      console.log(`arc: ${result.pieces} pieces, ${result.lines} lines, stage ${result.stage}`);
     },
     SIMULATION_TIMEOUT_MS
   );

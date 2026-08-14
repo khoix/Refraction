@@ -1,11 +1,15 @@
 /**
- * The Red -> Violet arc.
+ * The difficulty arc.
  *
  * The stage table is not just a difficulty knob: it is the schedule on which
  * the game reveals itself. Stage 1 must look like an ordinary falling-block
  * game, and depth must arrive without announcement. These tests pin that
  * schedule, because a piece leaking in early would spoil the reveal the whole
  * design is built around.
+ *
+ * They also pin the naming rule. Stages are numbered, not named, and never
+ * named after a spectrum band -- see `describe('stage identity')` below for
+ * why that is a rule and not a preference.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -13,16 +17,21 @@ import { Game } from '@core/game';
 import { Dealer } from '@core/dealer';
 import { PIECES, isPlanar, piecesForTier } from '@core/pieces';
 import { createRng } from '@core/rng';
+import { SPECTRUM_STOPS } from '@core/spectrum';
 import {
+  AUTHORED_STAGE_COUNT,
   LINES_PER_STAGE,
-  NAMED_STAGE_COUNT,
   STAGES,
+  endlessDepth,
   gravityIntervalMs,
-  isUltraviolet,
-  stageDepthParameter,
+  isEndless,
   stageForLines,
-  ultravioletDepth,
+  stageLabel,
 } from '@core/stages';
+
+/** The stage a given piece or capability first becomes available. */
+const firstStageWhere = (predicate: (stage: (typeof STAGES)[number]) => boolean): number =>
+  STAGES.find(predicate)?.index ?? -1;
 
 describe('the reveal schedule', () => {
   it('shows nothing but flat pieces at stage 1', () => {
@@ -33,13 +42,10 @@ describe('the reveal schedule', () => {
     }
   });
 
-  it('introduces depth at Orange and true 3D no earlier than Green', () => {
+  it('introduces depth at stage 2 and true 3D no earlier than stage 4', () => {
     const tierOf = (id: string): number => PIECES.find((p) => p.id === id)!.tier;
     expect(STAGES[1]!.maxTier).toBe(tierOf('SCREW_L'));
-    expect(STAGES[1]!.name).toBe('Orange');
-
-    const firstTripodStage = STAGES.find((stage) => stage.maxTier >= tierOf('TRIPOD'));
-    expect(firstTripodStage?.name).toBe('Green');
+    expect(firstStageWhere((stage) => stage.maxTier >= tierOf('TRIPOD'))).toBe(4);
   });
 
   it('never withdraws a piece once it has appeared', () => {
@@ -52,9 +58,45 @@ describe('the reveal schedule', () => {
 
   it('unlocks depth control only once the player can already read depth', () => {
     // Nudging lanes before the spectrum means anything is just noise.
-    const firstNudge = STAGES.find((stage) => stage.depthNudge);
-    expect(firstNudge?.name).toBe('Green');
+    expect(firstStageWhere((stage) => stage.depthNudge)).toBe(4);
     expect(STAGES.slice(0, 3).every((stage) => !stage.depthNudge)).toBe(true);
+  });
+});
+
+describe('stage identity', () => {
+  /**
+   * The governing rule is "position is absolute, colour is relative": a hue is
+   * a claim about depth from the current camera, and about nothing else. A
+   * stage called "Green" quietly makes a second claim -- that green means
+   * something in the progression too -- and a player who believes both has no
+   * way to tell which one a green cube is speaking. Numbering costs nothing and
+   * makes no claim at all.
+   */
+  it('identifies stages by number and does not name them after the spectrum', () => {
+    const bands = new Set(SPECTRUM_STOPS.map((stop) => stop.name.toLowerCase()));
+    for (const stage of STAGES) {
+      expect(stage.name).toBeUndefined();
+      expect(stageLabel(stage)).toBe(`Stage ${stage.index}`);
+    }
+    // And if a stage ever does earn a name, it must not be a band's.
+    for (const stage of STAGES) {
+      if (stage.name) expect(bands.has(stage.name.toLowerCase())).toBe(false);
+    }
+  });
+
+  it('numbers stages consecutively from one, into the endless tail', () => {
+    STAGES.forEach((stage, i) => expect(stage.index).toBe(i + 1));
+    for (let n = 0; n < 12; n += 1) {
+      expect(stageForLines(n * LINES_PER_STAGE).index).toBe(n + 1);
+    }
+  });
+
+  it('shows a name alongside the number rather than instead of it', () => {
+    // No stage carries a name today, so this exercises the contract directly:
+    // a named stage must still tell the player where in the arc they are.
+    const named = { ...STAGES[3]!, name: 'Eclipse' };
+    expect(stageLabel(named)).toContain('4');
+    expect(stageLabel(named)).toContain('Eclipse');
   });
 });
 
@@ -88,18 +130,18 @@ describe('the dealer respects the schedule', () => {
 });
 
 describe('the arc is paced to be earned', () => {
-  it('takes a substantial run to reach Violet', () => {
+  it('takes a substantial run to reach the last authored stage', () => {
     // Tuned in playability.test.ts: a competent agent manages 65-103 lines, so
     // the full arc sits at the top of that range rather than inside every game.
-    const linesToViolet = LINES_PER_STAGE * (NAMED_STAGE_COUNT - 1);
-    expect(linesToViolet).toBeGreaterThanOrEqual(80);
-    expect(stageForLines(linesToViolet).name).toBe('Violet');
-    expect(stageForLines(linesToViolet - 1).name).toBe('Indigo');
+    const linesToLast = LINES_PER_STAGE * (AUTHORED_STAGE_COUNT - 1);
+    expect(linesToLast).toBeGreaterThanOrEqual(80);
+    expect(stageForLines(linesToLast).index).toBe(AUTHORED_STAGE_COUNT);
+    expect(stageForLines(linesToLast - 1).index).toBe(AUTHORED_STAGE_COUNT - 1);
   });
 });
 
 describe('a real game follows the schedule', () => {
-  it('cannot show a non-planar piece before Orange', () => {
+  it('cannot show a non-planar piece before stage 2', () => {
     const game = new Game({ seed: 'stage-one' });
     expect(game.stage.index).toBe(1);
 
@@ -115,7 +157,7 @@ describe('a real game follows the schedule', () => {
       expect(interval).toBeLessThan(previous);
       previous = interval;
     }
-    // Violet is roughly seven times the pace of Red.
+    // The last authored stage is roughly seven times the pace of the first.
     expect(gravityIntervalMs(STAGES[0]!) / gravityIntervalMs(STAGES[6]!)).toBeCloseTo(7, 0);
   });
 
@@ -124,44 +166,37 @@ describe('a real game follows the schedule', () => {
   });
 });
 
-describe('Ultraviolet', () => {
-  const lastNamedLine = LINES_PER_STAGE * NAMED_STAGE_COUNT;
+describe('the endless tail', () => {
+  const lastAuthoredLine = LINES_PER_STAGE * AUTHORED_STAGE_COUNT;
 
-  it('begins only after Violet is complete', () => {
-    expect(isUltraviolet(stageForLines(lastNamedLine - 1))).toBe(false);
-    expect(isUltraviolet(stageForLines(lastNamedLine))).toBe(true);
-    expect(stageForLines(lastNamedLine - 1).name).toBe('Violet');
+  it('begins only after the authored stages are exhausted', () => {
+    expect(isEndless(stageForLines(lastAuthoredLine - 1))).toBe(false);
+    expect(isEndless(stageForLines(lastAuthoredLine))).toBe(true);
+    expect(stageForLines(lastAuthoredLine - 1).index).toBe(AUTHORED_STAGE_COUNT);
   });
 
-  it('numbers its tiers from one', () => {
-    expect(ultravioletDepth(stageForLines(lastNamedLine - 1))).toBe(0);
-    expect(ultravioletDepth(stageForLines(lastNamedLine))).toBe(1);
-    expect(ultravioletDepth(stageForLines(lastNamedLine + LINES_PER_STAGE))).toBe(2);
+  it('counts its own depth from one', () => {
+    expect(endlessDepth(stageForLines(lastAuthoredLine - 1))).toBe(0);
+    expect(endlessDepth(stageForLines(lastAuthoredLine))).toBe(1);
+    expect(endlessDepth(stageForLines(lastAuthoredLine + LINES_PER_STAGE))).toBe(2);
+  });
+
+  it('just keeps counting rather than announcing a new tier', () => {
+    // Nothing renames itself past the end of the table. The numbers continue,
+    // which is the honest presentation: it is the same arc, still climbing.
+    const first = stageForLines(lastAuthoredLine);
+    expect(stageLabel(first)).toBe(`Stage ${AUTHORED_STAGE_COUNT + 1}`);
+    expect(first.name).toBeUndefined();
   });
 
   it('keeps accelerating without ever stalling or overflowing', () => {
-    let previous = gravityIntervalMs(stageForLines(lastNamedLine - LINES_PER_STAGE));
-    for (let lines = lastNamedLine; lines <= lastNamedLine * 6; lines += LINES_PER_STAGE) {
+    let previous = gravityIntervalMs(stageForLines(lastAuthoredLine - LINES_PER_STAGE));
+    for (let lines = lastAuthoredLine; lines <= lastAuthoredLine * 6; lines += LINES_PER_STAGE) {
       const interval = gravityIntervalMs(stageForLines(lines));
       expect(interval).toBeLessThan(previous);
       expect(interval).toBeGreaterThan(0);
       expect(Number.isFinite(interval)).toBe(true);
       previous = interval;
     }
-  });
-});
-
-describe('stage colour', () => {
-  it('maps the seven named stages across the whole spectrum', () => {
-    expect(stageDepthParameter(1)).toBe(0);
-    expect(stageDepthParameter(NAMED_STAGE_COUNT)).toBe(1);
-    for (let index = 2; index <= NAMED_STAGE_COUNT; index += 1) {
-      expect(stageDepthParameter(index)).toBeGreaterThan(stageDepthParameter(index - 1));
-    }
-  });
-
-  it('clamps rather than running off the end of the ramp', () => {
-    expect(stageDepthParameter(0)).toBe(0);
-    expect(stageDepthParameter(99)).toBe(1);
   });
 });

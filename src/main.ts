@@ -14,11 +14,7 @@ import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
 import { toView } from '@core/projection';
-import { depthColorHex } from '@core/spectrum';
-import { isUltraviolet, stageDepthParameter } from '@core/stages';
-
-/** Past the end of the visible spectrum, so past the end of the ramp. */
-const ULTRAVIOLET_COLOUR = '#e6d8ff';
+import { stageLabel } from '@core/stages';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
 const STEP_MS = 1000 / 60;
@@ -162,12 +158,7 @@ function boot(root: HTMLElement): void {
           break;
         }
         case 'stage':
-          hud.showStageBanner(
-            game.stage.name,
-            isUltraviolet(game.stage)
-              ? ULTRAVIOLET_COLOUR
-              : depthColorHex(stageDepthParameter(game.stage.index))
-          );
+          hud.showStageBanner(stageLabel(game.stage));
           break;
         case 'gameOver':
           audio.gameOver();

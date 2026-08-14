@@ -38,12 +38,12 @@ test.describe('boot', () => {
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
   });
 
-  test('starts at stage Red with an empty score', async ({ page }) => {
+  test('starts at stage 1 with an empty score', async ({ page }) => {
     await boot(page);
     const values = page.locator('.stat__value');
     await expect(values.nth(0)).toHaveText('0');
     await expect(values.nth(1)).toHaveText('0');
-    await expect(values.nth(2)).toHaveText('Red');
+    await expect(values.nth(2)).toHaveText('1');
   });
 
   test('shows a Shift meter sized to the stage', async ({ page }) => {
@@ -371,50 +371,59 @@ test.describe('progression', () => {
     await page.keyboard.press('Space');
   }
 
-  test('announces a new stage in that stage colour', async ({ page }) => {
+  test('announces a new stage by number', async ({ page }) => {
     await reachStage(page, 2);
     const banner = page.locator('.stage-banner');
     await expect(banner).toBeVisible();
-    await expect(banner).toHaveText('ORANGE');
+    await expect(banner).toHaveText('STAGE 2');
   });
 
-  test('colours the stage readout with its own band', async ({ page }) => {
+  /** Computed colour of an element, as [r, g, b]. */
+  async function inkOf(page: Page, selector: string, index = 0): Promise<[number, number, number]> {
+    const value = await page
+      .locator(selector)
+      .nth(index)
+      .evaluate((el) => getComputedStyle(el).color);
+    const parts = (value.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+    return parts as [number, number, number];
+  }
+
+  /**
+   * The stage readout must never carry a hue.
+   *
+   * A hue on this screen is a claim about depth. If the stage number were
+   * tinted -- and it was, before this was corrected -- the player would be
+   * shown two colour languages at once with nothing to tell them apart.
+   */
+  test('never tints the stage readout, at any stage', async ({ page }) => {
     await page.goto('/?debug=1&seed=colour');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
-    const parse = async (): Promise<number[]> => {
-      const value = await page
-        .locator('.stat__value')
-        .nth(2)
-        .evaluate((el) => {
-          return getComputedStyle(el).color;
-        });
-      return (value.match(/\d+/g) ?? []).slice(0, 3).map(Number);
-    };
+    const atStageOne = await inkOf(page, '.stat__value', 2);
+    const [r, g, b] = atStageOne;
+    // Achromatic: no channel dominates. Cool neutrals are fine, hues are not.
+    expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThan(24);
 
-    // Red at stage 1.
-    const [r1, g1, b1] = (await parse()) as [number, number, number];
-    expect(r1).toBeGreaterThan(g1);
-    expect(r1).toBeGreaterThan(b1);
-
-    // Blue by stage 5.
+    // Deep into the arc, and it has not moved.
     await page.evaluate((perStage) => {
       const game = window.__refraction?.game;
-      if (game) game.lines = perStage * 4;
+      if (game) game.lines = perStage * 6;
     }, LINES_PER_STAGE);
     await page.waitForTimeout(120);
-    const [r5, , b5] = (await parse()) as [number, number, number];
-    expect(b5).toBeGreaterThan(r5);
+    expect(await inkOf(page, '.stat__value', 2)).toEqual(atStageOne);
+    // And it matches the score beside it, which is the point: it is a readout,
+    // not a status colour.
+    expect(await inkOf(page, '.stat__value', 0)).toEqual(atStageOne);
   });
 
-  test('reaches Ultraviolet past the end of the named stages', async ({ page }) => {
-    await page.goto('/?debug=1&seed=uv');
+  test('keeps numbering past the last authored stage', async ({ page }) => {
+    await page.goto('/?debug=1&seed=endless');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate((perStage) => {
       const game = window.__refraction?.game;
-      if (game) game.lines = perStage * 7;
+      if (game) game.lines = perStage * 8;
     }, LINES_PER_STAGE);
-    await expect(page.locator('.stat__value').nth(2)).toContainText('Ultraviolet');
+    await expect(page.locator('.stat__value').nth(2)).toHaveText('9');
   });
 });
 

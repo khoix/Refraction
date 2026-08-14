@@ -11,11 +11,7 @@ import { DEPTH_LANES } from '@core/constants';
 import { PIECES_BY_ID, extent, normalize } from '@core/pieces';
 import type { PieceId } from '@core/pieces';
 import { depthColorHex, laneToDepthParameter } from '@core/spectrum';
-import { isUltraviolet, stageDepthParameter } from '@core/stages';
 import type { Cell, Face } from '@core/types';
-
-/** Past the end of the visible spectrum, so past the end of the ramp. */
-const ULTRAVIOLET_COLOUR = '#e6d8ff';
 
 const FACE_LABEL: Record<Face, string> = {
   front: 'FRONT',
@@ -69,7 +65,7 @@ function renderPiecePreview(cells: readonly Cell[], lane: number): HTMLElement {
 export class Hud {
   private readonly score = element('span', 'stat__value', '0');
   private readonly lines = element('span', 'stat__value', '0');
-  private readonly stage = element('span', 'stat__value', 'Red');
+  private readonly stage = element('span', 'stat__value', '1');
   private readonly face = element('span', 'hud__face', 'FRONT');
   private readonly meter = element('div', 'meter');
   private readonly nextSlot = element('div', 'slot__body');
@@ -157,14 +153,15 @@ export class Hud {
   }
 
   /**
-   * Announce a new stage in its own colour.
+   * Announce a new stage.
    *
-   * Deliberately quieter than a scoring banner: the arc should be felt through
-   * the speed and the pieces, not narrated.
+   * Deliberately quiet: the arc should be felt through the speed and the
+   * pieces, not narrated. It is also deliberately colourless -- a stage is not
+   * a place on the spectrum, and tinting this would teach the player that it
+   * was.
    */
-  showStageBanner(name: string, colour: string): void {
-    this.stageBanner.textContent = name.toUpperCase();
-    this.stageBanner.style.color = colour;
+  showStageBanner(label: string): void {
+    this.stageBanner.textContent = label.toUpperCase();
     this.stageBanner.hidden = false;
     this.stageBanner.classList.remove('stage-banner--pulse');
     void this.stageBanner.offsetWidth;
@@ -185,12 +182,11 @@ export class Hud {
   update(game: Game, deltaMs: number): void {
     this.score.textContent = game.score.toLocaleString('en-US');
     this.lines.textContent = String(game.lines);
-    this.stage.textContent = game.stage.name;
-    // Each stage is named for a band, so it wears that band's colour. Past
-    // Violet there is no band left, so Ultraviolet goes to near-white.
-    this.stage.style.color = isUltraviolet(game.stage)
-      ? ULTRAVIOLET_COLOUR
-      : depthColorHex(stageDepthParameter(game.stage.index));
+    // Just the number. The label is already "STAGE"; the colour is deliberately
+    // the ordinary readout colour, since colour on this screen means depth.
+    this.stage.textContent = game.stage.name
+      ? `${game.stage.index} · ${game.stage.name}`
+      : String(game.stage.index);
     this.face.textContent = FACE_LABEL[game.face];
 
     this.renderMeter(game);

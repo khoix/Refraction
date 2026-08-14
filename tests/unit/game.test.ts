@@ -57,7 +57,6 @@ describe('setup', () => {
   it('starts at stage 1 with only flat pieces', () => {
     const game = newGame();
     expect(game.stage.index).toBe(1);
-    expect(game.stage.name).toBe('Red');
     expect(game.stage.maxTier).toBe(1);
   });
 });
@@ -166,7 +165,7 @@ describe('clearing', () => {
     expect(stageForLines(LINES_PER_STAGE - 1).index).toBe(1);
     expect(stageForLines(LINES_PER_STAGE).index).toBe(2);
     expect(stageForLines(LINES_PER_STAGE * 7 - 1).index).toBe(7);
-    expect(stageForLines(LINES_PER_STAGE * 7).name).toContain('Ultraviolet');
+    expect(stageForLines(LINES_PER_STAGE * 7).index).toBe(8);
   });
 });
 

@@ -104,16 +104,9 @@ describe('drop scoring', () => {
 });
 
 describe('stages', () => {
-  it('runs Red through Violet', () => {
-    expect(STAGES.map((s) => s.name)).toEqual([
-      'Red',
-      'Orange',
-      'Yellow',
-      'Green',
-      'Blue',
-      'Indigo',
-      'Violet',
-    ]);
+  it('runs seven authored stages, numbered', () => {
+    expect(STAGES.map((s) => s.index)).toEqual([1, 2, 3, 4, 5, 6, 7]);
+    expect(STAGES.every((s) => s.name === undefined)).toBe(true);
   });
 
   it('gets faster and turns more often as it goes', () => {
@@ -124,22 +117,17 @@ describe('stages', () => {
     }
   });
 
-  it('unlocks depth nudge at Green, not before', () => {
-    expect(STAGES.filter((s) => s.depthNudge).map((s) => s.name)).toEqual([
-      'Green',
-      'Blue',
-      'Indigo',
-      'Violet',
-    ]);
+  it('unlocks depth nudge at stage 4, not before', () => {
+    expect(STAGES.filter((s) => s.depthNudge).map((s) => s.index)).toEqual([4, 5, 6, 7]);
   });
 
-  it('continues past Violet into Ultraviolet, accelerating', () => {
-    const lastNamedLine = LINES_PER_STAGE * STAGES.length;
-    const violet = stageForLines(lastNamedLine - 1);
-    const beyond = stageForLines(lastNamedLine);
-    const further = stageForLines(lastNamedLine + LINES_PER_STAGE);
-    expect(violet.name).toBe('Violet');
-    expect(beyond.name).toContain('Ultraviolet');
+  it('continues past the last authored stage, accelerating', () => {
+    const lastAuthoredLine = LINES_PER_STAGE * STAGES.length;
+    const last = stageForLines(lastAuthoredLine - 1);
+    const beyond = stageForLines(lastAuthoredLine);
+    const further = stageForLines(lastAuthoredLine + LINES_PER_STAGE);
+    expect(last.index).toBe(STAGES.length);
+    expect(beyond.index).toBe(STAGES.length + 1);
     expect(further.gravity).toBeGreaterThan(beyond.gravity);
     expect(beyond.linesPerTurn).toBe(2);
   });

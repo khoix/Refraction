@@ -119,8 +119,6 @@ async function main() {
       if (!handle) return;
       handle.restart('stage');
       const game = handle.game;
-      // Green: far enough along the ramp that the banner colour is obviously
-      // not the default text colour.
       game.lines = 15 * 3 - 1;
       for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
     });
