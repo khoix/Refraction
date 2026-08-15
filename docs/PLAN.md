@@ -121,17 +121,28 @@ photosensitivity settings verified.
 
 ---
 
-## M5 — Progression
+## M5 — Progression ✅ _shipped_
 
-**Goal:** the Red → Violet arc.
+**Goal:** the difficulty arc.
 
 - Seven stages with the speed, meter and tier tables from the design spec.
 - Piece tiers introduced on schedule; Tier 2 arrives quietly, with no tutorial.
-- Stage transition sequence; **Ultraviolet** endless tier on completing Violet.
+- Stage transition sequence; the numbering continues indefinitely past stage 7.
 - Difficulty tuning pass against recorded play sessions.
 
 **Exit criteria:** the first depth-offset piece lands without explanation, and
 the first turn lands as a revelation rather than a confusion.
+
+**Note 1:** the tuning pass moved `LINES_PER_STAGE` from 10 to 15. At ten, the
+greedy agent walked the entire arc inside one game, which made finishing it
+routine. The reveal schedule is now pinned by test rather than by intention —
+see `tests/unit/progression.test.ts`.
+
+**Note 2:** stages shipped named for the spectrum bands — Red through Violet,
+then Ultraviolet — and that was corrected. The spectrum means depth from the
+current camera and nothing else; a stage called "Green" invites the player to
+infer rules that do not exist. Stages are now numbered, the HUD chrome is
+achromatic throughout, and the rule is written down in DESIGN §2.2.
 
 ---
 
@@ -139,7 +150,7 @@ the first turn lands as a revelation rather than a confusion.
 
 **Goal:** everything around the core loop.
 
-- All six modes: Spectrum, Endless, Prism, Flatland, Blind Spectrum, Zen.
+- All six modes: Ascent, Endless, Prism, Flatland, Blind Spectrum, Zen.
 - Title screen, mode select, pause, game-over, restart.
 - Versioned `localStorage` persistence with migration: settings, high scores per
   mode, unlocks, lifetime stats.

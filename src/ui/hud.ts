@@ -65,7 +65,7 @@ function renderPiecePreview(cells: readonly Cell[], lane: number): HTMLElement {
 export class Hud {
   private readonly score = element('span', 'stat__value', '0');
   private readonly lines = element('span', 'stat__value', '0');
-  private readonly stage = element('span', 'stat__value', 'Red');
+  private readonly stage = element('span', 'stat__value', '1');
   private readonly face = element('span', 'hud__face', 'FRONT');
   private readonly meter = element('div', 'meter');
   private readonly nextSlot = element('div', 'slot__body');
@@ -73,6 +73,7 @@ export class Hud {
   private readonly chain = element('div', 'chain');
   private readonly popups = element('div', 'popups');
   private readonly mute = element('div', 'mute');
+  private readonly stageBanner = element('div', 'stage-banner');
   private readonly banner = element('div', 'banner');
   private readonly prompt = element('div', 'prompt');
   private readonly overlay = element('div', 'overlay');
@@ -80,6 +81,7 @@ export class Hud {
   readonly root = element('div', 'hud');
 
   private bannerTimer = 0;
+  private stageBannerTimer = 0;
 
   constructor() {
     const stats = element('div', 'hud__stats');
@@ -106,6 +108,7 @@ export class Hud {
     this.chain.hidden = true;
     this.mute.hidden = true;
     this.mute.textContent = 'MUTED';
+    this.stageBanner.hidden = true;
 
     const pill = element('div', 'prompt__pill');
     pill.append(
@@ -124,6 +127,7 @@ export class Hud {
       this.chain,
       this.popups,
       this.mute,
+      this.stageBanner,
       this.banner,
       this.prompt,
       this.overlay
@@ -148,6 +152,23 @@ export class Hud {
     this.mute.hidden = !muted;
   }
 
+  /**
+   * Announce a new stage.
+   *
+   * Deliberately quiet: the arc should be felt through the speed and the
+   * pieces, not narrated. It is also deliberately colourless -- a stage is not
+   * a place on the spectrum, and tinting this would teach the player that it
+   * was.
+   */
+  showStageBanner(label: string): void {
+    this.stageBanner.textContent = label.toUpperCase();
+    this.stageBanner.hidden = false;
+    this.stageBanner.classList.remove('stage-banner--pulse');
+    void this.stageBanner.offsetWidth;
+    this.stageBanner.classList.add('stage-banner--pulse');
+    this.stageBannerTimer = 2000;
+  }
+
   showBanner(text: string): void {
     this.banner.textContent = text;
     this.banner.hidden = false;
@@ -161,7 +182,11 @@ export class Hud {
   update(game: Game, deltaMs: number): void {
     this.score.textContent = game.score.toLocaleString('en-US');
     this.lines.textContent = String(game.lines);
-    this.stage.textContent = game.stage.name;
+    // Just the number. The label is already "STAGE"; the colour is deliberately
+    // the ordinary readout colour, since colour on this screen means depth.
+    this.stage.textContent = game.stage.name
+      ? `${game.stage.index} · ${game.stage.name}`
+      : String(game.stage.index);
     this.face.textContent = FACE_LABEL[game.face];
 
     this.renderMeter(game);
@@ -185,6 +210,10 @@ export class Hud {
     if (this.bannerTimer > 0) {
       this.bannerTimer -= deltaMs;
       if (this.bannerTimer <= 0) this.banner.hidden = true;
+    }
+    if (this.stageBannerTimer > 0) {
+      this.stageBannerTimer -= deltaMs;
+      if (this.stageBannerTimer <= 0) this.stageBanner.hidden = true;
     }
   }
 

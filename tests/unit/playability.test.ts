@@ -79,6 +79,8 @@ interface RunResult {
   readonly lines: number;
   readonly score: number;
   readonly turns: number;
+  /** Highest stage the run reached. */
+  readonly stage: number;
 }
 
 function playGreedily(seed: string, maxPieces: number): RunResult {
@@ -110,7 +112,13 @@ function playGreedily(seed: string, maxPieces: number): RunResult {
     pieces += 1;
   }
 
-  return { pieces, lines: game.lines, score: game.score, turns };
+  return {
+    pieces,
+    lines: game.lines,
+    score: game.score,
+    turns,
+    stage: game.stage.index,
+  };
 }
 
 // These run hundreds of full placement searches, and coverage instrumentation
@@ -140,6 +148,18 @@ describe('a competent player can actually play this', () => {
     'reaches the Shift meter and turns the board repeatedly',
     () => {
       expect(playGreedily('turns', 200).turns).toBeGreaterThan(3);
+    },
+    SIMULATION_TIMEOUT_MS
+  );
+
+  it(
+    'climbs the stage arc rather than stalling at the start',
+    () => {
+      // The arc only means anything if ordinary play actually travels it. Two
+      // hundred pieces should carry a competent player several stages in.
+      const result = playGreedily('arc', 200);
+      expect(result.stage).toBeGreaterThanOrEqual(3);
+      console.log(`arc: ${result.pieces} pieces, ${result.lines} lines, stage ${result.stage}`);
     },
     SIMULATION_TIMEOUT_MS
   );

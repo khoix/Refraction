@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 import type { Page } from '@playwright/test';
+import { LINES_PER_STAGE } from '../../src/core/stages';
 
 /** Wait for the first rendered frame. */
 async function boot(page: Page): Promise<void> {
@@ -37,12 +38,12 @@ test.describe('boot', () => {
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
   });
 
-  test('starts at stage Red with an empty score', async ({ page }) => {
+  test('starts at stage 1 with an empty score', async ({ page }) => {
     await boot(page);
     const values = page.locator('.stat__value');
     await expect(values.nth(0)).toHaveText('0');
     await expect(values.nth(1)).toHaveText('0');
-    await expect(values.nth(2)).toHaveText('Red');
+    await expect(values.nth(2)).toHaveText('1');
   });
 
   test('shows a Shift meter sized to the stage', async ({ page }) => {
@@ -348,6 +349,81 @@ test.describe('feel', () => {
   test('reduced motion suppresses the shake entirely', async ({ page }) => {
     await frozenBoard(page, '&reducedMotion=1');
     expect(await peakShake(page)).toBe(0);
+  });
+});
+
+test.describe('progression', () => {
+  /** Advance the run to a chosen stage by handing it cleared lines. */
+  async function reachStage(page: Page, stageIndex: number): Promise<void> {
+    await page.goto('/?debug=1&seed=arc');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(
+      ({ index, perStage }) => {
+        const game = window.__refraction?.game;
+        if (!game) throw new Error('debug hook unavailable');
+        // One short of the boundary, so a single clear crosses it and fires the
+        // stage event exactly the way real play would.
+        game.lines = perStage * (index - 1) - 1;
+        for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
+      },
+      { index: stageIndex, perStage: LINES_PER_STAGE }
+    );
+    await page.keyboard.press('Space');
+  }
+
+  test('announces a new stage by number', async ({ page }) => {
+    await reachStage(page, 2);
+    const banner = page.locator('.stage-banner');
+    await expect(banner).toBeVisible();
+    await expect(banner).toHaveText('STAGE 2');
+  });
+
+  /** Computed colour of an element, as [r, g, b]. */
+  async function inkOf(page: Page, selector: string, index = 0): Promise<[number, number, number]> {
+    const value = await page
+      .locator(selector)
+      .nth(index)
+      .evaluate((el) => getComputedStyle(el).color);
+    const parts = (value.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+    return parts as [number, number, number];
+  }
+
+  /**
+   * The stage readout must never carry a hue.
+   *
+   * A hue on this screen is a claim about depth. If the stage number were
+   * tinted -- and it was, before this was corrected -- the player would be
+   * shown two colour languages at once with nothing to tell them apart.
+   */
+  test('never tints the stage readout, at any stage', async ({ page }) => {
+    await page.goto('/?debug=1&seed=colour');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const atStageOne = await inkOf(page, '.stat__value', 2);
+    const [r, g, b] = atStageOne;
+    // Achromatic: no channel dominates. Cool neutrals are fine, hues are not.
+    expect(Math.max(r, g, b) - Math.min(r, g, b)).toBeLessThan(24);
+
+    // Deep into the arc, and it has not moved.
+    await page.evaluate((perStage) => {
+      const game = window.__refraction?.game;
+      if (game) game.lines = perStage * 6;
+    }, LINES_PER_STAGE);
+    await page.waitForTimeout(120);
+    expect(await inkOf(page, '.stat__value', 2)).toEqual(atStageOne);
+    // And it matches the score beside it, which is the point: it is a readout,
+    // not a status colour.
+    expect(await inkOf(page, '.stat__value', 0)).toEqual(atStageOne);
+  });
+
+  test('keeps numbering past the last authored stage', async ({ page }) => {
+    await page.goto('/?debug=1&seed=endless');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate((perStage) => {
+      const game = window.__refraction?.game;
+      if (game) game.lines = perStage * 8;
+    }, LINES_PER_STAGE);
+    await expect(page.locator('.stat__value').nth(2)).toHaveText('9');
   });
 });
 

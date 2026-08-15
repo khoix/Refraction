@@ -14,6 +14,7 @@ import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
 import { toView } from '@core/projection';
+import { stageLabel } from '@core/stages';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
 const STEP_MS = 1000 / 60;
@@ -156,6 +157,9 @@ function boot(root: HTMLElement): void {
           }
           break;
         }
+        case 'stage':
+          hud.showStageBanner(stageLabel(game.stage));
+          break;
         case 'gameOver':
           audio.gameOver();
           break;

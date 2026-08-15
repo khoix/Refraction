@@ -122,6 +122,64 @@ tile's colour is the depth of the _nearest_ cube in that screen cell, so a
 violet tile proves every lane in front of it is empty. Everything else is
 recovered by turning, and later by Peek.
 
+### 2.2 The spectrum is reserved
+
+The rule above has a converse that is just as binding, and it is easier to break
+by accident.
+
+**A hue on screen means depth from the current camera, and means nothing else.**
+Red through violet may not also stand for stage progression, objectives, piece
+categories, scoring tiers, difficulty, or targets the player is meant to hit.
+
+The failure mode is not ugliness, it is a false inference. A player shown a
+stage called "Green", or an amber Shift meter, is being given a second colour
+language with no marker separating it from the first — and the reasonable
+conclusion is that colour means something in the rules beyond depth. From there
+it is a short step to believing green cubes must be cleared, or that the amber
+pips indicate a colour to aim for. Neither rule exists. The game would have
+taught them anyway.
+
+So the palette is partitioned, and the partition is absolute:
+
+| Surface                                                          | Colour                                          |
+| ---------------------------------------------------------------- | ----------------------------------------------- |
+| Cubes on the board                                               | spectrum, by lane depth from the current face   |
+| Cubes in the next-piece preview                                  | spectrum, by the lane that piece will arrive in |
+| Everything else — HUD, meter, banners, popups, prompts, overlays | achromatic                                      |
+
+The chrome is drawn from a neutral ink ramp with a single near-white accent
+(`--accent-ui`). Nothing in the interface carries a hue, which means any hue the
+player sees is a depth claim and can be trusted as one.
+
+Two consequences worth stating, because both replaced something that looked
+better in isolation:
+
+- **Stage banners and the stage readout are colourless.** They were briefly
+  tinted with the band matching the stage number. It read well and it was wrong.
+- **Scoring banners are white, not a rainbow sweep.** White is also the truer
+  image: the whole spectrum together is white light, which is exactly what the
+  board does when a Prism chain closes.
+
+This rule is not permanent scripture — a future mechanic could earn a spectrum
+reference, if it is deliberately built on the same colour-is-depth relationship
+rather than borrowing the palette for flavour. The bar is that the reference has
+to be _about_ depth. `Blind Spectrum` mode clears it; a stage named "Green" does
+not.
+
+### 2.3 Stage identity **[GAP]**
+
+Stages are identified by **number**. There is no default name.
+
+A stage may take a name only when it has an identity worth naming — a rule of
+its own, a new piece class, different rotation behaviour, a board condition, an
+environmental theme — and the name has to tell the player something the number
+does not. Flavour is not a reason. None of the seven authored stages qualifies
+today, so none of them has a name; `StageConfig.name` is optional and unset.
+
+When a stage does earn one, it is shown **alongside** the number rather than
+instead of it (`Stage 4 — Eclipse`), so the player never loses their place in
+the arc. And it may not be a spectrum band, for the reason in §2.2.
+
 ## 3. Lines
 
 A **line** is 8 cells sharing a `y` and a `lane`, spanning the current face's
@@ -210,7 +268,7 @@ point — become impossible.
   depth colour, the piece spawns already wearing its lane's colour, and the
   ghost shows the landing footprint at the correct depth.
 - **Depth Nudge** (`W` / `S`) shifts the piece ±1 lane. It is **locked until
-  Stage 4 (Green)**, and always available in Prism and Zen.
+  Stage 4**, and always available in Prism and Zen.
 
 This preserves the reveal arc the proposal is built around. Stages 1–3 genuinely
 play as a 2D game where colour is the only signal that something else is going
@@ -279,16 +337,16 @@ a board that is still settling would be unreadable and unfair.
 
 ### 5.2 Meter length by stage
 
-| Stage       | Lines per turn     |
-| ----------- | ------------------ |
-| 1 Red       | 5                  |
-| 2 Orange    | 5                  |
-| 3 Yellow    | 4                  |
-| 4 Green     | 4                  |
-| 5 Blue      | 4                  |
-| 6 Indigo    | 3                  |
-| 7 Violet    | 3                  |
-| Ultraviolet | 3, decreasing to 2 |
+| Stage | Lines per turn |
+| ----- | -------------- |
+| 1     | 5              |
+| 2     | 5              |
+| 3     | 4              |
+| 4     | 4              |
+| 5     | 4              |
+| 6     | 3              |
+| 7     | 3              |
+| 8+    | 2              |
 
 ## 6. Scoring **[GAP — proposal gives ratios only]**
 
@@ -319,20 +377,38 @@ The escalating on-screen language from the proposal is preserved:
 
 ## 7. Speed and feel **[GAP]**
 
-| Stage       | Gravity (cells/s) | Lock delay | Piece tier |
-| ----------- | ----------------- | ---------- | ---------- |
-| 1 Red       | 1.0               | 500 ms     | 1          |
-| 2 Orange    | 1.4               | 500 ms     | 1–2        |
-| 3 Yellow    | 2.0               | 500 ms     | 1–2        |
-| 4 Green     | 2.8               | 450 ms     | 1–3        |
-| 5 Blue      | 3.8               | 450 ms     | 1–3        |
-| 6 Indigo    | 5.2               | 400 ms     | 1–4        |
-| 7 Violet    | 7.0               | 350 ms     | 1–4        |
-| Ultraviolet | 7.0 × 1.15^n      | 300 ms     | 1–4        |
+| Stage | Gravity (cells/s) | Lock delay | Piece tier |
+| ----- | ----------------- | ---------- | ---------- |
+| 1     | 1.0               | 500 ms     | 1          |
+| 2     | 1.4               | 500 ms     | 1–2        |
+| 3     | 2.0               | 500 ms     | 1–2        |
+| 4     | 2.8               | 450 ms     | 1–3        |
+| 5     | 3.8               | 450 ms     | 1–3        |
+| 6     | 5.2               | 400 ms     | 1–4        |
+| 7     | 7.0               | 350 ms     | 1–4        |
+| 8+    | 7.0 × 1.15^n      | 300 ms     | 1–4        |
 
 - Lock delay resets on move or rotate, up to **15 resets**, then locks hard.
 - **DAS** 150 ms, **ARR** 33 ms.
 - Soft drop is 20× gravity; hard drop is instant with a 100 ms settle.
+
+### 7.1 Stage length **[GAP — proposal gives no threshold]**
+
+A stage lasts **15 cleared lines** (`LINES_PER_STAGE`). The seven authored
+stages are therefore 90 lines, and the endless tail begins at 105.
+
+This was set by measurement rather than taste. The greedy agent in
+`playability.test.ts` is the closest thing the project has to a competent
+player, and it clears 71–103 lines in a run. At ten lines per stage that agent
+reached the last authored stage inside a single game and spent most of the run
+past the end of the arc, which made finishing the arc routine rather than an
+achievement. At fifteen the full arc sits at the top of what the agent manages:
+stage 7 is reachable but has to be earned, and the tail is genuinely the far
+end.
+
+The tuning knob is deliberately a single constant. Retuning it is a one-line
+change, and every test that depends on the pacing is parameterised on it rather
+than hard-coding line counts.
 
 ### 5.3 Spawn position
 
@@ -420,7 +496,7 @@ mutes.
 
 | Mode               | Description                                                     |
 | ------------------ | --------------------------------------------------------------- |
-| **Spectrum**       | Primary progression, Red → Violet → Ultraviolet.                |
+| **Ascent**         | Primary progression. Stage 1 upward, no end.                    |
 | **Endless**        | Score attack, continuously increasing speed and complexity.     |
 | **Prism**          | Frequent turns, scoring weighted to multi-face chains.          |
 | **Flatland**       | Planar pieces only, board still turns. Pure projection reading. |
