@@ -1,11 +1,11 @@
 /**
  * Instanced cube rendering.
  *
- * Every cube on the board is one instance of a single rounded box, so the whole
- * playfield is one draw call. Colour and apparent size are per-instance and are
- * recomputed every frame from the live camera yaw -- not from the snapped face.
- * That is what makes the turn a continuous transformation rather than a
- * crossfade between two palettes.
+ * Each layer -- the settled board, the active piece, the ghost, the glow, the
+ * occluded silhouettes, the X-ray, the lock flash -- is one instanced draw of
+ * a shared rounded box. Colour is per-instance and recomputed every frame from
+ * the live camera yaw, not from the snapped face. That is what makes the turn
+ * a continuous transformation rather than a crossfade between two palettes.
  */
 
 import * as THREE from 'three';
@@ -27,6 +27,21 @@ export interface VoxelLayerOptions {
   readonly ghost?: boolean;
   /** Unlit and additively blended, for the glow on lines about to clear. */
   readonly additive?: boolean;
+  /**
+   * Draw only where the depth test FAILS -- i.e. exactly the parts of these
+   * cubes that settled geometry hides. Paired with a normally rendered layer
+   * of the same cells, the piece looks ordinary when visible and shows as a
+   * translucent silhouette where the board occludes it. The silhouette keeps
+   * the piece's true spectrum colours; only its opacity says "occluded".
+   */
+  readonly whereHidden?: boolean;
+  /**
+   * Ignore the depth buffer entirely and draw after the board. Used by the
+   * X-ray treatment, whose whole job is to be seen through settled cubes.
+   */
+  readonly throughWalls?: boolean;
+  /** Explicit render order, for layering the see-through passes. */
+  readonly renderOrder?: number;
   readonly maxInstances?: number;
 }
 
@@ -52,7 +67,7 @@ export class VoxelLayer {
           blending: THREE.AdditiveBlending,
           depthWrite: false,
         })
-      : options.ghost
+      : options.ghost || options.whereHidden || options.throughWalls
         ? new THREE.MeshBasicMaterial({
             transparent: true,
             opacity: options.opacity ?? 0.3,
@@ -67,10 +82,18 @@ export class VoxelLayer {
             emissive: new THREE.Color(0x000000),
           });
 
+    // Where-hidden passes invert the depth test: fragments draw only when
+    // something nearer has already claimed the pixel. Through-wall passes skip
+    // the test entirely. Both draw after the opaque board so the buffer they
+    // test against is complete.
+    if (options.whereHidden) material.depthFunc = THREE.GreaterDepth;
+    if (options.throughWalls) material.depthTest = false;
+
     this.mesh = new THREE.InstancedMesh(geometry, material, options.maxInstances ?? MAX_INSTANCES);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     this.mesh.count = 0;
     this.mesh.frustumCulled = false;
+    if (options.renderOrder !== undefined) this.mesh.renderOrder = options.renderOrder;
   }
 
   /**

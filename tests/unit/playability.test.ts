@@ -83,8 +83,8 @@ interface RunResult {
   readonly stage: number;
 }
 
-function playGreedily(seed: string, maxPieces: number): RunResult {
-  const game = new Game({ seed });
+function playGreedily(seed: string, maxPieces: number, catalog?: 'experimental'): RunResult {
+  const game = new Game(catalog ? { seed, catalog } : { seed });
   let pieces = 0;
   let turns = 0;
 
@@ -169,6 +169,27 @@ describe('a competent player can actually play this', () => {
     () => {
       // Hard drops alone could not reach this; it requires real clears.
       expect(playGreedily('scoring', 150).score).toBeGreaterThan(10_000);
+    },
+    SIMULATION_TIMEOUT_MS
+  );
+
+  it(
+    'stays playable under the experimental piece vocabulary',
+    () => {
+      // The M6.5 playtest bed: non-planar pieces from stage 1, a tricube, and
+      // pentacubes later. The floor is set below the standard catalogue's --
+      // the experiment is allowed to be harder -- but a vocabulary the agent
+      // cannot clear lines with at all has failed its first criterion, before
+      // any human plays it. The log line is the measurement for the write-up.
+      for (const seed of ['exp-alpha', 'exp-beta']) {
+        const result = playGreedily(seed, 200, 'experimental');
+        console.log(
+          `experimental ${seed}: ${result.pieces} pieces, ${result.lines} lines, ` +
+            `stage ${result.stage}, ${result.turns} turns`
+        );
+        expect(result.lines / Math.max(1, result.pieces)).toBeGreaterThan(0.08);
+        expect(result.lines).toBeGreaterThan(12);
+      }
     },
     SIMULATION_TIMEOUT_MS
   );

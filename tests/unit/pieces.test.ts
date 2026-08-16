@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
+  EXPERIMENTAL_PIECES,
   PIECES,
   PIECES_BY_ID,
   extent,
@@ -60,6 +61,47 @@ describe('the catalogue', () => {
     expect(piecesForTier(2)).toHaveLength(7);
     expect(piecesForTier(4)).toHaveLength(8);
     expect(piecesForTier(1).every((p) => isPlanar(p.cells))).toBe(true);
+  });
+});
+
+describe('the experimental catalogue', () => {
+  it('keeps every piece connected, at three to five cubes', () => {
+    for (const piece of EXPERIMENTAL_PIECES) {
+      expect(isConnected(piece.cells)).toBe(true);
+      expect(piece.cells.length).toBeGreaterThanOrEqual(3);
+      expect(piece.cells.length).toBeLessThanOrEqual(5);
+    }
+  });
+
+  it('introduces non-planar geometry at tier 1, which is its whole point', () => {
+    const tierOne = piecesForTier(1, 'experimental');
+    expect(tierOne.some((piece) => !isPlanar(piece.cells))).toBe(true);
+  });
+
+  it('deals only non-planar pentacubes', () => {
+    for (const piece of EXPERIMENTAL_PIECES) {
+      if (piece.cells.length === 5) expect(isPlanar(piece.cells)).toBe(false);
+    }
+  });
+
+  it('never leaks into the standard catalogue', () => {
+    // The experiment must not change the shipped game: the default deal at
+    // every tier is exactly the eight free tetracubes, as before.
+    const standardIds = new Set(PIECES.map((piece) => piece.id));
+    for (let tier = 1; tier <= 4; tier += 1) {
+      for (const piece of piecesForTier(tier)) {
+        expect(standardIds.has(piece.id)).toBe(true);
+      }
+    }
+    expect(piecesForTier(4)).toHaveLength(8);
+  });
+
+  it('registers every experimental piece for by-id lookup, e.g. hold', () => {
+    for (const piece of EXPERIMENTAL_PIECES) {
+      expect(PIECES_BY_ID.get(piece.id)?.cells.length).toBe(piece.cells.length);
+    }
+    // Shared ids keep their canonical (standard) tier in the lookup.
+    expect(PIECES_BY_ID.get('TRIPOD')?.tier).toBe(3);
   });
 });
 

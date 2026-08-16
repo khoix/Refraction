@@ -25,17 +25,28 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M5 — Progression.** The game is playable, the reveal is visible, it has sound
-and weight, and it now has an arc: lines that exist only along the hidden axis
-glow through the whole rotation and clear on arrival, closing a four-face chain
-blooms the board toward white, and a run climbs a seven-stage arc and on into an
-endless tail. Modes, persistence and the comprehension tools come next.
+**M6 — Playtest Readability & Presentation.** The board now stays readable
+under occlusion: the falling piece and its ghost show through settled cubes as
+spectrum-true silhouettes, and the cubes the piece would land on X-ray through
+the board — the topmost contact under each column and nothing beneath it. The
+black void is gone, replaced by a reactive achromatic environment that pulses
+on locks, ripples on clears and leans in as the Shift meter fills. Clears now
+genuinely bloom (a thresholded post-process, reached only by clears and Prism),
+dissolve along their axis into spectrum-tinted debris, and locking flashes.
+Depth lanes come from a free seeded draw with a starvation floor instead of a
+bag, so the colour sequence stops reading as ROYGBIV on a loop. Modes,
+persistence and the comprehension tools come next.
 
 Stages are numbered, not named, and the interface carries no hue at all: on this
 screen a colour is a claim about depth, so nothing else is allowed to make one.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
-`C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute.
+`C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute,
+`Enter` to restart after a game over.
+
+Flags: `?pieces=experimental` deals the M6.5 playtest vocabulary (screws from
+stage 1, a tricube, non-planar pentacubes); `?reducedMotion=1` forces the
+reduced-motion and photosensitivity guards.
 
 See [`release_notes.md`](release_notes.md) for the milestone log and
 [`docs/PLAN.md`](docs/PLAN.md) for the roadmap.
@@ -67,7 +78,7 @@ npm run dev        # http://localhost:5173
 | Document                                       | Contents                                                                                                                                                        |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`docs/DESIGN.md`](docs/DESIGN.md)             | The implementation spec. Board, projection, pieces, scoring, progression, accessibility. Gaps in the original proposal are marked **[GAP]** with the reasoning. |
-| [`docs/PLAN.md`](docs/PLAN.md)                 | Ten milestones, M0–M9.                                                                                                                                          |
+| [`docs/PLAN.md`](docs/PLAN.md)                 | Eleven milestones, M0–M10.                                                                                                                                      |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module layout and the pure-core decision.                                                                                                                       |
 | [`docs/TESTING.md`](docs/TESTING.md)           | Test strategy, layers, conventions.                                                                                                                             |
 | [`release_notes.md`](release_notes.md)         | Milestone log, newest first.                                                                                                                                    |

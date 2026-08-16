@@ -6,9 +6,16 @@
  */
 
 import * as THREE from 'three';
+import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
+import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
+import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { Game } from '@core/game';
-import { FACE_YAW, lineCells, turnYawDelta } from '@core/projection';
-import type { Cell, TurnDirection } from '@core/types';
+import type { Line } from '@core/board';
+import { FACE_YAW, depthParameterAtYaw, lineCells, turnYawDelta } from '@core/projection';
+import { depthColor } from '@core/spectrum';
+import type { Cell, Face, TurnDirection } from '@core/types';
+import { Debris, Environment } from './environment';
 import type { SceneLights, Well } from './scene';
 import {
   TURN_ELEVATION_DEG,
@@ -19,6 +26,9 @@ import {
   positionCamera,
   setLightingFlatness,
   setWellFlatness,
+  toSceneX,
+  toSceneY,
+  toSceneZ,
 } from './scene';
 import { VoxelLayer } from './voxels';
 
@@ -30,6 +40,17 @@ const PRISM_BLOOM_MS = 1500;
 /** Peak camera pan during a shake, in board cells. */
 const SHAKE_AMPLITUDE = 0.32;
 const SHAKE_DECAY_MS = 380;
+/** How long the just-locked cells flash. */
+const LOCK_FLASH_MS = 160;
+
+/**
+ * Bloom is selective by threshold: the settled board's colours sit safely
+ * below it, so only pixels pushed past it by the additive clear glow or the
+ * Prism whiteout ever bloom. Clears and Prism events shine; nothing else does.
+ */
+const BLOOM_THRESHOLD = 0.98;
+const BLOOM_STRENGTH = 0.55;
+const BLOOM_RADIUS = 0.3;
 
 export interface GameRendererOptions {
   /** Tests read pixels back, which needs the drawing buffer preserved. */
@@ -73,6 +94,63 @@ export class GameRenderer {
    * the mechanic and worth showing rather than resolving invisibly.
    */
   private readonly glow = new VoxelLayer({ additive: true, opacity: 0.5 });
+
+  /**
+   * The occluded halves of the falling piece and its ghost. These draw only
+   * where the depth test fails -- exactly where settled cubes hide them -- so
+   * the piece never disappears into the stack. Both keep their true spectrum
+   * colours; the active silhouette is solid and the ghost's is fainter and
+   * inset, so the two stay distinct even when both show through the board.
+   */
+  private readonly activeHidden = new VoxelLayer({
+    whereHidden: true,
+    opacity: 0.5,
+    renderOrder: 7,
+    maxInstances: 8,
+  });
+  private readonly ghostHidden = new VoxelLayer({
+    whereHidden: true,
+    opacity: 0.16,
+    renderOrder: 6,
+    maxInstances: 8,
+  });
+
+  /**
+   * The X-ray on the first-contact surface: the settled cubes the falling
+   * piece is aimed at, shown through the board. Two passes make it read as
+   * seeing *through* rather than drawn *on top*: a translucent shell at the
+   * cube's own size and a brighter inner core, both pulsing slowly, both
+   * keeping the cube's spectrum colour -- the X-ray manipulates opacity,
+   * luminance and animation, never hue. Intervening cubes stay visible
+   * through the translucency.
+   */
+  private readonly xrayShell = new VoxelLayer({
+    throughWalls: true,
+    opacity: 0.3,
+    renderOrder: 4,
+    maxInstances: 8,
+  });
+  private readonly xrayCore = new VoxelLayer({
+    additive: true,
+    throughWalls: true,
+    opacity: 0.5,
+    renderOrder: 5,
+    maxInstances: 8,
+  });
+
+  /** The cells of the piece that just locked, flashing briefly. */
+  private readonly lockFlashLayer = new VoxelLayer({
+    additive: true,
+    opacity: 0,
+    renderOrder: 2,
+    maxInstances: 8,
+  });
+  private lockFlashCells: readonly Cell[] = [];
+  private lockFlashElapsed = LOCK_FLASH_MS;
+
+  private readonly environment: Environment;
+  private readonly debris = new Debris();
+  private readonly composer: EffectComposer;
   private readonly lights: SceneLights;
   private readonly well: Well;
 
@@ -115,7 +193,31 @@ export class GameRenderer {
     this.lights = bundle.lights;
     this.well = bundle.well;
 
-    this.scene.add(this.locked.mesh, this.active.mesh, this.ghost.mesh, this.glow.mesh);
+    this.environment = new Environment(this.reducedMotion);
+    this.scene.add(
+      this.environment.group,
+      this.locked.mesh,
+      this.active.mesh,
+      this.ghost.mesh,
+      this.glow.mesh,
+      this.activeHidden.mesh,
+      this.ghostHidden.mesh,
+      this.xrayShell.mesh,
+      this.xrayCore.mesh,
+      this.lockFlashLayer.mesh,
+      this.debris.points
+    );
+
+    // A real post-process chain, so bloom is thresholded rather than painted:
+    // only pixels the clear glow or the Prism whiteout push past the threshold
+    // ever bloom, and the settled board never does.
+    this.composer = new EffectComposer(this.renderer);
+    this.composer.addPass(new RenderPass(this.scene, this.camera));
+    this.composer.addPass(
+      new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD)
+    );
+    this.composer.addPass(new OutputPass());
+
     this.resize();
   }
 
@@ -182,10 +284,47 @@ export class GameRenderer {
     };
   }
 
+  /** Flash the cells a piece just locked into. */
+  lockFlash(cells: readonly Cell[]): void {
+    this.lockFlashCells = cells;
+    this.lockFlashElapsed = 0;
+    this.environment.react(0.14);
+  }
+
+  /**
+   * Present a clear: debris erupts from the removed cells in their spectrum
+   * colours, staggered along the clearing axis so the line dissolves from one
+   * end to the other, and the environment answers -- a ripple for any clear,
+   * a bigger one for a Refraction Clear, and a major response for Prism.
+   */
+  clearEffect(cleared: readonly Line[], face: Face, refraction: boolean, prism: boolean): void {
+    const yaw = this.yaw;
+    for (const line of cleared) {
+      const cells = lineCells(face, line.y, line.lane);
+      cells.forEach((cell, index) => {
+        const along = cells.length > 1 ? index / (cells.length - 1) : 0;
+        const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yaw), 0, 1);
+        this.debris.burst(
+          toSceneX(cell.x),
+          toSceneY(cell.y),
+          toSceneZ(cell.z),
+          along,
+          depthColor(depth),
+          this.reducedMotion ? 2 : 5
+        );
+      });
+    }
+
+    const strength = prism ? 1 : refraction ? 0.7 : 0.42;
+    this.environment.react(strength);
+    this.environment.ripple(strength);
+  }
+
   resize(): void {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
     this.renderer.setSize(width, height, false);
+    this.composer.setSize(width, height);
     this.aspect = width / Math.max(1, height);
     fitCamera(this.camera, this.aspect);
   }
@@ -236,14 +375,55 @@ export class GameRenderer {
     // Lines being removed swell slightly as they go, so a clear dissolves
     // outward instead of simply vanishing between frames.
     const dissolve = game.status === 'resolving' ? 1.22 : 1.06;
-    this.glow.update(highlightCells(game), yaw, separation * dissolve, whiteout);
+    const highlights = highlightCells(game);
+    this.glow.update(highlights, yaw, separation * dissolve, whiteout);
     // Pulse rather than hold steady, so a line about to go reads as urgent.
     this.glow.setOpacity(0.3 + 0.28 * Math.sin(this.glowElapsed * 0.011) + whiteout * 0.4);
-    this.active.update(game.activeCells(), yaw, separation, whiteout);
-    // The ghost is inset so it reads as a target rather than as a real block.
-    this.ghost.update(game.status === 'falling' ? game.ghostCells() : [], yaw, 0.78 * separation);
 
-    this.renderer.render(this.scene, this.camera);
+    const activeCells = game.activeCells();
+    const ghostCells = game.status === 'falling' ? game.ghostCells() : [];
+    this.active.update(activeCells, yaw, separation, whiteout);
+    // The ghost is inset so it reads as a target rather than as a real block.
+    this.ghost.update(ghostCells, yaw, 0.78 * separation);
+    // The same cells again, drawn only where the board hides them, so the
+    // falling piece and its ghost never vanish into the stack.
+    this.activeHidden.update(activeCells, yaw, separation, whiteout);
+    this.ghostHidden.update(ghostCells, yaw, 0.78 * separation);
+
+    // The X-ray: the settled cubes the piece would first land on, seen through
+    // the board. Shell at full size, brighter core inset, both breathing
+    // slowly so they read as revealed rather than as painted on top.
+    const contacts = game.status === 'falling' ? game.firstContactCells() : [];
+    const breath = Math.sin(this.glowElapsed * 0.006);
+    this.xrayShell.update(contacts, yaw, separation * 1.02, 0.12);
+    this.xrayShell.setOpacity(0.26 + 0.08 * breath);
+    this.xrayCore.update(contacts, yaw, separation * 0.44, 0.3);
+    this.xrayCore.setOpacity(0.4 + 0.16 * breath);
+
+    // The lock flash: a brief full-cell glow where the piece just settled.
+    this.lockFlashElapsed = Math.min(LOCK_FLASH_MS, this.lockFlashElapsed + deltaMs);
+    const flash = 1 - this.lockFlashElapsed / LOCK_FLASH_MS;
+    this.lockFlashLayer.update(flash > 0 ? this.lockFlashCells : [], yaw, separation, 0.5);
+    this.lockFlashLayer.setOpacity(flash * (this.reducedMotion ? 0.35 : 0.7));
+
+    this.debris.update(deltaMs);
+    this.environment.setTension(
+      game.status === 'awaitingTurn' ? 1 : game.shiftMeter / game.stage.linesPerTurn
+    );
+    this.environment.update(deltaMs, yaw, this.isTurning);
+
+    // The post-process chain runs only while something can actually bloom --
+    // a lit clear line, the Prism whiteout, a lock flash, debris in flight.
+    // Below the threshold the composer's output is identical to a plain
+    // render, so skipping it costs nothing visually and returns the whole
+    // bloom chain's cost during ordinary play, where it matters most on
+    // integrated and software GL.
+    const canBloom = highlights.length > 0 || whiteout > 0 || flash > 0 || this.debris.isActive;
+    if (canBloom) {
+      this.composer.render();
+    } else {
+      this.renderer.render(this.scene, this.camera);
+    }
   }
 
   dispose(): void {
@@ -251,6 +431,14 @@ export class GameRenderer {
     this.active.dispose();
     this.ghost.dispose();
     this.glow.dispose();
+    this.activeHidden.dispose();
+    this.ghostHidden.dispose();
+    this.xrayShell.dispose();
+    this.xrayCore.dispose();
+    this.lockFlashLayer.dispose();
+    this.environment.dispose();
+    this.debris.dispose();
+    this.composer.dispose();
     this.renderer.dispose();
   }
 }

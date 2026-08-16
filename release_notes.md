@@ -7,6 +7,114 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M6: Playtest Readability & Presentation
+
+The roadmap grew a milestone: observed play said the board becomes unreadable
+under occlusion and the presentation feels mechanical, and those problems
+outrank menus. The old M6–M9 are now M7–M10, and this M6 answers the playtest.
+
+### Shipped
+
+- **The falling piece and its ghost never disappear.** Where settled cubes
+  occlude them, both draw as translucent silhouettes — a second instanced pass
+  per layer that renders exactly where the depth test fails, so the piece looks
+  ordinary when visible and shows through the stack the moment it is buried.
+  Both keep their true spectrum colours; no outline hue was added, because an
+  unexplained hue on this screen would be read as a depth claim. The active
+  silhouette is solid, the ghost's fainter and inset, so they stay distinct
+  even when both show through.
+- **First-contact X-ray.** The piece acts as a vertical flashlight: for each
+  occupied column of its footprint, the topmost settled cube beneath it — and
+  nothing beneath that — shows through the board as a breathing translucent
+  shell with a brighter core. The X-ray manipulates opacity, luminance and
+  animation, never hue, so the cube's depth colour survives; intervening cubes
+  stay visibly present through the translucency, which is what makes it read
+  as seeing *through* the board rather than as geometry pasted on top. The
+  trace lives in the engine (`firstContactCells`), derived from the piece's
+  position, so it follows every move and rotation for free, and its rules are
+  pinned by unit tests. Hierarchy, strongest to weakest: active piece → ghost →
+  X-rayed contact → normally occluded board.
+- **The void is gone.** A reactive achromatic environment — drifting dust,
+  distant wireframe fragments, a faint floor lattice, camera-facing rings that
+  ripple outward on clears. It pulses when a piece locks, brightens and
+  accelerates as the Shift meter fills, surges through a turn, and answers a
+  Refraction Clear or a Prism with a bigger (still colourless) response. It is
+  strictly a backdrop *by construction*: every element renders before the board
+  with no depth writes, so a board pixel always wins and nothing environmental
+  can ever sit between the player and a cube. White and grey light only —
+  DESIGN §2.4 writes the rule down.
+- **The M2/M4 visual debts, paid.** Bloom is now a real thresholded
+  post-process chain rather than a colour lerp, and the threshold sits above
+  anything the settled board can produce, so only the clear glow and the Prism
+  whiteout can reach it — "selective" enforced by arithmetic. Clears dissolve
+  along their axis into spectrum-tinted debris (each particle carries the
+  colour of the cell it came from, staggered so the line goes end to end), and
+  locking lands with a brief flash of the settled cells.
+- **The lane bag is dead.** Depth lanes now come from a free seeded draw with a
+  starvation floor: nothing pushes the counts toward even, so the sequence
+  clusters, repeats and leaves gaps the way real randomness does, and a lane
+  absent past `LANE_STARVATION_GAP` deals has its weight climb steeply until it
+  is dealt. Balance is a floor, not a levelling force. The tests now pin the
+  *texture*: repeats must occur, 8-deal windows must not keep sweeping all
+  eight lanes, and no lane may starve past the floor — so a future "fix" that
+  quietly reintroduces a levelling force will fail the suite.
+- **Tier 4 finally does something.** Stages 6–7 declared `maxTier: 4` while the
+  catalogue topped out at 3. The design spec always defined tier 4 as
+  projection ambiguity, and that is what it now is: at tier 4 the dealer deals
+  each piece in a random orientation from a third seeded stream. Same eight
+  shapes, presenting differently.
+- **The piece-vocabulary experiment**, behind `?pieces=experimental` and never
+  the default: the screws at tier 1 so depth arrives with the first bag, a
+  tricube as a rescue piece, the tripod at tier 2, and three purpose-built
+  non-planar pentacubes at tier 3. First measurement, from the greedy agent:
+  the experimental vocabulary clears *more* lines than the standard one (61 and
+  51 across two 200-piece seeded runs, where the standard catalogue's benchmark
+  run manages 47) — the tricube's rescue value apparently outweighs the
+  pentacubes' awkwardness. Graduation into the standard catalogue waits on
+  human playtesting.
+
+### Corrections
+
+- The game-over screen said "Press R to play again". R rotates pitch; restart
+  is Enter. The hint now tells the truth, and an end-to-end test parses the key
+  out of the hint and presses it, so the copy and the binding can never
+  advertise different keys again. The overlay also rebuilt itself only once, so
+  a second game over displayed the first run's score; it now rebuilds per run.
+- The lock-delay 15-reset cap and block-out game over existed but were
+  untested. Both are now pinned: a wiggling grounded piece locks on schedule
+  (the sixteenth reset buys nothing), and a blocked spawn ends the run without
+  the stack ever reaching the buffer.
+- `docs/PLAN.md` claimed things the tree did not contain — the M2 camera spec
+  the orthographic decision had superseded, a floor grid and contact shadows
+  that were never built, M3 apparent-size interpolation the size-constancy rule
+  forbids, and the M4 bloom/debris/lock-flash that shipped only now. Every
+  claim is corrected in place with a note saying what happened to it.
+
+### A testing note worth keeping
+
+The bloom chain made headless software GL fall over: three end-to-end tests
+timed out or missed their sampling windows because every frame was paying for
+a full-resolution post-process that, below threshold, produces exactly the
+same image as a plain render. The fix was not test-shaped but honest: the
+composer now runs only while a pixel that *can* bloom exists — a lit clear
+line, the whiteout, a lock flash, debris in flight — and ordinary play renders
+without it. The suite went green again, and integrated GPUs get the same win.
+
+### Tested
+
+**197 unit tests, 29 end-to-end tests.**
+
+New: first-contact tracing (topmost cube only, per column, through overhangs,
+empty over bare floor, gone at lock); the lane draw's determinism, floor,
+texture and non-sweep properties; the experimental catalogue's connectivity,
+non-planar-at-tier-1 guarantee, and isolation from the standard deal; tier-4
+orientation variety below/at the boundary; the lock-reset cap; block-out; the
+restart key contract; the environment's idle liveliness (two frames of a frozen
+board, taken a moment apart, must differ); and a clean boot-and-play pass under
+the experimental flag.
+
+---
+
 ## M5 — Progression
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

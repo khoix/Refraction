@@ -8,6 +8,7 @@
 
 import './styles/app.css';
 import { DEFAULT_TURN_DURATION_MS, Game } from '@core/game';
+import type { PieceCatalog } from '@core/pieces';
 import type { TurnDirection } from '@core/types';
 import { GameRenderer } from '@render/game-renderer';
 import { InputController } from './input';
@@ -78,7 +79,11 @@ function boot(root: HTMLElement): void {
   const turnDurationMs =
     debug && Number.isFinite(turnMs) && turnMs > 0 ? turnMs : DEFAULT_TURN_DURATION_MS;
 
-  const newGame = (seed: string): Game => new Game({ seed, turnDurationMs });
+  // The M6.5 playtest bed: an alternative piece vocabulary, never the default.
+  const catalog: PieceCatalog =
+    params.get('pieces') === 'experimental' ? 'experimental' : 'standard';
+
+  const newGame = (seed: string): Game => new Game({ seed, turnDurationMs, catalog });
 
   let game = newGame(startingSeed);
   const renderer = new GameRenderer(canvas, {
@@ -144,6 +149,7 @@ function boot(root: HTMLElement): void {
           break;
         case 'lock':
           audio.lock(nearestLane(game));
+          if (event.cells) renderer.lockFlash(event.cells);
           break;
         case 'clear': {
           if (event.label) hud.showBanner(event.label);
@@ -151,6 +157,14 @@ function boot(root: HTMLElement): void {
           audio.clear(event.lines ?? 1, event.cascade ?? 0, nearestLane(game));
           // Bigger clears hit harder; a Full Spectrum shakes the hardest.
           renderer.shake(event.prism ? 1 : Math.min((event.lines ?? 1) / 4, 0.7));
+          if (event.cleared) {
+            renderer.clearEffect(
+              event.cleared,
+              game.face,
+              event.refraction === true,
+              event.prism === true
+            );
+          }
           if (event.prism) {
             renderer.startPrism();
             audio.prism();

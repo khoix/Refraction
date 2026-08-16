@@ -164,6 +164,92 @@ async function main() {
 
     if (await page.locator('.overlay').isVisible()) await shot('08-game-over');
 
+    // M6 scenes get a fresh page: the prism aftermath above leaves the
+    // renderer's stretched turn and whiteout mid-flight, which would colour
+    // everything that follows.
+    await page.goto(`${URL}/?debug=1&seed=xray-capture`);
+    await page.waitForSelector('#app[data-ready="true"]');
+    await sleep(400);
+
+    // M6: a piece buried behind a wall. The wall hides the piece and its
+    // ghost, so the occluded silhouettes carry them, and the first-contact
+    // X-ray shows the stack top through the wall.
+    await page.evaluate(() => {
+      const handle = window.__refraction;
+      if (!handle) return;
+      handle.restart('xray');
+      const game = handle.game;
+      // A wall across the near lane, in front of everything behind it.
+      for (let x = 2; x <= 5; x += 1) {
+        for (let y = 0; y <= 6; y += 1) game.board.fill({ x, y, z: 7 });
+      }
+      // A stack behind the wall for the piece to aim at.
+      game.board.fill({ x: 3, y: 0, z: 4 });
+      game.board.fill({ x: 3, y: 1, z: 4 });
+      game.board.fill({ x: 4, y: 0, z: 4 });
+      // Park the falling piece behind the wall, above the stack. Lane 3 on the
+      // front face is z = 4, the same column as the stack.
+      game.active = {
+        id: 'O',
+        offsets: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 0, y: 1, z: 0 },
+          { x: 1, y: 1, z: 0 },
+        ],
+        u: 3,
+        y: 4,
+        lane: 3,
+      };
+    });
+    await sleep(200);
+    await shot('09-xray-buried');
+
+    // M6: a clear, caught twice -- once during the lit flash (bloom), once as
+    // the line dissolves into spectrum-tinted debris and the environment
+    // ripples.
+    await page.evaluate(() => {
+      const handle = window.__refraction;
+      if (!handle) return;
+      handle.restart('burst');
+      const game = handle.game;
+      // Two rows, each one O-column short: the drop completes both at once,
+      // for a double clear's worth of debris and a bigger ripple.
+      for (let x = 0; x < 6; x += 1) {
+        game.board.fill({ x, y: 0, z: 4 });
+        game.board.fill({ x, y: 1, z: 4 });
+      }
+      game.active = {
+        id: 'O',
+        offsets: [
+          { x: 0, y: 0, z: 0 },
+          { x: 1, y: 0, z: 0 },
+          { x: 0, y: 1, z: 0 },
+          { x: 1, y: 1, z: 0 },
+        ],
+        u: 6,
+        y: 10,
+        lane: 3,
+      };
+    });
+    await sleep(120);
+    await page.keyboard.press('Space');
+    await sleep(60);
+    await shot('10-clear-glow');
+    await sleep(200);
+    await shot('11-clear-debris');
+
+    // M6: the experimental piece vocabulary, dealt from the first bag.
+    await page.goto(`${URL}/?debug=1&seed=exp-capture&pieces=experimental`);
+    await page.waitForSelector('#app[data-ready="true"]');
+    for (let i = 0; i < 5; i += 1) {
+      await page.keyboard.press(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
+      await page.keyboard.press('Space');
+      await sleep(120);
+    }
+    await sleep(400);
+    await shot('12-experimental');
+
     await browser.close();
   } finally {
     shutdown();

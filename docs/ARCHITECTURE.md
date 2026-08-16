@@ -33,17 +33,21 @@ src/
     projection.ts       THE projection contract — faces, turns, lines
     spectrum.ts         OKLCH depth ramp, gamut mapping, apparent size
     rng.ts              seeded deterministic RNG
-    board.ts            voxel occupancy, per-column gravity, line clearing
-    pieces.ts           tetracube catalogue, rotation, orientations
-    dealer.ts           seeded piece bag and Lane Dealer
-    stages.ts           the Red -> Violet -> Ultraviolet curve
+    board.ts            voxel occupancy (dense Uint8Array), per-column gravity,
+                        line clearing
+    pieces.ts           polycube catalogues (standard and experimental),
+                        rotation, orientations
+    dealer.ts           seeded piece bag, lane draw with starvation floor,
+                        tier-4 spawn orientations
+    stages.ts           seven numbered stages, then the endless tail
     scoring.ts          line values, chain and cascade multipliers
-    game.ts             state machine, turn sequence, game over
+    game.ts             state machine, turn sequence, first contact, game over
     ascii.ts            text rendering of any face, for tests
   render/               Three.js — reads core state, never writes it
     scene.ts            camera, lights, the well
-    voxels.ts           instanced cubes, per-frame colour and size
-    game-renderer.ts    per-frame update and the turn camera
+    voxels.ts           instanced cube layers, per-frame colour
+    environment.ts      reactive achromatic backdrop, clear debris
+    game-renderer.ts    per-frame update, the turn camera, selective bloom
   ui/hud.ts             HUD
   input.ts              keyboard, DAS/ARR
   audio/
@@ -91,26 +95,37 @@ There is no second copy of this geometry anywhere in the codebase.
 
 ## Time
 
-Fixed-timestep simulation at 60 Hz with an accumulator; rendering interpolates
-between the last two states. The simulation never sees wall-clock time, only the
-fixed step, which is what makes replays exact.
+Fixed-timestep simulation at 60 Hz with an accumulator. The renderer draws the
+latest state each animation frame and drives its own presentational timers
+(camera turn, flashes, environment) from the frame delta. The simulation never
+sees wall-clock time, only the fixed step, which is what makes replays exact.
 
 ## Rendering
 
-One `InstancedMesh` for every cube on the board, with per-instance colour and
-scale attributes. At 8 × 18 × 8 the worst case is 1152 instances — one draw
-call, trivially within budget, leaving headroom for effects.
+Every cube layer is an `InstancedMesh` over one shared rounded-box geometry:
+the settled board, the active piece, the ghost, the clear glow, the occluded
+silhouettes of the active piece and ghost (drawn only where the depth test
+fails), the first-contact X-ray shell and core, and the lock flash. At
+8 × 18 × 8 the settled board's worst case is 1152 instances; the other layers
+are 8 instances each. A handful of draw calls, trivially within budget.
 
-Depth is read through four redundant channels (colour, apparent size, rim light,
-floor grid) so no single one carries the whole load. See §9 and §10 of the
-design spec.
+Depth is communicated by colour and by nothing else — apparent size, distance
+haze and every other familiar cue is deliberately withheld. See §2.1 of the
+design spec. Colour is computed from live camera distance every frame rather
+than from the snapped face, which is what makes the turn animation continuous
+instead of a crossfade between two palettes.
 
-Colour is computed from live camera distance every frame rather than from the
-snapped face, which is what makes the turn animation continuous instead of a
-crossfade between two palettes.
+Bloom is a real post-process pass, thresholded so only the clear glow and the
+Prism whiteout can reach it, and the composer runs only while such a pixel can
+exist; ordinary play renders without it.
+
+The environment renders in the opaque pass with a negative render order, no
+depth writes, and additive brightness in place of opacity, so board pixels
+always paint over it — it is strictly a backdrop and can never sit between
+the player and a cube.
 
 ## Determinism
 
-Two independent seeded streams, forked from the run seed: one for the piece bag,
-one for the lane bag. Cosmetic randomness draws from a third fork so that
-changing a particle effect can never alter gameplay.
+Three independent seeded streams, forked from the run seed: the piece bag, the
+lane draw, and tier-4 spawn orientations. Cosmetic randomness lives entirely
+outside `src/core/` in the render layer, where it cannot alter gameplay.

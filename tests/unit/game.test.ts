@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game, facePreview } from '@core/game';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
-import { lineCells } from '@core/projection';
+import { fromView, lineCells } from '@core/projection';
 import { LINES_PER_STAGE, stageForLines } from '@core/stages';
 import type { Board } from '@core/board';
 import type { Cell } from '@core/types';
@@ -82,9 +82,12 @@ describe('movement', () => {
   it('allows depth nudges when the mode overrides the gate', () => {
     const game = new Game({ seed: 'zen', forceDepthNudge: true });
     expect(game.depthNudgeAllowed).toBe(true);
-    const before = game.active?.lane;
-    expect(game.nudgeDepth(1)).toBe(true);
-    expect(game.active?.lane).toBe((before as number) + 1);
+    const before = game.active?.lane as number;
+    // Nudge toward the middle of the well, so the dealt lane can't be against
+    // the wall the nudge is heading for.
+    const direction = before >= BOARD_DEPTH / 2 ? -1 : 1;
+    expect(game.nudgeDepth(direction)).toBe(true);
+    expect(game.active?.lane).toBe(before + direction);
   });
 
   it('hard drop lands the piece on the floor and locks it', () => {
@@ -432,7 +435,122 @@ describe('hold', () => {
   });
 });
 
+describe('first contact', () => {
+  /** Pin the active piece to an O at a known view position. */
+  function pinActive(game: Game, u: number, y: number, lane: number): void {
+    game.active = {
+      id: 'O',
+      offsets: [
+        { x: 0, y: 0, z: 0 },
+        { x: 1, y: 0, z: 0 },
+        { x: 0, y: 1, z: 0 },
+        { x: 1, y: 1, z: 0 },
+      ],
+      u,
+      y,
+      lane,
+    };
+  }
+
+  it('reports nothing over a bare floor', () => {
+    const game = newGame('contact');
+    pinActive(game, 3, 10, 2);
+    expect(game.firstContactCells()).toEqual([]);
+  });
+
+  it('reveals only the topmost settled cube under each footprint column', () => {
+    const game = newGame('contact');
+    pinActive(game, 3, 10, 2);
+
+    // A three-cube stack under one column of the O. Only its top may show.
+    const below = fromView('front', { u: 3, y: 0, lane: 2 });
+    for (let y = 2; y <= 4; y += 1) game.board.fill({ ...below, y });
+
+    expect(game.firstContactCells()).toEqual([{ ...below, y: 4 }]);
+  });
+
+  it('follows the piece as it moves', () => {
+    const game = newGame('contact');
+    pinActive(game, 3, 10, 2);
+    const below = fromView('front', { u: 3, y: 0, lane: 2 });
+    game.board.fill({ ...below, y: 0 });
+
+    expect(game.firstContactCells()).toHaveLength(1);
+    // Two steps right moves both footprint columns off the stack.
+    game.moveHorizontal(1);
+    game.moveHorizontal(1);
+    expect(game.firstContactCells()).toEqual([]);
+  });
+
+  it('sees through an overhang to the cube actually beneath the piece', () => {
+    const game = newGame('contact');
+    pinActive(game, 3, 10, 2);
+
+    // Occupied cells in a NEIGHBOURING column must not block the trace; only
+    // cells directly beneath the footprint count, and only the first of them.
+    const under = fromView('front', { u: 3, y: 0, lane: 2 });
+    const beside = fromView('front', { u: 5, y: 0, lane: 2 });
+    game.board.fill({ ...under, y: 1 });
+    game.board.fill({ ...beside, y: 8 });
+
+    expect(game.firstContactCells()).toEqual([{ ...under, y: 1 }]);
+  });
+
+  it('is empty once the run is over', () => {
+    const game = newGame('contact');
+    pinActive(game, 3, 10, 2);
+    game.board.fill(fromView('front', { u: 3, y: 0, lane: 2 }));
+    expect(game.firstContactCells()).not.toEqual([]);
+    game.status = 'gameOver';
+    expect(game.firstContactCells()).toEqual([]);
+  });
+});
+
+describe('lock delay', () => {
+  it('caps the reset rule at 15, so a grounded piece cannot hover forever', () => {
+    const game = newGame('lockcap');
+    while (game.softDrop()) {
+      // Walk the piece to the floor.
+    }
+    game.tick(1); // establishes grounded
+
+    // Wiggle just before every lock deadline. Each grounded move refreshes the
+    // lock timer, so without the cap this loop would keep the piece airborne
+    // indefinitely. With it, the sixteenth wiggle stops buying time.
+    let lockedAt = -1;
+    for (let i = 0; i < 40 && lockedAt < 0; i += 1) {
+      expect(game.moveHorizontal(i % 2 === 0 ? -1 : 1)).toBe(true);
+      game.tick(game.stage.lockDelayMs - 10);
+      if (game.drainEvents().some((event) => event.type === 'lock')) lockedAt = i;
+    }
+
+    // Late enough that the 15 allowed resets genuinely happened, early enough
+    // that the cap genuinely ended them.
+    expect(lockedAt).toBeGreaterThanOrEqual(15);
+    expect(lockedAt).toBeLessThanOrEqual(18);
+  });
+});
+
 describe('failure', () => {
+  it('ends the run when the next piece cannot spawn, without reaching the buffer', () => {
+    const game = newGame('blockout');
+    // Wall off the spawn rows. x = 0 stays open so no line is ever complete
+    // and nothing reaches the buffer -- this failure is block-out, not top-out.
+    for (let y = BOARD_HEIGHT - 4; y < BOARD_HEIGHT; y += 1) {
+      for (let x = 1; x < BOARD_WIDTH; x += 1) {
+        for (let z = 0; z < BOARD_DEPTH; z += 1) {
+          game.board.fill({ x, y, z });
+        }
+      }
+    }
+
+    game.hardDrop(); // locks in place; the following spawn has nowhere to go
+    settle(game);
+
+    expect(game.status).toBe('gameOver');
+    expect(game.board.isToppedOut()).toBe(false);
+  });
+
   it('ends the run when locked cells reach the spawn buffer', () => {
     const game = newGame();
     for (let y = 0; y < BOARD_HEIGHT + 1; y += 1) {

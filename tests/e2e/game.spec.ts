@@ -158,6 +158,27 @@ test.describe('controls', () => {
     await page.keyboard.press('KeyC');
     await expect(holdCells.first()).toBeVisible();
   });
+
+  test('the key the game-over screen advertises actually restarts', async ({ page }) => {
+    await page.goto('/?debug=1&seed=restart');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      game.status = 'gameOver';
+    });
+
+    const hint = page.locator('.overlay__hint');
+    await expect(hint).toBeVisible();
+    // Parse the key out of the hint itself, so the copy and the binding can
+    // never advertise different keys again.
+    const advertised = /press (\w+)/i.exec((await hint.textContent()) ?? '')?.[1];
+    expect(advertised).toBeTruthy();
+
+    await page.keyboard.press(advertised as string);
+    await expect(page.locator('.overlay__hint')).toBeHidden();
+    await expect(page.locator('.stat__value').first()).toHaveText('0');
+  });
 });
 
 test.describe('the turn', () => {
@@ -346,6 +367,41 @@ test.describe('feel', () => {
     expect(peak).toBeLessThan(1);
   });
 
+  test('the space stays alive even when the board is still', async ({ page }) => {
+    // The environment drifts during idle play, so two frames of a frozen board
+    // taken a moment apart must not be identical. The board itself cannot be
+    // the difference: the game is over and nothing else moves.
+    await frozenBoard(page, '');
+
+    const sample = (): Promise<number[]> =>
+      page.evaluate(() => {
+        const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+        const scratch = document.createElement('canvas');
+        scratch.width = 120;
+        scratch.height = 80;
+        const context = scratch.getContext('2d');
+        if (!context) return [];
+        context.drawImage(source, 0, 0, scratch.width, scratch.height);
+        return Array.from(context.getImageData(0, 0, scratch.width, scratch.height).data);
+      });
+
+    const before = await sample();
+    await page.waitForTimeout(900);
+    const after = await sample();
+
+    let changedPixels = 0;
+    for (let i = 0; i < before.length; i += 4) {
+      if (
+        Math.abs((before[i] as number) - (after[i] as number)) > 4 ||
+        Math.abs((before[i + 1] as number) - (after[i + 1] as number)) > 4 ||
+        Math.abs((before[i + 2] as number) - (after[i + 2] as number)) > 4
+      ) {
+        changedPixels += 1;
+      }
+    }
+    expect(changedPixels).toBeGreaterThan(30);
+  });
+
   test('reduced motion suppresses the shake entirely', async ({ page }) => {
     await frozenBoard(page, '&reducedMotion=1');
     expect(await peakShake(page)).toBe(0);
@@ -424,6 +480,22 @@ test.describe('progression', () => {
       if (game) game.lines = perStage * 8;
     }, LINES_PER_STAGE);
     await expect(page.locator('.stat__value').nth(2)).toHaveText('9');
+  });
+});
+
+test.describe('experiments', () => {
+  test('the experimental piece vocabulary boots and plays cleanly', async ({ page }) => {
+    const problems: string[] = [];
+    page.on('pageerror', (error) => problems.push(error.message));
+    await page.goto('/?debug=1&seed=exp&pieces=experimental');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press('ArrowUp');
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(80);
+    }
+    expect(problems).toEqual([]);
   });
 });
 

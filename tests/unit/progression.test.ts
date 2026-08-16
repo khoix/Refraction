@@ -14,8 +14,9 @@
 
 import { describe, expect, it } from 'vitest';
 import { Game } from '@core/game';
-import { Dealer } from '@core/dealer';
-import { PIECES, isPlanar, piecesForTier } from '@core/pieces';
+import { Dealer, LANE_STARVATION_GAP, LaneDealer } from '@core/dealer';
+import { DEPTH_LANES } from '@core/constants';
+import { PIECES, isPlanar, piecesForTier, shapeKey } from '@core/pieces';
 import { createRng } from '@core/rng';
 import { SPECTRUM_STOPS } from '@core/spectrum';
 import {
@@ -111,13 +112,6 @@ describe('the dealer respects the schedule', () => {
     }
   });
 
-  it('deals every lane, so cross-axis lines stay reachable', () => {
-    const dealer = new Dealer(createRng('lanes'), 1);
-    const seen = new Set<number>();
-    for (let i = 0; i < 200; i += 1) seen.add(dealer.deal().lane);
-    expect(seen.size).toBe(8);
-  });
-
   it('brings newly unlocked pieces in promptly rather than after the old bag', () => {
     const dealer = new Dealer(createRng('unlock'), 1);
     for (let i = 0; i < 3; i += 1) dealer.deal();
@@ -126,6 +120,95 @@ describe('the dealer respects the schedule', () => {
     const ids = new Set<string>();
     for (let i = 0; i < 40; i += 1) ids.add(dealer.deal().def.id);
     expect(ids.has('TRIPOD') || ids.has('SCREW_L') || ids.has('SCREW_R')).toBe(true);
+  });
+
+  it('spawns canonical orientations below tier 4, and varied ones at tier 4', () => {
+    // Below tier 4 every deal of a piece arrives the same way up.
+    const calm = new Dealer(createRng('orient-3'), 3);
+    const calmShapes = new Map<string, Set<string>>();
+    for (let i = 0; i < 200; i += 1) {
+      const dealt = calm.deal();
+      const set = calmShapes.get(dealt.def.id) ?? new Set<string>();
+      set.add(shapeKey(dealt.cells));
+      calmShapes.set(dealt.def.id, set);
+    }
+    for (const shapes of calmShapes.values()) expect(shapes.size).toBe(1);
+
+    // At tier 4 the same piece arrives as more than one of its projections --
+    // the complex tier's "projection ambiguity" is orientation, not new shapes.
+    const wild = new Dealer(createRng('orient-4'), 4);
+    const wildShapes = new Map<string, Set<string>>();
+    for (let i = 0; i < 200; i += 1) {
+      const dealt = wild.deal();
+      const set = wildShapes.get(dealt.def.id) ?? new Set<string>();
+      set.add(shapeKey(dealt.cells));
+      wildShapes.set(dealt.def.id, set);
+    }
+    const varied = [...wildShapes.values()].filter((shapes) => shapes.size > 1);
+    expect(varied.length).toBeGreaterThan(3);
+  });
+});
+
+describe('the lane draw', () => {
+  /**
+   * Lanes are deliberately NOT a bag. The bag swept the spectrum too evenly --
+   * eight deals, eight colours, ROYGBIV on a loop. Balance is a floor, not a
+   * levelling force: the draw is free, and the only guarantee is that no lane
+   * starves long enough to make cross-axis lines unreachable on it.
+   */
+  const dealLanes = (seed: string, count: number): number[] => {
+    const dealer = new LaneDealer(createRng(seed));
+    return Array.from({ length: count }, () => dealer.take());
+  };
+
+  it('is deterministic for a given seed', () => {
+    expect(dealLanes('replay', 500)).toEqual(dealLanes('replay', 500));
+    expect(dealLanes('replay', 100)).not.toEqual(dealLanes('other', 100));
+  });
+
+  it('never starves a lane past the floor', () => {
+    for (const seed of ['floor-a', 'floor-b', 'floor-c', 'floor-d']) {
+      const gaps = new Array<number>(DEPTH_LANES).fill(0);
+      for (const lane of dealLanes(seed, 10_000)) {
+        for (let i = 0; i < DEPTH_LANES; i += 1) {
+          gaps[i] = i === lane ? 0 : (gaps[i] as number) + 1;
+          // The weight ramp past the floor is steep enough that an overdue
+          // lane lands within a handful of further deals, every time.
+          expect(gaps[i]).toBeLessThanOrEqual(LANE_STARVATION_GAP + 8);
+        }
+      }
+    }
+  });
+
+  it('produces clusters and repeats, the texture a bag suppresses', () => {
+    // This is the guard against quietly reintroducing a levelling force: free
+    // randomness repeats itself, and the dealer must too.
+    const lanes = dealLanes('texture', 2_000);
+    let repeats = 0;
+    for (let i = 1; i < lanes.length; i += 1) {
+      if (lanes[i] === lanes[i - 1]) repeats += 1;
+    }
+    // A free draw repeats about 1 in 8. A bag can never repeat inside a cycle.
+    expect(repeats).toBeGreaterThan(lanes.length / 20);
+  });
+
+  it('does not sweep the lanes the way the old bag did', () => {
+    // The bag's signature: every window of 8 deals aligned to the cycle is a
+    // permutation of all 8 lanes. The free draw must not exhibit it.
+    const lanes = dealLanes('sweep', 2_000);
+    let permutationWindows = 0;
+    const windows = Math.floor(lanes.length / DEPTH_LANES);
+    for (let w = 0; w < windows; w += 1) {
+      const window = lanes.slice(w * DEPTH_LANES, (w + 1) * DEPTH_LANES);
+      if (new Set(window).size === DEPTH_LANES) permutationWindows += 1;
+    }
+    // For a free draw the odds of a full-coverage window are 8!/8^8, under 1%.
+    expect(permutationWindows).toBeLessThan(windows / 10);
+  });
+
+  it('still reaches every lane, so cross-axis lines stay reachable', () => {
+    const seen = new Set(dealLanes('coverage', 200));
+    expect(seen.size).toBe(DEPTH_LANES);
   });
 });
 

@@ -1,6 +1,6 @@
 # Refraction — Build Plan
 
-Ten milestones. Each one is a self-contained push: source, tests, and a
+Eleven milestones. Each one is a self-contained push: source, tests, and a
 `release_notes.md` entry. Every milestone leaves `main` in a state that builds,
 passes `npm run verify:full`, and can be played or inspected.
 
@@ -34,13 +34,13 @@ continuous and in-gamut; production build succeeds; e2e suite green.
 
 **Goal:** the entire game, playable headlessly, with no renderer at all.
 
-- `Board` — sparse voxel occupancy, `O(1)` cell access, per-column gravity.
+- `Board` — dense voxel occupancy grid, `O(1)` cell access, per-column gravity.
 - Tetracube catalogue with the four tiers, defined as integer cube offsets.
 - `Piece` — spawn, translate along the face's horizontal axis, depth nudge,
   the three rotation axes, generalised kick table.
 - Collision, lock delay with the 15-reset rule, hard/soft drop.
 - Line detection on the current face's axis; clear; cascade to stable.
-- Piece bag and lane bag dealers, both seeded.
+- Piece bag and lane dealers, both seeded.
 - Game-over detection: top-out and block-out.
 - ASCII debug renderer — renders any face as text, used heavily by tests.
 
@@ -55,20 +55,24 @@ from all four faces; seeded replays are bit-identical.
 **Exit criteria:** a full game can be played to game-over through a scripted
 input log, with the outcome reproducible from its seed.
 
+**Correction (recorded at M6):** this entry originally said "sparse voxel
+occupancy". The board is a dense `Uint8Array` — at 8 × 19 × 8 that is ~1.2 KB
+and there was never a reason to be sparse. The behaviour claims all held.
+
 ---
 
 ## M2 — First Light ✅ _shipped_
 
 **Goal:** the board becomes visible, and beautiful.
 
-- Three.js scene, flat until it turns: 5° near-orthographic camera dead-on when
-  settled, opening to 30° and 14° elevation at the midpoint of a turn.
-- Single `InstancedMesh` of bevelled boxes; per-instance colour and scale.
+- Three.js scene, flat until it turns: orthographic throughout, dead-on when
+  settled, gaining 12° of elevation at the midpoint of a turn.
+- Instanced bevelled boxes, one draw per layer; per-instance colour.
 - Continuous spectrum shading driven by live camera distance.
-- The well: wireframe cage, lane-tinted floor grid, subtle contact shadows.
-- Active piece, ghost piece at true landing depth, lock-flash.
+- The well: flat silhouette frame, corner posts that appear as the board turns.
+- Active piece, ghost piece at true landing depth.
 - HUD skeleton: score, stage, Shift meter, next piece, hold.
-- Fixed-timestep game loop with interpolated rendering.
+- Fixed-timestep game loop.
 
 **Exit criteria:** a complete game is playable on the Front face alone, at a
 locked 60 fps, and it already looks like a finished game.
@@ -79,6 +83,16 @@ interpolation anyway, and colour is computed from live camera distance, so the
 continuous recolour came for free. M3 keeps the rest: eligible lines glowing
 during the turn, animated cascades, and the chain-scoring presentation.
 
+**Superseded (recorded at M6):** this entry originally specified a 5°
+near-perspective camera opening to 30° yaw and 14° elevation mid-turn, a
+lane-tinted floor grid, and contact shadows. The orthographic decision (commit
+`43a66a2`) replaced all three: perspective of any strength is a second depth
+cue, a settled face is now dead-on at 0°, and shadows and floor tinting read as
+spatial hints the still frame is not allowed to give. The remaining visual
+bullets that were claimed here but not built — lock-flash, and a floor
+treatment of any kind — shipped in M6 (the flash, and the environment's
+achromatic lattice).
+
 ---
 
 ## M3 — The Turn ✅ _shipped_
@@ -86,8 +100,7 @@ during the turn, animated cascades, and the chain-scoring presentation.
 **Goal:** the central mechanic — the reveal.
 
 - Shift meter fills, freezes play, prompts for direction with the 5 s fallback.
-- 750 ms camera turn with continuous recolouring, parallax separation, and
-  apparent-size interpolation.
+- 750 ms camera turn with continuous recolouring and parallax separation.
 - Snap to exactly 90°; the new projection becomes the active board.
 - Refraction Clear evaluation on arrival; cascade resolution and animation.
 - Lines that will be eligible on arrival glow during the turn.
@@ -102,22 +115,32 @@ never actually saw the reveal. The turn is now a timed engine state: the face
 flips immediately, the eligible lines are recorded and glow for the whole
 rotation, and they clear on arrival.
 
+**Superseded (recorded at M6):** "apparent-size interpolation" was planned here
+and deliberately dropped. The game now promises the opposite — a cube eight
+lanes back is exactly the size of one at the front, always — because size
+falloff is a second, more familiar depth cue that players would read instead of
+reading colour.
+
 ---
 
 ## M4 — Feel ✅ _shipped_
 
 **Goal:** make it satisfying rather than merely correct.
 
-- Line-clear effects: dissolve along the clearing axis, spectrum-tinted debris.
-- Selective bloom, thresholded so only clears and Prism events bloom.
-- Screen shake, tuned subtle and fully disableable.
+- Screen shake, tuned subtle, suppressed under reduced motion.
 - Procedural WebAudio: lane-mapped pitch, filtered sweep on the turn, chord
   bloom on Prism.
 - Scoring popups and the escalating `REFRACTION ×n` / `PRISM CHAIN ×n` language.
 - **Full Spectrum / Prism** — the board blooms toward white on a four-face chain.
+- Clear glow with swell-and-pulse while lines resolve.
 
 **Exit criteria:** a Prism chain is a genuine event. Reduced-motion and
 photosensitivity settings verified.
+
+**Deferred to M6 (recorded at M6):** three bullets were claimed here and had
+not been built — selective post-process bloom (the Prism "bloom" was a colour
+lerp), the line-clear dissolve with spectrum-tinted debris, and the lock-flash.
+All three shipped in M6.
 
 ---
 
@@ -144,63 +167,117 @@ current camera and nothing else; a stage called "Green" invites the player to
 infer rules that do not exist. Stages are now numbered, the HUD chrome is
 achromatic throughout, and the rule is written down in DESIGN §2.2.
 
+**Note 3 (recorded at M6):** stages 6–7 declared `maxTier: 4` while the
+catalogue topped out at tier 3, so the tier was a no-op. Tier 4 now does what
+the design spec always said it should: the dealer deals random spawn
+orientations for projection ambiguity. No new shapes; the same eight present
+differently.
+
 ---
 
-## M6 — Modes and Meta
+## M6 — Playtest Readability & Presentation ✅ _shipped_
 
-**Goal:** everything around the core loop.
+**Goal:** the board stays readable under occlusion, the space feels alive, and
+the systems that felt mechanical get loosened. Driven by observed play.
+
+- **Active-piece and ghost visibility.** Both remain visible through every
+  settled cube until lock — a rendering override only, in their true spectrum
+  colours, mutually distinct even when both show through the stack.
+- **First-contact X-ray.** The piece is a vertical flashlight: the topmost
+  settled cube under each footprint column — and nothing beneath it — shows
+  through the board as a breathing shell and core that keep the cube's depth
+  colour. Reads as seeing through the board, not as drawn on top. Follows every
+  move; vanishes at lock.
+- **Reactive achromatic environment.** Dust, distant fragments, a floor
+  lattice, ripples on clears; brightness, density and motion only, never a hue;
+  strictly behind the board by construction. Reacts to lock, clear, meter,
+  turn, Refraction and Prism.
+- **Lane draw with a starvation floor** replaces the lane bag. Free seeded
+  randomness — clusters, repeats, dry spells — with a single guarantee that no
+  lane starves past a threshold. Balance is a floor, not a levelling force.
+- **Piece-vocabulary experiment** behind `?pieces=experimental`: screws at
+  tier 1, a tricube, three non-planar pentacubes. A playtest bed measured by
+  the greedy agent, never the default.
+- **The M2/M4 leftovers:** true thresholded post-process bloom (only clears and
+  Prism can reach it), line-clear dissolve with spectrum-tinted debris
+  staggered along the clearing axis, and the lock-flash.
+
+**Exit criteria:** a buried piece is never lost; the landing surface is legible
+through the stack; the lane sequence no longer reads as ROYGBIV on a loop; the
+experimental vocabulary is playable by the greedy agent; `verify:full` green.
+
+---
+
+## M7 — Modes and Meta
+
+**Goal:** everything around the core loop. Consumes M6's finalized gameplay
+rather than developing against systems still in motion.
 
 - All six modes: Ascent, Endless, Prism, Flatland, Blind Spectrum, Zen.
 - Title screen, mode select, pause, game-over, restart.
 - Versioned `localStorage` persistence with migration: settings, high scores per
-  mode, unlocks, lifetime stats.
+  mode, unlocks, lifetime stats, session records.
 - Settings menu: video, audio, controls, accessibility.
+- Seeded challenges and mode-specific scoring rules.
+
+**Engine note:** `GameStatus` has no `paused` state today, so pause is a core
+state-machine change, made without breaking `(seed, input log)` determinism.
 
 **Exit criteria:** every mode reachable and completable; a corrupt or outdated
 save is recovered from, never crashed on.
 
 ---
 
-## M7 — Reading the Board
+## M8 — Reading the Board
 
 **Goal:** the comprehension tools.
 
 - **Peek** — hold to tilt 8°, parallax inspection, snaps back, changes no state.
   Limited at Stage 6+, disabled in Blind Spectrum.
 - Rotating 3D next-piece preview; static preview as a harder option.
-- Hold slot, one swap per piece.
-- Ghost piece depth clarity pass.
-- First-run onboarding that teaches by design rather than by tutorial text.
+- First-run onboarding that teaches by design rather than by tutorial text:
+  position is absolute, colour is relative, rotation changes viewpoint, opposite
+  faces mirror, hidden geometry can be inferred before it is revealed.
+- **Ghost and contact clarity pass** — re-tune the M6 visibility, ghost and
+  X-ray systems after extended playtesting: opacity, line weight, animation
+  intensity, hierarchy, and behaviour on highly occluded boards.
 
 **Exit criteria:** a new player reaches their first turn without instructions and
 understands what happened afterwards.
 
 ---
 
-## M8 — Accessibility and Input
+## M9 — Accessibility and Input
 
 **Goal:** the game is legible and playable for everyone.
 
-- Banded, luminance, and colour-vision-safe depth ramps; lane numerals.
-- Full key remapping; gamepad; touch controls with swipe and tap.
-- Responsive layout from 390 px to ultrawide.
-- Reduced motion, screen-reader board summaries, focus management.
+- Banded, luminance, and colour-vision-safe depth ramps; lane numerals. Any
+  alternative to ROYGBIV must preserve the core distinction: depth is relative
+  to the current camera orientation.
+- Full key remapping; gamepad parity; touch controls with swipe and tap.
+- Responsive layout from 390 px to ultrawide; readable UI scaling.
+- Reduced motion, bloom/intensity controls, X-ray intensity, screen-shake
+  controls, audio accessibility, screen-reader board summaries, focus
+  management.
 
 **Exit criteria:** the game is completable with depth colour fully disabled, on
 a phone, and by keyboard alone.
 
 ---
 
-## M9 — Performance and Release Candidate
+## M10 — Performance and Release Candidate
 
 **Goal:** ship quality.
 
 - Profiling pass; dynamic resolution scaling; instance buffer reuse.
+- Large-board occlusion cost, X-ray rendering cost, particle and background
+  scalability.
 - WebGL-unavailable fallback message.
 - Playwright visual regression baselines for each face and each stage palette.
-- Deterministic replay tool for bug reports.
-- Bundle budget enforcement in CI.
-- Final documentation pass.
+- Deterministic replay tool for bug reports; input latency measurement.
+- Save migration verification, error handling, browser compatibility.
+- Bundle budget enforcement in CI; final difficulty tuning; final documentation
+  pass.
 
 **Exit criteria:** every budget in §12 of the design spec met on integrated
 graphics; visual regression suite green.

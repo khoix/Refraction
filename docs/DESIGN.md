@@ -180,6 +180,27 @@ When a stage does earn one, it is shown **alongside** the number rather than
 instead of it (`Stage 4 — Eclipse`), so the player never loses their place in
 the arc. And it may not be a spectrum band, for the reason in §2.2.
 
+### 2.4 The environment
+
+The board floats in a reactive space rather than a black void: drifting dust,
+distant geometric fragments, a faint floor lattice, and rings that ripple
+outward when lines clear. It exists to make the game feel alive, and it is
+allowed **brightness, contrast, density, geometry and motion — never a hue**.
+The rule in §2.2 reaches it in full: white and grey light only.
+
+It is also strictly a backdrop, by construction rather than by tuning. Every
+element draws before the board and never writes depth, so a board pixel always
+wins — nothing environmental can sit between the player and a cube, and none of
+its motion is coupled to board depth. The one familiar depth cue a moving
+background could smuggle in (parallax against the stack) is therefore absent:
+the environment moves behind everything, uniformly.
+
+It reacts to play: a small pulse on lock, a ripple and brightness response on a
+clear, a creeping density as the Shift meter fills, stronger movement through a
+turn, and a major (still achromatic) response to a Refraction Clear or a Prism.
+Under reduced motion the ambience stays and the spikes are cut to a fraction —
+motion is not the risk, flashes are.
+
 ## 3. Lines
 
 A **line** is 8 cells sharing a `y` and a `lane`, spanning the current face's
@@ -235,6 +256,23 @@ the board keeps its honest geometry. This is a feature, not a compromise — the
 first time a player rotates an "L" into a "J", they have learned something true
 about the board.
 
+Tier 4's "projection ambiguity" is implemented as exactly that: at tier 4 the
+dealer deals each piece in a random orientation drawn from a third seeded
+stream, so a familiar shape can arrive as any of its projections. There are no
+tier-4-only shapes; the tier changes how the existing eight present, not what
+exists.
+
+#### The experimental vocabulary
+
+`?pieces=experimental` swaps in a playtest catalogue: the screws at tier 1 so
+depth arrives with the very first bag, a tricube (`V3`) as a rescue piece, the
+tripod earlier at tier 2, and three non-planar pentacubes (`HOOK5`, `TWIST5`,
+`CROSS5`) at tier 3. It is a bed for the M6.5 experiment — does the game read
+better when it stops resembling Tetris sooner? — and is never the default. Each
+candidate is measured with the greedy agent in `playability.test.ts` before any
+human judgement; whatever earns its place graduates into the standard catalogue
+with its own tier, and the rest is deleted.
+
 #### Correction: tier 2 as originally specified is impossible
 
 This spec first described tier 2 as "a planar tetracube with one cube pushed one
@@ -262,8 +300,18 @@ point — become impossible.
 
 **Resolution: the Lane Dealer.**
 
-- Every piece is dealt an **anchor lane** along with its shape, drawn from a
-  shuffled 8-lane bag so all lanes get coverage without clumping.
+- Every piece is dealt an **anchor lane** along with its shape, from a **free
+  seeded draw with a starvation floor**. Balance is a floor, not a levelling
+  force: nothing pushes lane counts toward even, so the sequence clusters,
+  repeats and leaves gaps the way genuine randomness does. The one guarantee is
+  that a lane absent past a threshold (`LANE_STARVATION_GAP` deals) has its
+  weight climb steeply until it is dealt — which is what keeps cross-axis lines
+  reachable on every lane, the reason the dealer exists.
+- It was a shuffled 8-lane bag first, and the bag was wrong in play: eight
+  deals, eight colours, and the depth assignment read as ROYGBIV on a loop —
+  a sequence to memorise rather than weather to read. The texture tests in
+  `progression.test.ts` now pin the opposite: repeats must occur, and 8-deal
+  windows must not keep sweeping all 8 lanes.
 - The anchor lane is visible before the piece lands: the preview renders it in
   depth colour, the piece spawns already wearing its lane's colour, and the
   ghost shows the landing footprint at the correct depth.
@@ -436,13 +484,28 @@ at least two of:
 - **Parallax during a turn** — the stack separates horizontally as the board
   rotates, which is what reveals which cubes sit at which depth. Cube size never
   varies with depth, at rest or mid-turn.
-- **Rim light** — a fresnel edge tinted by the cube's own lane colour.
-- **Floor grid** — the well's floor is gridded and lane-tinted; it anchors depth
-  absolutely rather than relatively.
-- **Peek** — hold `Space` to tilt the camera 8° for parallax. Changes no game
-  state. Limited or disabled at Stage 6+ and in Blind Spectrum.
+- **The falling piece and its ghost never disappear.** Where settled cubes
+  occlude them, both draw as translucent silhouettes in their true spectrum
+  colours — a rendering override only, with normal occlusion between settled
+  cubes untouched. The active silhouette is solid and the ghost's fainter and
+  inset, so the two stay distinct even when both show through the stack.
+- **First-contact X-ray.** The falling piece acts as a vertical flashlight: for
+  each occupied column of its footprint, the topmost settled cube beneath it —
+  and only that cube — shows through the board as a breathing translucent shell
+  with a brighter core. It keeps the cube's spectrum colour; the X-ray state
+  manipulates opacity, luminance and animation, never hue. Intervening cubes
+  stay visibly present, so it reads as seeing *through* the board rather than
+  as geometry drawn on top. It says "this is what the piece will physically
+  hit", not "these cubes are in front". It follows every move and rotation, and
+  vanishes at lock.
 - **Ghost piece** — rendered at the true landing depth, in that lane's colour.
-- **Preview** — a slowly rotating 3D render of the incoming polycube.
+- **Peek** _(future, M8)_ — hold to tilt the camera 8° for parallax. Changes no
+  game state. Limited or disabled at Stage 6+ and in Blind Spectrum.
+- **Preview** _(2D today; rotating 3D render is M8)_ — the incoming piece, in
+  the depth colours it will arrive wearing.
+
+The visual hierarchy when these overlap, strongest to weakest: **active piece →
+landing ghost → X-rayed first-contact surface → normally occluded board.**
 
 ## 10. Accessibility **[GAP — critical]**
 

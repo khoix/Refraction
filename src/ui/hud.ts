@@ -203,8 +203,11 @@ export class Hud {
       this.overlay.append(
         element('h2', 'overlay__title', 'GAME OVER'),
         element('p', 'overlay__score', `${game.score.toLocaleString('en-US')} points`),
-        element('p', 'overlay__hint', 'Press R to play again')
+        element('p', 'overlay__hint', 'Press Enter to play again')
       );
+    } else if (game.status !== 'gameOver' && this.overlay.childElementCount > 0) {
+      // Rebuilt on the next game over, so a restarted run shows its own score.
+      this.overlay.replaceChildren();
     }
 
     if (this.bannerTimer > 0) {
@@ -232,7 +235,7 @@ export class Hud {
   private renderSlots(game: Game): void {
     const next = game.preview[0];
     this.nextSlot.replaceChildren(
-      next ? renderPiecePreview(next.def.cells, next.lane) : element('div', 'piece')
+      next ? renderPiecePreview(next.cells, next.lane) : element('div', 'piece')
     );
 
     const held = game.held;

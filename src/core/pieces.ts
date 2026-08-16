@@ -9,7 +9,23 @@
 
 import type { Cell, HorizontalAxis } from './types';
 
-export type PieceId = 'I' | 'O' | 'L' | 'T' | 'S' | 'TRIPOD' | 'SCREW_L' | 'SCREW_R';
+export type PieceId =
+  | 'I'
+  | 'O'
+  | 'L'
+  | 'T'
+  | 'S'
+  | 'TRIPOD'
+  | 'SCREW_L'
+  | 'SCREW_R'
+  // Experimental vocabulary, dealt only from the experimental catalogue.
+  | 'V3'
+  | 'HOOK5'
+  | 'TWIST5'
+  | 'CROSS5';
+
+/** Which piece vocabulary a run deals from. */
+export type PieceCatalog = 'standard' | 'experimental';
 
 /** Rotation axis in world space. Y is the board's vertical axis. */
 export type RotationAxis = HorizontalAxis | 'y';
@@ -54,13 +70,63 @@ export const PIECES: readonly PieceDef[] = [
   { id: 'TRIPOD', tier: 3, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(0, 1, 0), cell(0, 0, 1)] },
 ];
 
+/**
+ * The experimental vocabulary, behind the `?pieces=experimental` flag.
+ *
+ * A playtest bed, not a rules change: it moves unmistakably non-planar pieces
+ * to stage 1 so the game asserts its spatial identity immediately, raises the
+ * non-planar proportion overall, and tries other voxel counts -- a tricube, and
+ * three pentacubes chosen for interesting multi-face projections. Every entry
+ * is judged by the criteria in PLAN M6.5, measured with the greedy agent in
+ * `playability.test.ts` rather than by eye. Whatever earns its place graduates
+ * into the standard catalogue with its own tier; the rest is deleted.
+ */
+export const EXPERIMENTAL_PIECES: readonly PieceDef[] = [
+  // The familiar planar five stay, but the screws join them at tier 1: depth
+  // arrives with the very first bag instead of waiting for stage 2.
+  { id: 'I', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(2, 0, 0), cell(3, 0, 0)] },
+  { id: 'O', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(0, 1, 0), cell(1, 1, 0)] },
+  { id: 'L', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(2, 0, 0), cell(2, 1, 0)] },
+  { id: 'T', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(2, 0, 0), cell(1, 1, 0)] },
+  { id: 'S', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(1, 1, 0), cell(2, 1, 0)] },
+  { id: 'SCREW_R', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(1, 1, 0), cell(1, 1, 1)] },
+  { id: 'SCREW_L', tier: 1, cells: [cell(0, 0, 1), cell(1, 0, 1), cell(1, 1, 1), cell(1, 1, 0)] },
+  // A tricube: small enough to rescue a bad board, and its L-projection is the
+  // same from every face, which makes it a gentle first non-tetracube.
+  { id: 'V3', tier: 1, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(0, 1, 0)] },
+  { id: 'TRIPOD', tier: 2, cells: [cell(0, 0, 0), cell(1, 0, 0), cell(0, 1, 0), cell(0, 0, 1)] },
+  // Pentacubes, all non-planar, all asymmetric on purpose: an L whose tip bends
+  // away from the camera, a chiral staircase, and a T with a foot behind it.
+  {
+    id: 'HOOK5',
+    tier: 3,
+    cells: [cell(0, 0, 0), cell(1, 0, 0), cell(2, 0, 0), cell(2, 0, 1), cell(2, 1, 1)],
+  },
+  {
+    id: 'TWIST5',
+    tier: 3,
+    cells: [cell(0, 0, 0), cell(1, 0, 0), cell(1, 1, 0), cell(1, 1, 1), cell(2, 1, 1)],
+  },
+  {
+    id: 'CROSS5',
+    tier: 3,
+    cells: [cell(0, 0, 0), cell(1, 0, 0), cell(2, 0, 0), cell(1, 1, 0), cell(1, 0, 1)],
+  },
+];
+
+/**
+ * Every piece either catalogue can produce, for by-id lookups such as hold.
+ * Standard entries win for the ids both catalogues share, so shared pieces
+ * keep their canonical tier when looked up by id.
+ */
 export const PIECES_BY_ID: ReadonlyMap<PieceId, PieceDef> = new Map(
-  PIECES.map((piece) => [piece.id, piece])
+  [...EXPERIMENTAL_PIECES, ...PIECES].map((piece) => [piece.id, piece])
 );
 
 /** Pieces available at a given difficulty tier. */
-export function piecesForTier(tier: number): PieceDef[] {
-  return PIECES.filter((piece) => piece.tier <= tier);
+export function piecesForTier(tier: number, catalog: PieceCatalog = 'standard'): PieceDef[] {
+  const source = catalog === 'experimental' ? EXPERIMENTAL_PIECES : PIECES;
+  return source.filter((piece) => piece.tier <= tier);
 }
 
 /** Translate a shape so its minimum corner sits at the origin. */

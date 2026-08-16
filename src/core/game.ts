@@ -16,7 +16,8 @@ import { Board } from './board';
 import type { Line } from './board';
 import { BOARD_HEIGHT, BOARD_HEIGHT_TOTAL } from './constants';
 import { Dealer } from './dealer';
-import type { PieceDef, PieceId, RotationAxis } from './pieces';
+import type { DealtPiece } from './dealer';
+import type { PieceCatalog, PieceDef, PieceId, RotationAxis } from './pieces';
 import { PIECES_BY_ID, extent, normalize, rotate } from './pieces';
 import { columnCount, fromView, laneCount, turn } from './projection';
 import { createRng } from './rng';
@@ -50,6 +51,8 @@ export interface GameEvent {
   /** Which way the board turned. Present on 'turn' events; drives the camera. */
   readonly direction?: TurnDirection;
   readonly cleared?: readonly Line[];
+  /** The world cells a piece just locked into. Present on 'lock' events. */
+  readonly cells?: readonly Cell[];
   /** True on the clear that completed a four-face revolution. */
   readonly prism?: boolean;
   /** 0 for the initial clear of a resolution, 1+ for each cascade after it. */
@@ -62,6 +65,12 @@ export interface GameOptions {
   readonly seed: string | number;
   /** Overrides the stage's own depth-nudge gating. Used by Prism and Zen. */
   readonly forceDepthNudge?: boolean;
+  /**
+   * Which piece vocabulary to deal from. `experimental` is the M6.5 playtest
+   * bed -- non-planar pieces from stage 1, tricubes and pentacubes later --
+   * and is reachable only through the `?pieces=experimental` flag.
+   */
+  readonly catalog?: PieceCatalog;
   /** Seconds the turn prompt waits before repeating the last direction. */
   readonly turnPromptTimeoutMs?: number;
   /** How long the board spends turning. Must match the renderer's animation. */
@@ -105,7 +114,7 @@ export class Game {
   private readonly dealer: Dealer;
   private readonly options: GameOptions;
 
-  private queue: { def: PieceDef; lane: number }[] = [];
+  private queue: DealtPiece[] = [];
   private heldPiece: { def: PieceDef; lane: number } | null = null;
   private holdUsed = false;
 
@@ -141,7 +150,7 @@ export class Game {
   constructor(options: GameOptions) {
     this.options = options;
     this.rng = createRng(options.seed);
-    this.dealer = new Dealer(this.rng, this.stage.maxTier);
+    this.dealer = new Dealer(this.rng, this.stage.maxTier, options.catalog ?? 'standard');
     for (let i = 0; i < 3; i += 1) this.queue.push(this.dealer.deal());
     this.spawn();
   }
@@ -161,7 +170,7 @@ export class Game {
   }
 
   /** The next three pieces, nearest first. */
-  get preview(): readonly { def: PieceDef; lane: number }[] {
+  get preview(): readonly DealtPiece[] {
     return this.queue;
   }
 
@@ -183,6 +192,39 @@ export class Game {
     let piece = this.active;
     while (this.fits({ ...piece, y: piece.y - 1 })) piece = { ...piece, y: piece.y - 1 };
     return this.worldCells(piece);
+  }
+
+  /**
+   * The settled cubes the falling piece is aimed at -- its first-contact
+   * surface. The piece acts as a vertical flashlight: for each occupied
+   * `(x, z)` column of its footprint, trace down from its lowest cube and
+   * report only the topmost settled cube found. Nothing beneath that cube is
+   * reported, and a column over bare floor contributes nothing.
+   *
+   * Derived entirely from the piece's current position, so it follows every
+   * move, rotation and fall for free, and is empty the moment the piece locks.
+   */
+  firstContactCells(): Cell[] {
+    if (this.status !== 'falling' || !this.active) return [];
+
+    // The lowest cube of the piece in each occupied (x, z) column.
+    const lowest = new Map<string, Cell>();
+    for (const cell of this.worldCells(this.active)) {
+      const key = `${cell.x},${cell.z}`;
+      const known = lowest.get(key);
+      if (!known || cell.y < known.y) lowest.set(key, cell);
+    }
+
+    const contacts: Cell[] = [];
+    for (const from of lowest.values()) {
+      for (let y = from.y - 1; y >= 0; y -= 1) {
+        if (this.board.isFilled({ x: from.x, y, z: from.z })) {
+          contacts.push({ x: from.x, y, z: from.z });
+          break;
+        }
+      }
+    }
+    return contacts;
   }
 
   /**
@@ -410,7 +452,9 @@ export class Game {
     const next = this.queue.shift();
     if (!next) return;
     this.queue.push(this.dealer.deal());
-    this.place(next.def.id, normalize([...next.def.cells]), next.lane);
+    // The dealt orientation, not the canonical one: at tier 4 a piece may
+    // arrive as any of its projections.
+    this.place(next.def.id, normalize([...next.cells]), next.lane);
   }
 
   private place(id: PieceId, offsets: Cell[], dealtLane: number): void {
@@ -439,8 +483,9 @@ export class Game {
 
   private lock(): void {
     if (!this.active) return;
-    for (const cell of this.worldCells(this.active)) this.board.fill(cell);
-    this.events.push({ type: 'lock' });
+    const cells = this.worldCells(this.active);
+    for (const cell of cells) this.board.fill(cell);
+    this.events.push({ type: 'lock', cells });
     this.active = null;
     this.holdUsed = false;
 
