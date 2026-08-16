@@ -85,9 +85,12 @@ export function turnSweep(direction: 'left' | 'right'): {
 } {
   const low = semitone(-24);
   const high = semitone(-5);
+  // Left orbits the camera towards -yaw, which falls; right towards +yaw, which
+  // rises. The names used to mean a world-spin, so this pairing is the inverse
+  // of what it was -- it still follows the camera, not the label.
   return {
-    from: direction === 'right' ? high : low,
-    to: direction === 'right' ? low : high,
+    from: direction === 'left' ? high : low,
+    to: direction === 'left' ? low : high,
     duration: 0.62,
     gain: 0.1,
   };

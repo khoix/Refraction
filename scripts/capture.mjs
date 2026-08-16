@@ -140,7 +140,7 @@ async function main() {
         }
       };
       for (let i = 0; i < 3; i += 1) {
-        const destination = { front: 'left', left: 'back', back: 'right', right: 'front' }[
+        const destination = { front: 'right', right: 'back', back: 'left', left: 'front' }[
           game.face
         ];
         const alongX = destination === 'front' || destination === 'back';
@@ -171,9 +171,9 @@ async function main() {
     await page.waitForSelector('#app[data-ready="true"]');
     await sleep(400);
 
-    // M6: a piece buried behind a wall. The wall hides the piece and its
-    // ghost, so the occluded silhouettes carry them, and the first-contact
-    // X-ray shows the stack top through the wall.
+    // M6/M7: a piece buried behind a wall. Nearer lanes go transparent, so
+    // the wall becomes a veil, the piece and its ghost stay readable, and
+    // the landing cubes in the focal lane keep a restrained inner highlight.
     await page.evaluate(() => {
       const handle = window.__refraction;
       if (!handle) return;

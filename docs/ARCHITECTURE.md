@@ -103,11 +103,13 @@ sees wall-clock time, only the fixed step, which is what makes replays exact.
 ## Rendering
 
 Every cube layer is an `InstancedMesh` over one shared rounded-box geometry:
-the settled board, the active piece, the ghost, the clear glow, the occluded
-silhouettes of the active piece and ghost (drawn only where the depth test
-fails), the first-contact X-ray shell and core, and the lock flash. At
-8 × 18 × 8 the settled board's worst case is 1152 instances; the other layers
-are 8 instances each. A handful of draw calls, trivially within budget.
+the settled board (split, while a piece is falling, into a transparent near
+veil, an opaque focal lane, and a darkened far lane), the active piece, the
+ghost, the clear glow, the occluded silhouettes of the active piece and ghost
+(drawn only where the depth test fails), a restrained contact highlight, and
+the lock flash. At 8 × 18 × 8 the settled board's worst case is 1152 instances
+across those three layers; the other layers are 8 instances each. A handful of
+draw calls, trivially within budget.
 
 Depth is communicated by colour and by nothing else — apparent size, distance
 haze and every other familiar cue is deliberately withheld. See §2.1 of the

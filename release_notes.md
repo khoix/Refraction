@@ -7,6 +7,56 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M7: Controls and Comprehension
+
+The first playtest of M6 said three things the game was communicating wrongly:
+the turn went the opposite way to the prompt, the next-piece preview was laid
+out with a cell-sized vertical gap, and the contact X-ray read as decoration
+rather than as information. None of those are taste. All three have a correct
+answer. The roadmap grew again: this M7 is those three fixes, M8 is the
+spectacle and HUD work that follows, and the old M7–M10 (Modes, Reading the
+Board, Accessibility, Performance) are now M9–M12.
+
+### Shipped
+
+- **A turn direction names the destination.** Pressing left brings the
+  left-hand face forward; pressing right, the right-hand. It used to mean a
+  world-spin, which delivered the opposite face — DESIGN §2 even documented
+  that, and playtesting was unambiguous about it being wrong. Two sign flips
+  in `turn()` and `turnYawDelta`, and the name now means what the player
+  thinks it means. The prompt labels each arrow with the face it will
+  actually produce (`← LEFT · RIGHT →` from the front, and the real
+  destinations from every other face), so the mapping cannot silently invert
+  again. The turn sweep still follows the camera: left (now −yaw) falls,
+  right rises.
+- **The next-piece preview is a fixed 4×4 with even spacing.** The previous
+  layout stretched a shrink-to-fit `1fr` grid to a min-height, so row tracks
+  grew while cells stayed 0.85 rem — a vertical gap of roughly one whole
+  cell against a 2 px horizontal gap. Tracks are now explicit rem sizes,
+  every piece is centred in the same 4×4, and an end-to-end test asserts
+  that the row step equals the column step.
+- **Lane focus replaces the contact X-ray.** The falling piece's occupied
+  lanes are a focal plane. Settled cubes nearer than that plane go
+  transparent (depth-write off, so the piece and its landing surface show
+  through); the focal lane stays fully opaque, with a restrained inner
+  highlight on the cubes `firstContactCells()` names as the ones the piece
+  will actually touch; cubes farther than the piece darken toward the void,
+  keeping their hue. The split exists only while a piece is falling, moves
+  when the piece moves, and vanishes at lock — it cannot be read as an
+  absolute distance cue. The additive pulsing X-ray shell and core are gone.
+
+### Tested
+
+**197 unit tests, 30 end-to-end tests.**
+
+The projection ring, yaw deltas, game-over turn destinations, refraction
+clears (now reached by choosing *left* to get the left face), and the audio
+sweep pairing all follow the new meaning. A new e2e pins the preview's
+spacing and another pins that the prompt's labelled faces match the keys
+that deliver them.
+
+---
+
 ## M6: Playtest Readability & Presentation
 
 The roadmap grew a milestone: observed play said the board becomes unreadable

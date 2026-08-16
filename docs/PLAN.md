@@ -1,6 +1,6 @@
 # Refraction — Build Plan
 
-Eleven milestones. Each one is a self-contained push: source, tests, and a
+Thirteen milestones. Each one is a self-contained push: source, tests, and a
 `release_notes.md` entry. Every milestone leaves `main` in a state that builds,
 passes `npm run verify:full`, and can be played or inspected.
 
@@ -208,9 +208,60 @@ experimental vocabulary is playable by the greedy agent; `verify:full` green.
 
 ---
 
-## M7 — Modes and Meta
+## M7 — Controls and Comprehension
 
-**Goal:** everything around the core loop. Consumes M6's finalized gameplay
+**Goal:** the game stops telling the player something wrong. Driven by the first
+playtest of M6.
+
+- **Turn direction names the destination.** Pressing left brings the left-hand
+  face forward; pressing right, the right-hand. The old mapping spun the world
+  the way the key pointed, which delivered the opposite face. The prompt now
+  labels each arrow with the face it will actually produce.
+- **Next-piece preview is a fixed 4×4 with even spacing.** The previous layout
+  stretched a shrink-to-fit grid to a min-height, so row tracks grew while cells
+  stayed 0.85 rem — a vertical gap of roughly one whole cell.
+- **Lane focus replaces the contact X-ray.** The falling piece's occupied lanes
+  are a focal plane: nearer settled cubes go transparent so you see through to
+  the piece and its landing surface; the focal lane stays fully opaque, with
+  `firstContactCells()` as a restrained emphasis on the cubes the piece will
+  actually touch; farther cubes darken toward the void. Gated to `falling`, so
+  it cannot be read as an absolute distance cue.
+
+**Exit criteria:** left delivers LEFT; the preview's row gap equals its column
+gap; a wall in a nearer lane no longer hides the piece's landing surface;
+`verify:full` green.
+
+---
+
+## M8 — Spectacle and the HUD
+
+**Goal:** the space is loud, the board is protected from it, and the chrome
+reads as an interface rather than as floating captions.
+
+- **A disco background** — coloured beams, chase and strobe, cycling fragments,
+  a pulsing lattice, density and scale that surge on events. `reducedMotion`
+  guts the strobing specifically, not merely scales it.
+- **The play column is ~95% opaque**, a dark panel behind the well sized to the
+  projected footprint, so the disco never competes with a cube for a depth
+  reading. Opacity dips through the Prism whiteout.
+- **Shift meter as a segmented bar under the column.** Segment count follows
+  `linesPerTurn` (five at stage 1, tightening later). Positioned from the
+  orthographic well rectangle.
+- **HUD chrome** — framed modules, aligned stat grids, framed NEXT/HOLD slots,
+  raised dim contrast, darker scrims. Stays achromatic because the HUD is the
+  surface that describes the rules.
+- **The colour rule's scope, corrected.** Decorative background colour is
+  allowed; a second colour language that makes claims about the rules is not.
+
+**Exit criteria:** the background is unmistakably alive from outside the column
+and invisible as colour from inside it; the Shift bar sits under the well and
+fills with the meter; the HUD reads as panels, not captions; `verify:full` green.
+
+---
+
+## M9 — Modes and Meta
+
+**Goal:** everything around the core loop. Consumes the finalized gameplay
 rather than developing against systems still in motion.
 
 - All six modes: Ascent, Endless, Prism, Flatland, Blind Spectrum, Zen.
@@ -228,7 +279,7 @@ save is recovered from, never crashed on.
 
 ---
 
-## M8 — Reading the Board
+## M10 — Reading the Board
 
 **Goal:** the comprehension tools.
 
@@ -238,16 +289,16 @@ save is recovered from, never crashed on.
 - First-run onboarding that teaches by design rather than by tutorial text:
   position is absolute, colour is relative, rotation changes viewpoint, opposite
   faces mirror, hidden geometry can be inferred before it is revealed.
-- **Ghost and contact clarity pass** — re-tune the M6 visibility, ghost and
-  X-ray systems after extended playtesting: opacity, line weight, animation
-  intensity, hierarchy, and behaviour on highly occluded boards.
+- **Ghost and contact clarity pass** — re-tune the M6 silhouettes and M7 lane
+  focus after extended playtesting: opacity, emphasis, hierarchy, and behaviour
+  on highly occluded boards.
 
 **Exit criteria:** a new player reaches their first turn without instructions and
 understands what happened afterwards.
 
 ---
 
-## M9 — Accessibility and Input
+## M11 — Accessibility and Input
 
 **Goal:** the game is legible and playable for everyone.
 
@@ -256,7 +307,7 @@ understands what happened afterwards.
   to the current camera orientation.
 - Full key remapping; gamepad parity; touch controls with swipe and tap.
 - Responsive layout from 390 px to ultrawide; readable UI scaling.
-- Reduced motion, bloom/intensity controls, X-ray intensity, screen-shake
+- Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake
   controls, audio accessibility, screen-reader board summaries, focus
   management.
 
@@ -265,12 +316,12 @@ a phone, and by keyboard alone.
 
 ---
 
-## M10 — Performance and Release Candidate
+## M12 — Performance and Release Candidate
 
 **Goal:** ship quality.
 
 - Profiling pass; dynamic resolution scaling; instance buffer reuse.
-- Large-board occlusion cost, X-ray rendering cost, particle and background
+- Large-board occlusion cost, lane-focus rendering cost, particle and background
   scalability.
 - WebGL-unavailable fallback message.
 - Playwright visual regression baselines for each face and each stage palette.

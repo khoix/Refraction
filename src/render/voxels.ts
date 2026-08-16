@@ -1,11 +1,12 @@
 /**
  * Instanced cube rendering.
  *
- * Each layer -- the settled board, the active piece, the ghost, the glow, the
- * occluded silhouettes, the X-ray, the lock flash -- is one instanced draw of
- * a shared rounded box. Colour is per-instance and recomputed every frame from
- * the live camera yaw, not from the snapped face. That is what makes the turn
- * a continuous transformation rather than a crossfade between two palettes.
+ * Each layer -- the settled board (near, focal, far), the active piece, the
+ * ghost, the glow, the occluded silhouettes, the contact emphasis, the lock
+ * flash -- is one instanced draw of a shared rounded box. Colour is
+ * per-instance and recomputed every frame from the live camera yaw, not from
+ * the snapped face. That is what makes the turn a continuous transformation
+ * rather than a crossfade between two palettes.
  */
 
 import * as THREE from 'three';
@@ -36,10 +37,11 @@ export interface VoxelLayerOptions {
    */
   readonly whereHidden?: boolean;
   /**
-   * Ignore the depth buffer entirely and draw after the board. Used by the
-   * X-ray treatment, whose whole job is to be seen through settled cubes.
+   * Ignore the depth buffer entirely and draw after the board.
    */
   readonly throughWalls?: boolean;
+  /** Skip writing depth, so cubes behind this layer stay visible. */
+  readonly depthWrite?: boolean;
   /** Explicit render order, for layering the see-through passes. */
   readonly renderOrder?: number;
   readonly maxInstances?: number;
@@ -88,6 +90,7 @@ export class VoxelLayer {
     // test against is complete.
     if (options.whereHidden) material.depthFunc = THREE.GreaterDepth;
     if (options.throughWalls) material.depthTest = false;
+    if (options.depthWrite === false) material.depthWrite = false;
 
     this.mesh = new THREE.InstancedMesh(geometry, material, options.maxInstances ?? MAX_INSTANCES);
     this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
@@ -109,11 +112,12 @@ export class VoxelLayer {
    * reading colour. It also has to be uniform for a near cube to cover the ones
    * behind it exactly, which is what keeps the settled board looking flat.
    */
-  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1, whiteout = 0): void {
+  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1, whiteout = 0, dim = 0): void {
     const count = Math.min(cells.length, this.mesh.instanceMatrix.count);
     this.mesh.count = count;
     const size = CUBE_GAP * scaleBias;
     const toWhite = THREE.MathUtils.clamp(whiteout, 0, 1);
+    const toVoid = THREE.MathUtils.clamp(dim, 0, 1);
 
     for (let i = 0; i < count; i += 1) {
       const cell = cells[i] as Cell;
@@ -127,10 +131,11 @@ export class VoxelLayer {
       // Full Spectrum drives every band toward white, which is the whole colour
       // metaphor stated literally: the visible spectrum combined is white light.
       const { r, g, b } = depthColor(depth);
+      const lit = 1 - toVoid;
       this.color.setRGB(
-        THREE.MathUtils.lerp(r, 1, toWhite),
-        THREE.MathUtils.lerp(g, 1, toWhite),
-        THREE.MathUtils.lerp(b, 1, toWhite),
+        THREE.MathUtils.lerp(r, 1, toWhite) * lit,
+        THREE.MathUtils.lerp(g, 1, toWhite) * lit,
+        THREE.MathUtils.lerp(b, 1, toWhite) * lit,
         THREE.SRGBColorSpace
       );
       this.mesh.setColorAt(i, this.color);

@@ -1,7 +1,7 @@
 /** The four canonical viewing directions around the board's vertical axis. */
 export type Face = 'front' | 'left' | 'back' | 'right';
 
-/** Which way the player turns the world when the Shift meter fills. */
+/** Which face the player is bringing forward when the Shift meter fills. */
 export type TurnDirection = 'left' | 'right';
 
 /** A world-space voxel coordinate. Positions are absolute and never change on turn. */

@@ -69,9 +69,9 @@ describe('the turn', () => {
   it('sweeps opposite ways for opposite directions', () => {
     const right = turnSweep('right');
     const left = turnSweep('left');
-    expect(right.from).toBeGreaterThan(right.to);
-    expect(left.from).toBeLessThan(left.to);
-    expect(right.from).toBe(left.to);
+    expect(left.from).toBeGreaterThan(left.to);
+    expect(right.from).toBeLessThan(right.to);
+    expect(left.from).toBe(right.to);
   });
 
   it('is over before the board finishes turning', () => {

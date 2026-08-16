@@ -12,7 +12,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { Game } from '@core/game';
 import type { Line } from '@core/board';
-import { FACE_YAW, depthParameterAtYaw, lineCells, turnYawDelta } from '@core/projection';
+import { FACE_YAW, depthParameterAtYaw, lineCells, toView, turnYawDelta } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face, TurnDirection } from '@core/types';
 import { Debris, Environment } from './environment';
@@ -79,12 +79,52 @@ function highlightCells(game: Game): Cell[] {
   return lines.flatMap((line) => lineCells(game.face, line.y, line.lane));
 }
 
+/**
+ * Split the settled board into nearer / focal / farther relative to the
+ * falling piece's occupied lanes. The piece's lanes are a focal plane, not a
+ * distance cue: the split exists only while a piece is falling, and it moves
+ * when the piece moves.
+ */
+function partitionByLane(game: Game): { near: Cell[]; focal: Cell[]; far: Cell[] } {
+  const filled = game.board.filledCells();
+  if (game.status !== 'falling' || !game.active) {
+    return { near: [], focal: filled, far: [] };
+  }
+  const pieceLanes = game.activeCells().map((cell) => toView(game.face, cell).lane);
+  if (pieceLanes.length === 0) return { near: [], focal: filled, far: [] };
+  const lo = Math.min(...pieceLanes);
+  const hi = Math.max(...pieceLanes);
+  const near: Cell[] = [];
+  const focal: Cell[] = [];
+  const far: Cell[] = [];
+  for (const cell of filled) {
+    const lane = toView(game.face, cell).lane;
+    if (lane < lo) near.push(cell);
+    else if (lane > hi) far.push(cell);
+    else focal.push(cell);
+  }
+  return { near, focal, far };
+}
+
 export class GameRenderer {
   private readonly renderer: THREE.WebGLRenderer;
   private readonly scene: THREE.Scene;
   private readonly camera: THREE.OrthographicCamera;
 
-  private readonly locked = new VoxelLayer();
+  /**
+   * The settled board, split by depth relative to the falling piece. Nearer
+   * cubes are a transparent veil (depthWrite off, so the piece shows through);
+   * the focal lane is fully opaque; farther cubes keep their hue but darken
+   * toward the void. Off while not falling -- a still board is just a board.
+   */
+  private readonly lockedNear = new VoxelLayer({
+    opacity: 0.28,
+    ghost: true,
+    depthWrite: false,
+    renderOrder: 1,
+  });
+  private readonly lockedFocal = new VoxelLayer();
+  private readonly lockedFar = new VoxelLayer();
   private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
   private readonly ghost = new VoxelLayer({ opacity: 0.3, ghost: true, maxInstances: 8 });
   /**
@@ -116,25 +156,13 @@ export class GameRenderer {
   });
 
   /**
-   * The X-ray on the first-contact surface: the settled cubes the falling
-   * piece is aimed at, shown through the board. Two passes make it read as
-   * seeing *through* rather than drawn *on top*: a translucent shell at the
-   * cube's own size and a brighter inner core, both pulsing slowly, both
-   * keeping the cube's spectrum colour -- the X-ray manipulates opacity,
-   * luminance and animation, never hue. Intervening cubes stay visible
-   * through the translucency.
+   * Restrained emphasis on the cubes the falling piece will actually touch --
+   * a brighter inner core, no additive glow, no pulse. The lane-focus veil is
+   * what makes them visible; this just says "these ones".
    */
-  private readonly xrayShell = new VoxelLayer({
-    throughWalls: true,
-    opacity: 0.3,
-    renderOrder: 4,
-    maxInstances: 8,
-  });
-  private readonly xrayCore = new VoxelLayer({
-    additive: true,
-    throughWalls: true,
-    opacity: 0.5,
-    renderOrder: 5,
+  private readonly contact = new VoxelLayer({
+    emissive: 0.7,
+    renderOrder: 2,
     maxInstances: 8,
   });
 
@@ -196,14 +224,15 @@ export class GameRenderer {
     this.environment = new Environment(this.reducedMotion);
     this.scene.add(
       this.environment.group,
-      this.locked.mesh,
+      this.lockedNear.mesh,
+      this.lockedFocal.mesh,
+      this.lockedFar.mesh,
       this.active.mesh,
       this.ghost.mesh,
       this.glow.mesh,
       this.activeHidden.mesh,
       this.ghostHidden.mesh,
-      this.xrayShell.mesh,
-      this.xrayCore.mesh,
+      this.contact.mesh,
       this.lockFlashLayer.mesh,
       this.debris.points
     );
@@ -370,7 +399,11 @@ export class GameRenderer {
     setWellFlatness(this.well, flatness);
     orientWell(this.well, yaw);
 
-    this.locked.update(game.board.filledCells(), yaw, separation, whiteout);
+    const lanes = partitionByLane(game);
+    this.lockedNear.update(lanes.near, yaw, separation, whiteout);
+    this.lockedFocal.update(lanes.focal, yaw, separation, whiteout);
+    this.lockedFar.update(lanes.far, yaw, separation, whiteout, 0.55);
+
     this.glowElapsed += deltaMs;
     // Lines being removed swell slightly as they go, so a clear dissolves
     // outward instead of simply vanishing between frames.
@@ -385,20 +418,14 @@ export class GameRenderer {
     this.active.update(activeCells, yaw, separation, whiteout);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(ghostCells, yaw, 0.78 * separation);
-    // The same cells again, drawn only where the board hides them, so the
-    // falling piece and its ghost never vanish into the stack.
+    // The same cells again, drawn only where the board hides them -- now only
+    // load-bearing for focal and far cubes, since nearer ones no longer write
+    // depth. Keep them: a same-lane overhang still occludes.
     this.activeHidden.update(activeCells, yaw, separation, whiteout);
     this.ghostHidden.update(ghostCells, yaw, 0.78 * separation);
 
-    // The X-ray: the settled cubes the piece would first land on, seen through
-    // the board. Shell at full size, brighter core inset, both breathing
-    // slowly so they read as revealed rather than as painted on top.
     const contacts = game.status === 'falling' ? game.firstContactCells() : [];
-    const breath = Math.sin(this.glowElapsed * 0.006);
-    this.xrayShell.update(contacts, yaw, separation * 1.02, 0.12);
-    this.xrayShell.setOpacity(0.26 + 0.08 * breath);
-    this.xrayCore.update(contacts, yaw, separation * 0.44, 0.3);
-    this.xrayCore.setOpacity(0.4 + 0.16 * breath);
+    this.contact.update(contacts, yaw, separation * 0.72, whiteout);
 
     // The lock flash: a brief full-cell glow where the piece just settled.
     this.lockFlashElapsed = Math.min(LOCK_FLASH_MS, this.lockFlashElapsed + deltaMs);
@@ -427,14 +454,15 @@ export class GameRenderer {
   }
 
   dispose(): void {
-    this.locked.dispose();
+    this.lockedNear.dispose();
+    this.lockedFocal.dispose();
+    this.lockedFar.dispose();
     this.active.dispose();
     this.ghost.dispose();
     this.glow.dispose();
     this.activeHidden.dispose();
     this.ghostHidden.dispose();
-    this.xrayShell.dispose();
-    this.xrayCore.dispose();
+    this.contact.dispose();
     this.lockFlashLayer.dispose();
     this.environment.dispose();
     this.debris.dispose();

@@ -31,21 +31,21 @@ function footprintCells(y = 0): Cell[] {
 }
 
 describe('face ring', () => {
-  it('turning right walks front -> left -> back -> right -> front', () => {
+  it('turning left walks front -> left -> back -> right -> front', () => {
     let face: Face = 'front';
     const visited: Face[] = [face];
     for (let i = 0; i < 4; i += 1) {
-      face = turn(face, 'right');
+      face = turn(face, 'left');
       visited.push(face);
     }
     expect(visited).toEqual(['front', 'left', 'back', 'right', 'front']);
   });
 
-  it('turning left walks front -> right -> back -> left -> front', () => {
+  it('turning right walks front -> right -> back -> left -> front', () => {
     let face: Face = 'front';
     const visited: Face[] = [face];
     for (let i = 0; i < 4; i += 1) {
-      face = turn(face, 'left');
+      face = turn(face, 'right');
       visited.push(face);
     }
     expect(visited).toEqual(['front', 'right', 'back', 'left', 'front']);
@@ -65,9 +65,10 @@ describe('face ring', () => {
     }
   });
 
-  it('yaw deltas match the ring direction', () => {
-    expect(turnYawDelta('right')).toBe(-90);
-    expect(turnYawDelta('left')).toBe(90);
+  it('yaw deltas match the destination, not a world-spin', () => {
+    // Left from front is yaw 270, which is -90 from 0; right is +90.
+    expect(turnYawDelta('left')).toBe(-90);
+    expect(turnYawDelta('right')).toBe(90);
   });
 });
 

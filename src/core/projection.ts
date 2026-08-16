@@ -34,9 +34,15 @@ export const FACE_YAW: Readonly<Record<Face, number>> = {
 };
 
 /**
- * Turning right spins the world to the right, which slides the face that was on
- * the player's left into view: front -> left -> back -> right -> front.
- * Turning left runs the same ring backwards.
+ * A turn direction names the face the player is choosing: turning left brings
+ * the face on the player's LEFT to the front, turning right the one on their
+ * right. Repeated left turns walk front -> left -> back -> right -> front;
+ * repeated right turns run the same ring backwards.
+ *
+ * It was the other way round originally -- "right" meant "spin the world
+ * right", which delivered the LEFT face -- and playtesting was unambiguous
+ * about it: players read the prompt as pointing at a destination, not at a
+ * spin. The name now means what the player thinks it means.
  */
 const TURN_ORDER: readonly Face[] = ['front', 'left', 'back', 'right'] as const;
 
@@ -90,10 +96,10 @@ export function laneCount(face: Face): number {
   return AXIS_EXTENT[FACE_BASIS[face].laneAxis];
 }
 
-/** The face reached by turning once in `direction` from `face`. */
+/** The face reached by choosing `direction` from `face`. */
 export function turn(face: Face, direction: TurnDirection): Face {
   const index = TURN_ORDER.indexOf(face);
-  const step = direction === 'right' ? 1 : -1;
+  const step = direction === 'left' ? 1 : -1;
   const next = (index + step + TURN_ORDER.length) % TURN_ORDER.length;
   return TURN_ORDER[next] as Face;
 }
@@ -109,9 +115,9 @@ export function oppositeFace(face: Face): Face {
  * the animation spins the way the player asked rather than the short way round.
  */
 export function turnYawDelta(direction: TurnDirection): number {
-  // Turning right slides the left-hand face into view, which orbits the camera
-  // towards -yaw.
-  return direction === 'right' ? -90 : 90;
+  // Choosing the left-hand face orbits the camera towards -yaw (front at 0,
+  // left at 270); choosing the right-hand face orbits towards +yaw.
+  return direction === 'left' ? -90 : 90;
 }
 
 function applyFlip(value: number, extent: number, flip: boolean): number {

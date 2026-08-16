@@ -52,16 +52,19 @@ verified by tests in `tests/unit/projection.test.ts`:
 
 ### Turn direction
 
-Turning **right** spins the world right, sliding the face that was on the
-player's left into view.
+A turn direction names the **face that comes forward**. Pressing left brings
+the face that was on the player's left into view; pressing right, the one on
+their right. It used to mean the opposite — "right" spun the world right, which
+delivered the left-hand face — and playtesting was unambiguous: players read
+the prompt as pointing at a destination, not at a spin.
 
 ```
-right:  front → left  → back  → right → front
-left:   front → right → back  → left  → front
+left:   front → left  → back  → right → front
+right:  front → right → back  → left  → front
 ```
 
-Turning right moves the camera towards −θ; turning left towards +θ. The camera
-animates the way the player asked, never the short way round.
+Choosing left orbits the camera towards −θ; choosing right towards +θ. The
+camera animates the way the player asked, never the short way round.
 
 ### 2.1 Presentation: depth is colour, and nothing else **[GAP]**
 
@@ -489,23 +492,23 @@ at least two of:
   colours — a rendering override only, with normal occlusion between settled
   cubes untouched. The active silhouette is solid and the ghost's fainter and
   inset, so the two stay distinct even when both show through the stack.
-- **First-contact X-ray.** The falling piece acts as a vertical flashlight: for
-  each occupied column of its footprint, the topmost settled cube beneath it —
-  and only that cube — shows through the board as a breathing translucent shell
-  with a brighter core. It keeps the cube's spectrum colour; the X-ray state
-  manipulates opacity, luminance and animation, never hue. Intervening cubes
-  stay visibly present, so it reads as seeing *through* the board rather than
-  as geometry drawn on top. It says "this is what the piece will physically
-  hit", not "these cubes are in front". It follows every move and rotation, and
-  vanishes at lock.
+- **Lane focus.** The falling piece's occupied lanes are a focal plane. Settled
+  cubes nearer than that plane go transparent, so you see through them to the
+  piece and its landing surface; cubes in the focal lanes stay fully opaque,
+  with a restrained inner highlight on the cells `firstContactCells()` names
+  as the ones the piece will actually touch; cubes farther than the piece
+  darken toward the void, keeping their hue. The gradient is relative to the
+  *piece*, moves when the piece moves, and vanishes at lock — it cannot be
+  read as an absolute distance cue the way size falloff or haze would. Gated
+  to `falling`; off during a turn, when lanes are being remapped.
 - **Ghost piece** — rendered at the true landing depth, in that lane's colour.
-- **Peek** _(future, M8)_ — hold to tilt the camera 8° for parallax. Changes no
+- **Peek** _(future, M10)_ — hold to tilt the camera 8° for parallax. Changes no
   game state. Limited or disabled at Stage 6+ and in Blind Spectrum.
-- **Preview** _(2D today; rotating 3D render is M8)_ — the incoming piece, in
+- **Preview** _(2D today; rotating 3D render is M10)_ — the incoming piece, in
   the depth colours it will arrive wearing.
 
 The visual hierarchy when these overlap, strongest to weakest: **active piece →
-landing ghost → X-rayed first-contact surface → normally occluded board.**
+landing ghost → focal-lane board → faded far board → transparent near board.**
 
 ## 10. Accessibility **[GAP — critical]**
 
@@ -546,7 +549,7 @@ the spectrum, and for anyone whose colour vision makes the ramp harder.
 | ------------- | ----------------------------------------------------------------- |
 | Lock          | short, soft, pitched by the piece's nearest lane                  |
 | Clear         | one note per line, rising; brighter with each cascade step        |
-| Turn          | a filtered sweep, falling when turning right and rising when left |
+| Turn          | a filtered sweep, falling when choosing left and rising when right |
 | Full Spectrum | every band at once — the audible form of white light              |
 | Game over     | a single low fall                                                 |
 

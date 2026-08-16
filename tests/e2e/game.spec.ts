@@ -57,6 +57,20 @@ test.describe('boot', () => {
     await expect(page.locator('.slot__body .piece__cell--filled').first()).toBeVisible();
   });
 
+  test('spaces the next-piece preview evenly in both axes', async ({ page }) => {
+    await boot(page);
+    const metrics = await page.locator('.slot').first().locator('.piece').evaluate((grid) => {
+      const cells = [...grid.querySelectorAll('.piece__cell')];
+      const a = cells[0]?.getBoundingClientRect();
+      const b = cells[1]?.getBoundingClientRect();
+      const c = cells[4]?.getBoundingClientRect();
+      if (!a || !b || !c) return { count: cells.length, col: 0, row: 0 };
+      return { count: cells.length, col: b.x - a.x, row: c.y - a.y };
+    });
+    expect(metrics.count).toBe(16);
+    expect(Math.abs(metrics.col - metrics.row)).toBeLessThan(1);
+  });
+
   test('loads with no console errors', async ({ page }) => {
     const problems: string[] = [];
     page.on('console', (message) => {
@@ -105,10 +119,16 @@ test.describe('rendering', () => {
     const flat = await distinctCanvasColours(page);
 
     await page.keyboard.press('ArrowRight');
-    await page.waitForTimeout(370); // the midpoint of the 750ms turn
+    // Sample at the actual dimensional peak rather than after a magic sleep:
+    // under parallel load 370ms is not reliably the midpoint of a 750ms turn.
+    await page.waitForFunction(() => {
+      const renderer = window.__refraction?.renderer;
+      return Boolean(renderer?.isTurning && renderer.flatness < 0.25);
+    });
     const midTurn = await distinctCanvasColours(page);
 
-    await page.waitForTimeout(900); // settled on the new face
+    await page.waitForFunction(() => window.__refraction?.renderer?.isTurning === false);
+    await page.waitForTimeout(150);
     const settled = await distinctCanvasColours(page);
 
     expect(midTurn).toBeGreaterThan(flat * 1.5);
@@ -197,21 +217,22 @@ test.describe('the turn', () => {
   test('prompts for a face once the meter fills', async ({ page }) => {
     await armTheTurn(page);
     await expect(page.locator('.prompt')).toBeVisible();
-    await expect(page.getByText('CHOOSE A FACE')).toBeVisible();
+    await expect(page.locator('.prompt__face').first()).toHaveText('LEFT');
+    await expect(page.locator('.prompt__face').nth(1)).toHaveText('RIGHT');
   });
 
-  test('turning right reveals the left face', async ({ page }) => {
+  test('turning right reveals the right face', async ({ page }) => {
     await armTheTurn(page);
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
     await page.keyboard.press('ArrowRight');
-    await expect(page.locator('.hud__face')).toHaveText('LEFT');
+    await expect(page.locator('.hud__face')).toHaveText('RIGHT');
     await expect(page.locator('.prompt')).toBeHidden();
   });
 
-  test('turning left reveals the right face', async ({ page }) => {
+  test('turning left reveals the left face', async ({ page }) => {
     await armTheTurn(page);
     await page.keyboard.press('ArrowLeft');
-    await expect(page.locator('.hud__face')).toHaveText('RIGHT');
+    await expect(page.locator('.hud__face')).toHaveText('LEFT');
   });
 
   test('clears a line that only exists on the face being turned to', async ({ page }) => {
@@ -226,7 +247,7 @@ test.describe('the turn', () => {
     });
 
     await expect(page.locator('.stat__value').nth(1)).toHaveText('0');
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
 
     await expect(page.locator('.stat__value').nth(1)).toHaveText('1');
     await expect(page.locator('.banner')).toContainText('REFRACTION');
@@ -244,7 +265,7 @@ test.describe('the turn', () => {
       game.status = 'awaitingTurn';
     });
 
-    await page.keyboard.press('ArrowRight');
+    await page.keyboard.press('ArrowLeft');
     await page.waitForTimeout(900); // well inside the rotation
 
     const midTurn = await page.evaluate(() => {

@@ -6,7 +6,7 @@
  * it only ever reads game state.
  */
 
-import type { Game } from '@core/game';
+import { facePreview, type Game } from '@core/game';
 import { DEPTH_LANES } from '@core/constants';
 import { PIECES_BY_ID, extent, normalize } from '@core/pieces';
 import type { PieceId } from '@core/pieces';
@@ -32,12 +32,15 @@ function element<K extends keyof HTMLElementTagNameMap>(
 }
 
 /** Front-on projection of a piece, coloured by each cube's depth lane. */
+const PREVIEW_SPAN = 4;
+const PREVIEW_CELL = '0.85rem';
+
 function renderPiecePreview(cells: readonly Cell[], lane: number): HTMLElement {
   const shape = normalize([...cells]);
   const size = extent(shape);
   const grid = element('div', 'piece');
-  grid.style.gridTemplateColumns = `repeat(${size.x}, 1fr)`;
-  grid.style.gridTemplateRows = `repeat(${size.y}, 1fr)`;
+  grid.style.gridTemplateColumns = `repeat(${PREVIEW_SPAN}, ${PREVIEW_CELL})`;
+  grid.style.gridTemplateRows = `repeat(${PREVIEW_SPAN}, ${PREVIEW_CELL})`;
 
   // Nearest cube wins each screen cell, exactly as the renderer draws it.
   const nearest = new Map<string, number>();
@@ -47,10 +50,17 @@ function renderPiecePreview(cells: readonly Cell[], lane: number): HTMLElement {
     nearest.set(key, depth);
   }
 
-  for (let y = size.y - 1; y >= 0; y -= 1) {
-    for (let x = 0; x < size.x; x += 1) {
+  // Centre the shape in a fixed 4x4 so every piece shares one baseline and
+  // the slot never reflows as extents change. Tracks are explicit rem sizes
+  // rather than 1fr: a 1fr row inside a stretched flex child grew while the
+  // cells stayed 0.85rem, which is the gap the playtest caught.
+  const originX = Math.floor((PREVIEW_SPAN - size.x) / 2);
+  const originY = Math.floor((PREVIEW_SPAN - size.y) / 2);
+
+  for (let y = PREVIEW_SPAN - 1; y >= 0; y -= 1) {
+    for (let x = 0; x < PREVIEW_SPAN; x += 1) {
       const cube = element('span', 'piece__cell');
-      const depth = nearest.get(`${x},${y}`);
+      const depth = nearest.get(`${x - originX},${y - originY}`);
       if (depth !== undefined) {
         const t = laneToDepthParameter(Math.min(lane + depth, DEPTH_LANES - 1), DEPTH_LANES);
         cube.style.background = depthColorHex(t);
@@ -76,6 +86,8 @@ export class Hud {
   private readonly stageBanner = element('div', 'stage-banner');
   private readonly banner = element('div', 'banner');
   private readonly prompt = element('div', 'prompt');
+  private readonly promptLeft = element('span', 'prompt__face', 'LEFT');
+  private readonly promptRight = element('span', 'prompt__face', 'RIGHT');
   private readonly overlay = element('div', 'overlay');
 
   readonly root = element('div', 'hud');
@@ -113,7 +125,9 @@ export class Hud {
     const pill = element('div', 'prompt__pill');
     pill.append(
       element('span', 'prompt__arrow', '←'),
-      element('span', 'prompt__text', 'CHOOSE A FACE'),
+      this.promptLeft,
+      element('span', 'prompt__text', '·'),
+      this.promptRight,
       element('span', 'prompt__arrow', '→')
     );
     this.prompt.append(pill);
@@ -198,6 +212,10 @@ export class Hud {
     this.chain.textContent = `REFRACTION CHAIN ×${game.refractionChain}`;
 
     this.prompt.hidden = game.status !== 'awaitingTurn';
+    if (game.status === 'awaitingTurn') {
+      this.promptLeft.textContent = FACE_LABEL[facePreview(game.face, 'left')];
+      this.promptRight.textContent = FACE_LABEL[facePreview(game.face, 'right')];
+    }
     this.overlay.hidden = game.status !== 'gameOver';
     if (game.status === 'gameOver' && this.overlay.childElementCount === 0) {
       this.overlay.append(

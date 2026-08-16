@@ -25,17 +25,11 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M6 — Playtest Readability & Presentation.** The board now stays readable
-under occlusion: the falling piece and its ghost show through settled cubes as
-spectrum-true silhouettes, and the cubes the piece would land on X-ray through
-the board — the topmost contact under each column and nothing beneath it. The
-black void is gone, replaced by a reactive achromatic environment that pulses
-on locks, ripples on clears and leans in as the Shift meter fills. Clears now
-genuinely bloom (a thresholded post-process, reached only by clears and Prism),
-dissolve along their axis into spectrum-tinted debris, and locking flashes.
-Depth lanes come from a free seeded draw with a starvation floor instead of a
-bag, so the colour sequence stops reading as ROYGBIV on a loop. Modes,
-persistence and the comprehension tools come next.
+**M7 — Controls and Comprehension.** Left brings the left-hand face forward;
+the next-piece preview is a fixed 4×4 with even spacing; and the falling
+piece's occupied lanes are a focal plane — nearer cubes go transparent, the
+focal lane stays solid, farther cubes recede. Modes, persistence and a louder
+presentation come next.
 
 Stages are numbered, not named, and the interface carries no hue at all: on this
 screen a colour is a claim about depth, so nothing else is allowed to make one.
@@ -78,7 +72,7 @@ npm run dev        # http://localhost:5173
 | Document                                       | Contents                                                                                                                                                        |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`docs/DESIGN.md`](docs/DESIGN.md)             | The implementation spec. Board, projection, pieces, scoring, progression, accessibility. Gaps in the original proposal are marked **[GAP]** with the reasoning. |
-| [`docs/PLAN.md`](docs/PLAN.md)                 | Eleven milestones, M0–M10.                                                                                                                                      |
+| [`docs/PLAN.md`](docs/PLAN.md)                 | Thirteen milestones, M0–M12.                                                                                                                                    |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module layout and the pure-core decision.                                                                                                                       |
 | [`docs/TESTING.md`](docs/TESTING.md)           | Test strategy, layers, conventions.                                                                                                                             |
 | [`release_notes.md`](release_notes.md)         | Milestone log, newest first.                                                                                                                                    |

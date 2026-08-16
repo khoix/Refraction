@@ -187,7 +187,7 @@ describe('the turn', () => {
     const game = newGame();
     game.status = 'awaitingTurn';
     expect(game.chooseTurn('right')).toBe(true);
-    expect(game.face).toBe('left');
+    expect(game.face).toBe('right');
 
     game.status = 'awaitingTurn';
     game.chooseTurn('left');
@@ -197,8 +197,8 @@ describe('the turn', () => {
   it('repeats the last direction if the prompt is ignored', () => {
     const game = new Game({ seed: 'timeout', turnPromptTimeoutMs: 1000 });
     game.status = 'awaitingTurn';
-    game.chooseTurn('left'); // front -> right, and records "left"
-    expect(game.face).toBe('right');
+    game.chooseTurn('left'); // front -> left, and records "left"
+    expect(game.face).toBe('left');
 
     game.status = 'awaitingTurn';
     game.tick(1100);
@@ -215,7 +215,7 @@ describe('the turn', () => {
     const scoreBefore = game.score;
 
     game.status = 'awaitingTurn';
-    game.chooseTurn('right');
+    game.chooseTurn('left');
     settle(game);
 
     expect(game.face).toBe('left');
@@ -229,7 +229,7 @@ describe('the turn', () => {
     const refracted = newGame();
     for (let z = 0; z < BOARD_DEPTH; z += 1) refracted.board.fill({ x: 3, y: 0, z });
     refracted.status = 'awaitingTurn';
-    refracted.chooseTurn('right');
+    refracted.chooseTurn('left');
     settle(refracted);
 
     const plain = newGame();
@@ -244,7 +244,7 @@ describe('the turn', () => {
     const game = newGame();
     for (let z = 0; z < BOARD_DEPTH; z += 1) game.board.fill({ x: 3, y: 0, z });
     game.status = 'awaitingTurn';
-    game.chooseTurn('right');
+    game.chooseTurn('left');
     settle(game);
     expect(game.refractionChain).toBe(1);
 
@@ -265,7 +265,7 @@ describe('seeing the turn happen', () => {
     const game = new Game({ seed: 'reveal', turnDurationMs: 800, clearFlashMs: 100 });
     plantHiddenLine(game);
     game.status = 'awaitingTurn';
-    game.chooseTurn('right');
+    game.chooseTurn('left');
 
     // The face flips immediately -- that is what makes the other axis live --
     // but nothing has been removed yet.
@@ -301,7 +301,7 @@ describe('seeing the turn happen', () => {
     plantHiddenLine(game, 5, 0);
 
     game.status = 'awaitingTurn';
-    game.chooseTurn('right');
+    game.chooseTurn('left');
     const predicted = game.pendingClears.map((line) => `${line.y},${line.lane}`).sort();
     expect(predicted).toHaveLength(2);
 
