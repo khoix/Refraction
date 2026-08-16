@@ -56,6 +56,53 @@ export function toSceneZ(z: number): number {
   return z - (BOARD_DEPTH - 1) / 2;
 }
 
+/**
+ * How wide the board's silhouette is on screen at this yaw, in board cells.
+ * Widest at 45 degrees, equal to BOARD_WIDTH when settled on a face.
+ */
+export function projectedFootprintWidth(yawDegrees: number): number {
+  const yaw = THREE.MathUtils.degToRad(yawDegrees);
+  return BOARD_WIDTH * Math.abs(Math.cos(yaw)) + BOARD_DEPTH * Math.abs(Math.sin(yaw));
+}
+
+/** How deep the board extends along the view direction at this yaw. */
+export function projectedFootprintDepth(yawDegrees: number): number {
+  const yaw = THREE.MathUtils.degToRad(yawDegrees);
+  return BOARD_WIDTH * Math.abs(Math.sin(yaw)) + BOARD_DEPTH * Math.abs(Math.cos(yaw));
+}
+
+/**
+ * A dark panel behind the well. Drawn after the environment and before the
+ * cubes, so the disco never sits on a cube. Billboarded to the camera yaw
+ * and sized to the projected footprint so it tracks the silhouette as the
+ * board turns.
+ */
+export function createColumnPanel(): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(1, 1);
+  const material = new THREE.MeshBasicMaterial({
+    color: 0x07080e,
+    transparent: true,
+    opacity: 0.95,
+    depthWrite: false,
+    depthTest: false,
+  });
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.renderOrder = -5;
+  mesh.frustumCulled = false;
+  return mesh;
+}
+
+export function orientColumnPanel(mesh: THREE.Mesh, yawDegrees: number, opacity: number): void {
+  const yaw = THREE.MathUtils.degToRad(yawDegrees);
+  const width = projectedFootprintWidth(yawDegrees) + 0.9;
+  const height = BOARD_HEIGHT + 1.8;
+  mesh.scale.set(width, height, 1);
+  mesh.rotation.y = yaw;
+  const depth = projectedFootprintDepth(yawDegrees) / 2 + 0.8;
+  mesh.position.set(-Math.sin(yaw) * depth, 0, -Math.cos(yaw) * depth);
+  (mesh.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.clamp(opacity, 0, 1);
+}
+
 export interface Well {
   readonly group: THREE.Group;
   /** The playfield's flat silhouette. Visible in both looks. */

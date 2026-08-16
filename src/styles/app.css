@@ -1,16 +1,12 @@
 /*
  * Shell and HUD styling.
  *
- * The HUD is deliberately quiet: thin type, low-contrast chrome, no boxes
- * competing with the board.
- *
- * It is also deliberately achromatic. In this game a hue is a claim about
- * depth, so the chrome makes no hue claims at all: everything here is drawn
- * from a neutral ink ramp, and the only coloured pixels on screen belong to
- * cubes -- on the board, or in the next-piece preview where the colour is that
- * piece's actual lane. An amber Shift pip or a rainbow banner would be a
- * second, contradictory colour language, and the player has no way to know
- * which one a given colour is speaking.
+ * The HUD is framed modules over the canvas: panels, hairlines, a segmented
+ * Shift bar parked under the well. It is deliberately achromatic. In this
+ * game a hue on a rules-claiming surface is a claim about depth, so the
+ * chrome makes none -- everything here is a neutral ink ramp. Decorative
+ * colour in the room behind the column is a different surface; an amber
+ * Shift pip or a rainbow banner would not be.
  */
 
 :root {
@@ -21,7 +17,7 @@
 
   --text-primary: #e8ecf8;
   --text-secondary: #99a2bd;
-  --text-dim: #5d6684;
+  --text-dim: #8b93ad;
 
   /* Chrome accent. Neutral by policy -- see the note above. */
   --accent-ui: #f3f6ff;
@@ -104,10 +100,22 @@ body {
 
 /* --------------------------------------------------------------------- stats */
 
+.hud__panel {
+  background: rgb(10 12 20 / 0.82);
+  border: 1px solid var(--surface-line);
+  border-radius: 6px;
+  padding: 0.75rem 0.9rem 0.85rem;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.05),
+    0 8px 28px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(10px);
+}
+
 .hud__stats {
   display: flex;
   flex-direction: column;
-  gap: 1.1rem;
+  gap: 0.85rem;
+  min-width: 8.5rem;
 }
 
 .stat__label {
@@ -129,17 +137,34 @@ body {
 
 /* --------------------------------------------------------------- shift meter */
 
+.hud__shift {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  pointer-events: none;
+  padding: 0.4rem 0.5rem 0.5rem;
+  z-index: 1;
+}
+
+.hud__shift .hud__label {
+  text-align: center;
+  margin-bottom: 0;
+}
+
 .meter {
   display: flex;
-  gap: 0.4rem;
+  gap: 3px;
+  height: 0.7rem;
 }
 
 .meter__pip {
-  width: 0.85rem;
-  height: 0.85rem;
-  border-radius: 50%;
+  flex: 1;
+  height: 100%;
+  border-radius: 2px;
   border: 1px solid var(--surface-line);
-  background: transparent;
+  background: rgb(10 12 20 / 0.7);
   transition:
     background 200ms var(--ease-snap),
     box-shadow 200ms var(--ease-snap);
@@ -158,10 +183,7 @@ body {
   font-size: 0.75rem;
   letter-spacing: 0.34em;
   color: var(--text-secondary);
-  padding: 0.4rem 0.7rem;
-  border: 1px solid var(--surface-line);
-  border-radius: 4px;
-  background: rgb(10 12 20 / 0.6);
+  text-align: center;
 }
 
 .slot {
@@ -327,7 +349,7 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgb(5 6 10 / 0.55);
+  background: rgb(5 6 10 / 0.78);
 }
 
 .prompt__pill {
@@ -372,7 +394,7 @@ body {
   place-content: center;
   gap: 0.5rem;
   text-align: center;
-  background: rgb(5 6 10 / 0.82);
+  background: rgb(5 6 10 / 0.9);
 }
 
 .overlay__title {

@@ -25,14 +25,15 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M7 — Controls and Comprehension.** Left brings the left-hand face forward;
-the next-piece preview is a fixed 4×4 with even spacing; and the falling
-piece's occupied lanes are a focal plane — nearer cubes go transparent, the
-focal lane stays solid, farther cubes recede. Modes, persistence and a louder
-presentation come next.
+**M8 — Spectacle and the HUD.** The room is a disco: coloured beams, cycling
+fragments, a strobe that reduced-motion cuts entirely. A ~95% opaque panel
+behind the well keeps that colour off the cubes. The Shift meter is a
+segmented bar under the column, and the HUD is framed modules rather than
+floating captions. Modes and persistence come next.
 
-Stages are numbered, not named, and the interface carries no hue at all: on this
-screen a colour is a claim about depth, so nothing else is allowed to make one.
+Stages are numbered, not named. A hue on a cube is a depth claim; a hue in
+the room is decoration; a hue on the HUD would be a second rules language,
+which is the thing the colour rule forbids.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
 `C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute,

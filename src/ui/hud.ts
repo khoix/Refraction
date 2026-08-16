@@ -76,8 +76,9 @@ export class Hud {
   private readonly score = element('span', 'stat__value', '0');
   private readonly lines = element('span', 'stat__value', '0');
   private readonly stage = element('span', 'stat__value', '1');
-  private readonly face = element('span', 'hud__face', 'FRONT');
+  private readonly face = element('span', 'hud__face hud__panel', 'FRONT');
   private readonly meter = element('div', 'meter');
+  private readonly shift = element('div', 'hud__shift');
   private readonly nextSlot = element('div', 'slot__body');
   private readonly holdSlot = element('div', 'slot__body');
   private readonly chain = element('div', 'chain');
@@ -96,22 +97,22 @@ export class Hud {
   private stageBannerTimer = 0;
 
   constructor() {
-    const stats = element('div', 'hud__stats');
+    const stats = element('div', 'hud__stats hud__panel');
     stats.append(
       this.stat('SCORE', this.score),
       this.stat('LINES', this.lines),
       this.stat('STAGE', this.stage)
     );
 
-    const shift = element('div', 'hud__shift');
-    shift.append(element('span', 'hud__label', 'SHIFT'), this.meter);
+    this.shift.classList.add('hud__panel');
+    this.shift.append(element('span', 'hud__label', 'SHIFT'), this.meter);
 
     const left = element('div', 'hud__column hud__column--left');
-    left.append(stats, shift);
+    left.append(stats);
 
-    const next = element('div', 'slot');
+    const next = element('div', 'slot hud__panel');
     next.append(element('span', 'hud__label', 'NEXT'), this.nextSlot);
-    const hold = element('div', 'slot');
+    const hold = element('div', 'slot hud__panel');
     hold.append(element('span', 'hud__label', 'HOLD'), this.holdSlot);
 
     const right = element('div', 'hud__column hud__column--right');
@@ -138,6 +139,7 @@ export class Hud {
     this.root.append(
       left,
       right,
+      this.shift,
       this.chain,
       this.popups,
       this.mute,
@@ -191,6 +193,18 @@ export class Hud {
     void this.banner.offsetWidth;
     this.banner.classList.add('banner--pulse');
     this.bannerTimer = 1400;
+  }
+
+  /**
+   * Park the Shift bar under the play column. `rect` is the well's silhouette
+   * in viewport CSS pixels; the HUD subtracts its own origin because it is
+   * width-capped and centred over a full-bleed canvas.
+   */
+  layoutWell(rect: { left: number; top: number; width: number; height: number }): void {
+    const origin = this.root.getBoundingClientRect();
+    this.shift.style.left = `${rect.left - origin.left}px`;
+    this.shift.style.width = `${rect.width}px`;
+    this.shift.style.top = `${rect.top + rect.height + 10 - origin.top}px`;
   }
 
   update(game: Game, deltaMs: number): void {

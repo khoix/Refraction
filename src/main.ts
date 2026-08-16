@@ -184,6 +184,7 @@ function boot(root: HTMLElement): void {
 
     renderer.render(game, elapsed);
     hud.update(game, elapsed);
+    hud.layoutWell(renderer.wellScreenRect());
     requestAnimationFrame(frame);
   };
 

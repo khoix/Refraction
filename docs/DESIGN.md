@@ -142,17 +142,21 @@ it is a short step to believing green cubes must be cleared, or that the amber
 pips indicate a colour to aim for. Neither rule exists. The game would have
 taught them anyway.
 
-So the palette is partitioned, and the partition is absolute:
+So the palette is partitioned:
 
 | Surface                                                          | Colour                                          |
 | ---------------------------------------------------------------- | ----------------------------------------------- |
 | Cubes on the board                                               | spectrum, by lane depth from the current face   |
 | Cubes in the next-piece preview                                  | spectrum, by the lane that piece will arrive in |
-| Everything else — HUD, meter, banners, popups, prompts, overlays | achromatic                                      |
+| The environment behind the play column                           | decorative — hue, strobe, spectacle             |
+| Everything that describes the rules — HUD, meter, banners, popups, prompts, overlays | achromatic                          |
 
-The chrome is drawn from a neutral ink ramp with a single near-white accent
-(`--accent-ui`). Nothing in the interface carries a hue, which means any hue the
-player sees is a depth claim and can be trusted as one.
+The HUD chrome is drawn from a neutral ink ramp with a single near-white accent
+(`--accent-ui`). A second colour language *that makes claims about the rules* —
+a stage named for a spectrum band, a tinted Shift meter, rainbow scoring
+banners — is what the partition forbids. Decorative colour in the room behind
+the board makes no such claim, and the near-opaque play column is the device
+that keeps it off the cubes.
 
 Two consequences worth stating, because both replaced something that looked
 better in isolation:
@@ -185,24 +189,22 @@ the arc. And it may not be a spectrum band, for the reason in §2.2.
 
 ### 2.4 The environment
 
-The board floats in a reactive space rather than a black void: drifting dust,
-distant geometric fragments, a faint floor lattice, and rings that ripple
-outward when lines clear. It exists to make the game feel alive, and it is
-allowed **brightness, contrast, density, geometry and motion — never a hue**.
-The rule in §2.2 reaches it in full: white and grey light only.
+The board floats in a loud space: coloured beams, cycling fragments, a pulsing
+lattice, drifting dust, and rings that ripple on clears. It exists to make the
+game feel alive, and it is allowed **hue, brightness, contrast, density,
+geometry and motion**. Decorative colour makes no claim about the rules.
 
-It is also strictly a backdrop, by construction rather than by tuning. Every
-element draws before the board and never writes depth, so a board pixel always
-wins — nothing environmental can sit between the player and a cube, and none of
-its motion is coupled to board depth. The one familiar depth cue a moving
-background could smuggle in (parallax against the stack) is therefore absent:
-the environment moves behind everything, uniformly.
+It is strictly a backdrop, by construction rather than by tuning. A near-opaque
+(~95%) panel sits behind the well, sized to the projected footprint, so a board
+pixel always wins — nothing environmental can sit between the player and a cube,
+and none of its motion is coupled to board depth. From inside the column, the
+disco is a rumour; from outside it, it is the room.
 
-It reacts to play: a small pulse on lock, a ripple and brightness response on a
-clear, a creeping density as the Shift meter fills, stronger movement through a
-turn, and a major (still achromatic) response to a Refraction Clear or a Prism.
-Under reduced motion the ambience stays and the spikes are cut to a fraction —
-motion is not the risk, flashes are.
+It reacts to play: a small pulse on lock, a ripple and colour surge on a clear,
+a creeping density as the Shift meter fills, stronger movement through a turn,
+and a major response to a Refraction Clear or a Prism. Under reduced motion the
+ambience and the slow hue cycle stay; the strobe is cut entirely — a dim flash
+is still a flash.
 
 ## 3. Lines
 

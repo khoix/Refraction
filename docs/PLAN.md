@@ -208,7 +208,7 @@ experimental vocabulary is playable by the greedy agent; `verify:full` green.
 
 ---
 
-## M7 — Controls and Comprehension
+## M7 — Controls and Comprehension ✅ _shipped_
 
 **Goal:** the game stops telling the player something wrong. Driven by the first
 playtest of M6.
@@ -233,7 +233,7 @@ gap; a wall in a nearer lane no longer hides the piece's landing surface;
 
 ---
 
-## M8 — Spectacle and the HUD
+## M8 — Spectacle and the HUD ✅ _shipped_
 
 **Goal:** the space is loud, the board is protected from it, and the chrome
 reads as an interface rather than as floating captions.

@@ -12,6 +12,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { Game } from '@core/game';
 import type { Line } from '@core/board';
+import { BOARD_HEIGHT } from '@core/constants';
 import { FACE_YAW, depthParameterAtYaw, lineCells, toView, turnYawDelta } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face, TurnDirection } from '@core/types';
@@ -19,11 +20,14 @@ import { Debris, Environment } from './environment';
 import type { SceneLights, Well } from './scene';
 import {
   TURN_ELEVATION_DEG,
+  createColumnPanel,
   createScene,
   fitCamera,
+  orientColumnPanel,
   orientLights,
   orientWell,
   positionCamera,
+  projectedFootprintWidth,
   setLightingFlatness,
   setWellFlatness,
   toSceneX,
@@ -67,6 +71,13 @@ export interface GameRendererOptions {
    * ramps rather than flashes and never reaches full white.
    */
   readonly reducedMotion?: boolean;
+}
+
+export interface WellScreenRect {
+  readonly left: number;
+  readonly top: number;
+  readonly width: number;
+  readonly height: number;
 }
 
 const easeInOutCubic = (t: number): number =>
@@ -181,6 +192,8 @@ export class GameRenderer {
   private readonly composer: EffectComposer;
   private readonly lights: SceneLights;
   private readonly well: Well;
+  private readonly columnPanel: THREE.Mesh;
+  private readonly scratch = new THREE.Vector3();
 
   /** Yaw the camera is easing away from, and the one it is heading to. */
   private yawFrom = FACE_YAW.front;
@@ -222,8 +235,10 @@ export class GameRenderer {
     this.well = bundle.well;
 
     this.environment = new Environment(this.reducedMotion);
+    this.columnPanel = createColumnPanel();
     this.scene.add(
       this.environment.group,
+      this.columnPanel,
       this.lockedNear.mesh,
       this.lockedFocal.mesh,
       this.lockedFar.mesh,
@@ -349,6 +364,49 @@ export class GameRenderer {
     this.environment.ripple(strength);
   }
 
+  /**
+   * The well's silhouette in viewport CSS pixels. Used to park HUD chrome
+   * (the Shift bar) against the play column rather than the screen edge.
+   * Orthographic, so a world-space billboard projects to a rectangle.
+   */
+  wellScreenRect(): WellScreenRect {
+    const yaw = THREE.MathUtils.degToRad(this.yaw);
+    const halfW = projectedFootprintWidth(this.yaw) / 2;
+    const halfH = BOARD_HEIGHT / 2 + 0.6;
+    const rightX = Math.cos(yaw);
+    const rightZ = -Math.sin(yaw);
+    const corners: Array<readonly [number, number, number]> = [
+      [-halfW * rightX, halfH, -halfW * rightZ],
+      [halfW * rightX, halfH, halfW * rightZ],
+      [-halfW * rightX, -halfH, -halfW * rightZ],
+      [halfW * rightX, -halfH, halfW * rightZ],
+    ];
+    const width = this.canvas.clientWidth || 1;
+    const height = this.canvas.clientHeight || 1;
+    const box = this.canvas.getBoundingClientRect();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const [x, y, z] of corners) {
+      this.scratch.set(x, y, z).project(this.camera);
+      const sx = (this.scratch.x * 0.5 + 0.5) * width;
+      const sy = (-this.scratch.y * 0.5 + 0.5) * height;
+      minX = Math.min(minX, sx);
+      minY = Math.min(minY, sy);
+      maxX = Math.max(maxX, sx);
+      maxY = Math.max(maxY, sy);
+    }
+    // Viewport coordinates so the HUD can subtract its own origin. The HUD
+    // is width-capped and centred; the canvas is not.
+    return {
+      left: box.left + minX,
+      top: box.top + minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
   resize(): void {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
@@ -398,6 +456,9 @@ export class GameRenderer {
     setLightingFlatness(this.lights, flatness);
     setWellFlatness(this.well, flatness);
     orientWell(this.well, yaw);
+    this.scene.background = this.environment.backdrop;
+    // The panel dips during Prism so the whiteout can still wash the column.
+    orientColumnPanel(this.columnPanel, yaw, 0.95 * (1 - whiteout * 0.7));
 
     const lanes = partitionByLane(game);
     this.lockedNear.update(lanes.near, yaw, separation, whiteout);
@@ -466,6 +527,8 @@ export class GameRenderer {
     this.lockFlashLayer.dispose();
     this.environment.dispose();
     this.debris.dispose();
+    this.columnPanel.geometry.dispose();
+    (this.columnPanel.material as THREE.Material).dispose();
     this.composer.dispose();
     this.renderer.dispose();
   }

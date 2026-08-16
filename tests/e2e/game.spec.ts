@@ -28,6 +28,42 @@ async function distinctCanvasColours(page: Page): Promise<number> {
   });
 }
 
+/**
+ * Distinct colours inside the play column. The room is now a disco, so a
+ * whole-canvas sample cannot tell a flat board from a dimensional one — the
+ * background dominates. The opaque panel keeps the well's pixels about the
+ * board.
+ */
+async function distinctWellColours(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+    const renderer = window.__refraction?.renderer;
+    if (!renderer) return 0;
+    const rect = renderer.wellScreenRect();
+    const box = source.getBoundingClientRect();
+    const scaleX = source.width / Math.max(1, box.width);
+    const scaleY = source.height / Math.max(1, box.height);
+    const inset = 0.08;
+    const sx = (rect.left - box.left + rect.width * inset) * scaleX;
+    const sy = (rect.top - box.top + rect.height * inset) * scaleY;
+    const sw = Math.max(1, rect.width * (1 - inset * 2) * scaleX);
+    const sh = Math.max(1, rect.height * (1 - inset * 2) * scaleY);
+
+    const scratch = document.createElement('canvas');
+    scratch.width = 80;
+    scratch.height = 140;
+    const context = scratch.getContext('2d');
+    if (!context) return 0;
+    context.drawImage(source, sx, sy, sw, sh, 0, 0, scratch.width, scratch.height);
+    const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+    const seen = new Set<string>();
+    for (let i = 0; i < data.length; i += 4) {
+      seen.add(`${data[i]},${data[i + 1]},${data[i + 2]}`);
+    }
+    return seen.size;
+  });
+}
+
 test.describe('boot', () => {
   test('renders the playfield and the HUD', async ({ page }) => {
     await boot(page);
@@ -50,6 +86,35 @@ test.describe('boot', () => {
     await boot(page);
     // Stage 1 turns the board every five lines.
     await expect(page.locator('.meter__pip')).toHaveCount(5);
+  });
+
+  test('parks the Shift bar under the play column', async ({ page }) => {
+    await boot(page);
+    // layoutWell runs after the first rendered frame; give the bar its rect.
+    await expect(page.locator('.hud__shift')).toBeVisible();
+    const metrics = await page.evaluate(() => {
+      const bar = document.querySelector('.hud__shift') as HTMLElement;
+      const canvas = document.querySelector('canvas.stage') as HTMLCanvasElement;
+      const barBox = bar.getBoundingClientRect();
+      const canvasBox = canvas.getBoundingClientRect();
+      return {
+        barCenter: barBox.left + barBox.width / 2,
+        canvasCenter: canvasBox.left + canvasBox.width / 2,
+        barWidth: barBox.width,
+        barTop: barBox.top,
+        canvasHeight: canvasBox.height,
+        pipCount: bar.querySelectorAll('.meter__pip').length,
+      };
+    });
+    expect(metrics.pipCount).toBe(5);
+    expect(metrics.barWidth).toBeGreaterThan(120);
+    expect(Math.abs(metrics.barCenter - metrics.canvasCenter)).toBeLessThan(24);
+    expect(metrics.barTop).toBeGreaterThan(metrics.canvasHeight * 0.55);
+  });
+
+  test('frames the HUD as panels', async ({ page }) => {
+    await boot(page);
+    await expect(page.locator('.hud__panel')).toHaveCount(5);
   });
 
   test('shows the next piece', async ({ page }) => {
@@ -100,8 +165,11 @@ test.describe('rendering', () => {
   test('looks flat when settled and gains volume only during the turn', async ({ page }) => {
     // The central visual rule: the board reads as 2D until it rotates. Flat
     // tiles are unshaded, so they yield few distinct colours; lit cubes with
-    // visible tops and sides yield many more.
-    await page.goto('/?debug=1&seed=flatness');
+    // visible tops and sides yield many more. Sample the well, not the whole
+    // canvas — the disco behind the column would drown the signal.
+    // Stretch the turn so the dimensional peak cannot be missed under
+    // parallel load: a 750ms window is shorter than a stalled frame.
+    await page.goto('/?debug=1&seed=flatness&turnMs=4000');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     await page.evaluate(() => {
@@ -116,7 +184,7 @@ test.describe('rendering', () => {
       game.status = 'awaitingTurn';
     });
     await page.waitForTimeout(250);
-    const flat = await distinctCanvasColours(page);
+    const flat = await distinctWellColours(page);
 
     await page.keyboard.press('ArrowRight');
     // Sample at the actual dimensional peak rather than after a magic sleep:
@@ -125,11 +193,11 @@ test.describe('rendering', () => {
       const renderer = window.__refraction?.renderer;
       return Boolean(renderer?.isTurning && renderer.flatness < 0.25);
     });
-    const midTurn = await distinctCanvasColours(page);
+    const midTurn = await distinctWellColours(page);
 
     await page.waitForFunction(() => window.__refraction?.renderer?.isTurning === false);
     await page.waitForTimeout(150);
-    const settled = await distinctCanvasColours(page);
+    const settled = await distinctWellColours(page);
 
     expect(midTurn).toBeGreaterThan(flat * 1.5);
     expect(settled).toBeLessThan(midTurn);

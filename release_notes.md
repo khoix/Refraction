@@ -7,6 +7,49 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M8: Spectacle and the HUD
+
+The second playtest of M6 asked for a louder room and a HUD that looks like a
+HUD. M7 fixed the three things the game was saying wrongly; this milestone
+is the presentation that was waiting on that. The colour rule in DESIGN §2.2
+is restated so it forbids a second *rules* language, not decorative hue in
+the room behind the board.
+
+### Shipped
+
+- **A disco background.** Coloured beams, hue-cycling fragments and dust, a
+  pulsing lattice, ripples on clears, a slow HSL backdrop, and a strobe.
+  Density and colour surge on lock, clear, turn, and Prism. Under reduced
+  motion the strobe is gone entirely — a dim flash is still a flash — and
+  the hue cycle slows. Decorative colour makes no claim about the rules.
+- **A ~95% opaque play column.** A dark panel, billboarded and sized to the
+  projected footprint, sits behind the well so the disco never competes with
+  a cube for a depth reading. Opacity dips through the Prism whiteout so the
+  bloom can still wash the column.
+- **The Shift meter is a segmented bar under the well.** Segment count still
+  follows `linesPerTurn`. It is positioned from the orthographic silhouette
+  in viewport pixels, then converted into the HUD's own origin so a
+  width-capped HUD cannot drift it off the column.
+- **HUD chrome.** Stats, face, NEXT, HOLD, and the Shift bar are framed
+  modules: raised surface, hairline, blur. Dim type is brighter against the
+  disco; prompt and overlay scrims are darker. The chrome stays achromatic
+  because it is the surface that describes the rules.
+- **The colour rule's scope, corrected.** Cubes keep the spectrum. The room
+  may have hue. The HUD may not. The opaque column is the device that keeps
+  those two languages from mixing on a cube.
+
+### Tested
+
+**197 unit tests, 32 end-to-end tests.**
+
+New e2e pins that the Shift bar sits under the column (centred on the
+canvas, in the lower half) and that the HUD is five framed panels. The
+idle-liveliness assertion still requires the background to move while the
+board is frozen. The flatness assertion now samples the well rather than
+the whole canvas, because a disco room would drown the signal.
+
+---
+
 ## M7: Controls and Comprehension
 
 The first playtest of M6 said three things the game was communicating wrongly:

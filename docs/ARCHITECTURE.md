@@ -46,9 +46,10 @@ src/
   render/               Three.js — reads core state, never writes it
     scene.ts            camera, lights, the well
     voxels.ts           instanced cube layers, per-frame colour
-    environment.ts      reactive achromatic backdrop, clear debris
-    game-renderer.ts    per-frame update, the turn camera, selective bloom
-  ui/hud.ts             HUD
+    environment.ts      reactive colourful backdrop, clear debris
+    game-renderer.ts    per-frame update, the turn camera, the column panel,
+                        selective bloom
+  ui/hud.ts             HUD chrome, Shift bar parked under the well
   input.ts              keyboard, DAS/ARR
   audio/
     tones.ts            what to play, as pure data -- tested
@@ -122,9 +123,11 @@ Prism whiteout can reach it, and the composer runs only while such a pixel can
 exist; ordinary play renders without it.
 
 The environment renders in the opaque pass with a negative render order, no
-depth writes, and additive brightness in place of opacity, so board pixels
-always paint over it — it is strictly a backdrop and can never sit between
-the player and a cube.
+depth writes, and additive brightness in place of opacity. A near-opaque
+(~95%) panel sits behind the well, sized to the projected footprint, so
+environment colour never sits on a cube. Decorative hue is allowed in the
+room; it is forbidden on any surface that describes the rules. See DESIGN
+§2.2 and §2.4.
 
 ## Determinism
 

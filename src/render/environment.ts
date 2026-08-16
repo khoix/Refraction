@@ -1,23 +1,20 @@
 /**
  * The reactive environment, and the debris a clear throws off.
  *
- * The board floats in a living space rather than a black void: drifting dust,
- * distant geometric fragments, a faint floor lattice, and rings that ripple
- * outward when lines clear. All of it is **achromatic** -- white and grey
- * light only. On this screen a hue is a claim about depth from the current
- * camera, so the environment is allowed brightness, density, geometry and
- * motion, and is never allowed a colour.
+ * The board floats in a loud space: coloured beams, cycling fragments, a
+ * pulsing lattice, drifting dust, and rings that ripple outward when lines
+ * clear. Decorative colour is allowed here -- it makes no claim about the
+ * rules. The near-opaque play column is what keeps that colour from ever
+ * sitting on a cube, so a hue on the board is still only ever a depth claim.
  *
- * It is also strictly a backdrop. Every element draws in the opaque pass with
- * a negative render order and no depth writes, so board pixels always paint
- * over environment pixels -- nothing here can ever sit between the player and
- * a cube, and none of its motion is coupled to board depth. Brightness is
- * carried by additive colour rather than opacity so the elements can live in
- * the opaque pass at all.
+ * It is strictly a backdrop. Every element draws in the opaque pass with a
+ * negative render order and no depth writes, so board pixels always paint
+ * over environment pixels. Brightness is carried by additive colour rather
+ * than opacity so the elements can live in the opaque pass at all.
  *
- * The one exception is debris, which is gameplay feedback rather than
- * scenery: it erupts from the cells a clear removed, carries their spectrum
- * colour truthfully, and draws over the board like the other clear effects.
+ * Debris is gameplay feedback rather than scenery: it erupts from the cells
+ * a clear removed, carries their spectrum colour truthfully, and draws over
+ * the board like the other clear effects.
  */
 
 import * as THREE from 'three';
@@ -25,29 +22,30 @@ import { BOARD_HEIGHT } from '@core/constants';
 
 const BACKDROP_ORDER = -10;
 
-/** Dust ring bounds, comfortably outside the board's turning diagonal. */
 const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
-const DUST_COUNT = 420;
+const DUST_COUNT = 520;
 
-const FRAGMENT_COUNT = 14;
+const FRAGMENT_COUNT = 18;
+const BEAM_COUNT = 7;
 const RIPPLE_POOL = 5;
 const RIPPLE_LIFE_MS = 950;
 
 const DEBRIS_POOL = 600;
 const DEBRIS_LIFE_MS = 700;
-const DEBRIS_GRAVITY = 0.000028; // cells per ms^2
+const DEBRIS_GRAVITY = 0.000028;
 
 function backdropMaterialSettings(material: THREE.Material): void {
   material.depthWrite = false;
   material.depthTest = false;
   material.blending = THREE.AdditiveBlending;
-  // Deliberately NOT transparent: that keeps the element in the opaque pass,
-  // where it renders before the board and the board paints over it.
   material.transparent = false;
 }
 
-/** Points spread through an annular volume around the board. */
+function hueColor(hue: number, sat: number, lit: number): THREE.Color {
+  return new THREE.Color().setHSL(((hue % 1) + 1) % 1, sat, lit);
+}
+
 function dustCloud(seedAngle: number): THREE.Points {
   const positions = new Float32Array(DUST_COUNT * 3);
   for (let i = 0; i < DUST_COUNT; i += 1) {
@@ -60,8 +58,7 @@ function dustCloud(seedAngle: number): THREE.Points {
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.BufferAttribute(positions, 3));
-
-  const material = new THREE.PointsMaterial({ size: 2.4, sizeAttenuation: false });
+  const material = new THREE.PointsMaterial({ size: 2.6, sizeAttenuation: false });
   backdropMaterialSettings(material);
   const points = new THREE.Points(geometry, material);
   points.renderOrder = BACKDROP_ORDER;
@@ -69,24 +66,23 @@ function dustCloud(seedAngle: number): THREE.Points {
   return points;
 }
 
-/** Sparse wireframe boxes drifting far behind the well. */
 function fragmentField(): THREE.Group {
   const group = new THREE.Group();
   for (let i = 0; i < FRAGMENT_COUNT; i += 1) {
-    const size = 1.2 + Math.random() * 3.4;
+    const size = 1.2 + Math.random() * 3.8;
     const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size));
     const material = new THREE.LineBasicMaterial();
     backdropMaterialSettings(material);
     const fragment = new THREE.LineSegments(edges, material);
-
     const angle = Math.random() * Math.PI * 2;
-    const radius = 20 + Math.random() * 22;
+    const radius = 18 + Math.random() * 24;
     fragment.position.set(
       Math.cos(angle) * radius,
       (Math.random() - 0.4) * BOARD_HEIGHT * 2.2,
       Math.sin(angle) * radius
     );
     fragment.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
+    fragment.userData.hue = i / FRAGMENT_COUNT;
     fragment.renderOrder = BACKDROP_ORDER;
     fragment.frustumCulled = false;
     group.add(fragment);
@@ -94,7 +90,6 @@ function fragmentField(): THREE.Group {
   return group;
 }
 
-/** A faint square lattice on the floor plane, well below the well. */
 function floorLattice(): THREE.LineSegments {
   const half = 34;
   const step = 4;
@@ -114,11 +109,31 @@ function floorLattice(): THREE.LineSegments {
   return lattice;
 }
 
+function discoBeams(): THREE.Group {
+  const group = new THREE.Group();
+  for (let i = 0; i < BEAM_COUNT; i += 1) {
+    const geometry = new THREE.PlaneGeometry(1.4, 90);
+    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    backdropMaterialSettings(material);
+    const beam = new THREE.Mesh(geometry, material);
+    const angle = (i / BEAM_COUNT) * Math.PI * 2;
+    beam.position.set(Math.cos(angle) * 16, 0, Math.sin(angle) * 16);
+    beam.rotation.z = (Math.random() - 0.5) * 0.6;
+    beam.userData.hue = i / BEAM_COUNT;
+    beam.userData.spin = 0.0004 + i * 0.00007;
+    beam.renderOrder = BACKDROP_ORDER;
+    beam.frustumCulled = false;
+    group.add(beam);
+  }
+  return group;
+}
+
 interface Ripple {
   readonly ring: THREE.LineLoop;
   readonly material: THREE.LineBasicMaterial;
   ageMs: number;
   strength: number;
+  hue: number;
 }
 
 function buildRipple(): Ripple {
@@ -136,62 +151,74 @@ function buildRipple(): Ripple {
   ring.renderOrder = BACKDROP_ORDER;
   ring.frustumCulled = false;
   ring.visible = false;
-  return { ring, material, ageMs: RIPPLE_LIFE_MS, strength: 0 };
+  return { ring, material, ageMs: RIPPLE_LIFE_MS, strength: 0, hue: 0 };
 }
 
 export class Environment {
   readonly group = new THREE.Group();
+  readonly backdrop = new THREE.Color(0x05060a);
 
   private readonly dustNear: THREE.Points;
   private readonly dustFar: THREE.Points;
   private readonly fragments: THREE.Group;
   private readonly lattice: THREE.LineSegments;
+  private readonly beams: THREE.Group;
+  private readonly strobe: THREE.Mesh;
   private readonly ripples: Ripple[] = [];
 
-  /** Momentary excitement from an event, decaying back to calm. */
   private pulse = 0;
-  /** How close the Shift meter is to full, 0..1. Creeping anticipation. */
   private tension = 0;
-  /** Extra drive while the board is turning. */
   private turnDrive = 0;
+  private hue = 0;
+  private strobePhase = 0;
+  private readonly reducedMotion: boolean;
   private readonly intensity: number;
 
   constructor(reducedMotion: boolean) {
-    // Under reduced motion the space stays alive but everything reacts at a
-    // fraction of its strength; ambience is not a photosensitivity risk, spikes
-    // are.
-    this.intensity = reducedMotion ? 0.35 : 1;
+    this.reducedMotion = reducedMotion;
+    this.intensity = reducedMotion ? 0.45 : 1;
 
     this.dustNear = dustCloud(0);
     this.dustFar = dustCloud(2.1);
     this.fragments = fragmentField();
     this.lattice = floorLattice();
+    this.beams = discoBeams();
+
+    const strobeGeometry = new THREE.PlaneGeometry(180, 180);
+    const strobeMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    backdropMaterialSettings(strobeMaterial);
+    this.strobe = new THREE.Mesh(strobeGeometry, strobeMaterial);
+    this.strobe.position.z = -50;
+    this.strobe.renderOrder = BACKDROP_ORDER - 1;
+    this.strobe.frustumCulled = false;
+    this.strobe.visible = !reducedMotion;
+
     for (let i = 0; i < RIPPLE_POOL; i += 1) this.ripples.push(buildRipple());
 
     this.group.add(
+      this.strobe,
       this.dustNear,
       this.dustFar,
       this.fragments,
       this.lattice,
+      this.beams,
       ...this.ripples.map((ripple) => ripple.ring)
     );
   }
 
-  /** An event pushed energy into the space. Strength 0..1, biggest for Prism. */
   react(strength: number): void {
-    this.pulse = Math.min(1.6, this.pulse + strength * this.intensity);
+    this.pulse = Math.min(1.8, this.pulse + strength * this.intensity);
   }
 
-  /** A clear sends a ring outward through the space. */
   ripple(strength: number): void {
     const idle = this.ripples.find((candidate) => candidate.ageMs >= RIPPLE_LIFE_MS);
     if (!idle) return;
     idle.ageMs = 0;
     idle.strength = strength * this.intensity;
+    idle.hue = this.hue;
     idle.ring.visible = true;
   }
 
-  /** How full the Shift meter is; the space leans in as the turn approaches. */
   setTension(tension: number): void {
     this.tension = THREE.MathUtils.clamp(tension, 0, 1);
   }
@@ -201,25 +228,63 @@ export class Environment {
     const target = turning ? 1 : 0;
     this.turnDrive += (target - this.turnDrive) * Math.min(1, deltaMs * 0.008);
 
-    // Drift accelerates with tension and the turn. Two clouds run against each
-    // other so the motion reads as space rather than as a spinning prop.
     const drive = 1 + this.tension * 0.9 + this.turnDrive * 2.6 + this.pulse * 1.4;
-    const step = deltaMs * 0.000016 * drive * this.intensity;
+    const step = deltaMs * 0.000018 * drive * this.intensity;
+    this.hue += deltaMs * 0.000045 * (this.reducedMotion ? 0.25 : 1) * drive;
+
     this.dustNear.rotation.y += step * 3;
     this.dustFar.rotation.y -= step * 2;
     this.fragments.rotation.y += step;
+    this.beams.rotation.y += step * 1.8;
 
-    const glow = this.pulse + this.tension * 0.25;
-    (this.dustNear.material as THREE.PointsMaterial).color.setScalar(0.34 + glow * 0.5);
-    (this.dustFar.material as THREE.PointsMaterial).color.setScalar(0.2 + glow * 0.34);
-    (this.dustNear.material as THREE.PointsMaterial).size = 2.4 + this.pulse * 1.8;
+    const glow = this.pulse + this.tension * 0.3;
+    (this.dustNear.material as THREE.PointsMaterial).color.copy(
+      hueColor(this.hue, 0.55, 0.28 + glow * 0.35)
+    );
+    (this.dustFar.material as THREE.PointsMaterial).color.copy(
+      hueColor(this.hue + 0.18, 0.5, 0.16 + glow * 0.28)
+    );
+    (this.dustNear.material as THREE.PointsMaterial).size = 2.6 + this.pulse * 2.2;
 
-    this.fragments.children.forEach((child) => {
+    this.fragments.children.forEach((child, index) => {
       const fragment = child as THREE.LineSegments;
-      (fragment.material as THREE.LineBasicMaterial).color.setScalar(0.09 + glow * 0.22);
-      fragment.rotation.x += step * 0.6;
+      const hue = (fragment.userData.hue as number) + this.hue;
+      (fragment.material as THREE.LineBasicMaterial).color.copy(
+        hueColor(hue, 0.7, 0.18 + glow * 0.35)
+      );
+      fragment.rotation.x += step * 0.7;
+      fragment.scale.setScalar(1 + this.pulse * 0.18 + Math.sin(this.hue * 8 + index) * 0.08);
     });
-    (this.lattice.material as THREE.LineBasicMaterial).color.setScalar(0.07 + glow * 0.16);
+
+    (this.lattice.material as THREE.LineBasicMaterial).color.copy(
+      hueColor(this.hue + 0.5, 0.45, 0.1 + glow * 0.22)
+    );
+
+    this.beams.children.forEach((child) => {
+      const beam = child as THREE.Mesh;
+      beam.rotation.y += (beam.userData.spin as number) * deltaMs * drive;
+      const hue = (beam.userData.hue as number) + this.hue * 1.4;
+      (beam.material as THREE.MeshBasicMaterial).color.copy(
+        hueColor(hue, 0.85, 0.08 + glow * 0.18 + this.turnDrive * 0.1)
+      );
+    });
+
+    // Strobe is the photosensitivity risk. Under reduced motion it is gone
+    // entirely, not scaled -- a dim flash is still a flash.
+    if (!this.reducedMotion) {
+      this.strobePhase += deltaMs * (0.009 + this.pulse * 0.02 + this.turnDrive * 0.012);
+      const flash = Math.max(0, Math.sin(this.strobePhase) ** 32) * (0.08 + this.pulse * 0.22);
+      (this.strobe.material as THREE.MeshBasicMaterial).color.copy(
+        hueColor(this.hue + 0.08, 0.6, flash)
+      );
+      this.strobe.rotation.y = THREE.MathUtils.degToRad(yawDegrees);
+    }
+
+    this.backdrop.setHSL(
+      ((this.hue + 0.72) % 1 + 1) % 1,
+      0.35 + this.tension * 0.15,
+      0.035 + glow * 0.04
+    );
 
     const yawRad = THREE.MathUtils.degToRad(yawDegrees);
     for (const ripple of this.ripples) {
@@ -229,11 +294,11 @@ export class Environment {
       }
       ripple.ageMs += deltaMs;
       const t = Math.min(1, ripple.ageMs / RIPPLE_LIFE_MS);
-      const radius = 9 + t * 26;
-      ripple.ring.scale.setScalar(radius);
-      // Face the camera, so the ring reads as a shockwave from every face.
+      ripple.ring.scale.setScalar(9 + t * 26);
       ripple.ring.rotation.y = yawRad;
-      ripple.material.color.setScalar((1 - t) * (1 - t) * 0.55 * ripple.strength);
+      ripple.material.color.copy(
+        hueColor(ripple.hue + t * 0.15, 0.8, (1 - t) * (1 - t) * 0.45 * ripple.strength)
+      );
     }
   }
 
@@ -250,8 +315,8 @@ export class Environment {
 /**
  * Debris from a line clear: a burst of points at the removed cells, thrown
  * outward and pulled down, fading over well under a second. Each particle
- * keeps the spectrum colour of the cell it came from -- the one place colour
- * is allowed, because it is that cell's actual depth being carried away.
+ * keeps the spectrum colour of the cell it came from -- the board's depth
+ * colour being carried away, distinct from the decorative colour of the room.
  *
  * Particles are staggered along the clearing axis, so the burst reads as the
  * line dissolving from one end to the other rather than popping all at once.
