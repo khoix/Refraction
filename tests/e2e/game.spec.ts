@@ -877,3 +877,129 @@ test.describe('modes in play', () => {
     expect(await page.evaluate(() => window.__refraction?.game.status)).not.toBe('gameOver');
   });
 });
+
+test.describe('the room', () => {
+  /**
+   * Sample the canvas inside and outside the play column.
+   *
+   * The room is made of light, not colour, and it sits *under* the board in the
+   * visual hierarchy. Both of those are easy to lose by accident -- the room
+   * once ran on a hue clock at 0.85 saturation, and its levels were written in
+   * linear space where a value that reads as "nearly black" arrives on screen
+   * as a mid-dark grey. These are the two numbers that catch either mistake.
+   */
+  async function roomAndBoard(page: Page): Promise<{
+    roomMean: number;
+    roomMax: number;
+    roomSaturation: number;
+    boardBrightest: number;
+  }> {
+    return page.evaluate(() => {
+      const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+      const renderer = window.__refraction?.renderer;
+      if (!renderer) throw new Error('debug hook unavailable');
+      const rect = renderer.wellScreenRect();
+      const box = source.getBoundingClientRect();
+      const scaleX = source.width / Math.max(1, box.width);
+      const scaleY = source.height / Math.max(1, box.height);
+
+      const scratch = document.createElement('canvas');
+      scratch.width = source.width;
+      scratch.height = source.height;
+      const context = scratch.getContext('2d');
+      if (!context) throw new Error('no 2d context');
+      context.drawImage(source, 0, 0);
+      const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+      const left = (rect.left - box.left) * scaleX;
+      const right = left + rect.width * scaleX;
+      const top = (rect.top - box.top) * scaleY;
+      const bottom = top + rect.height * scaleY;
+
+      let roomSum = 0;
+      let roomCount = 0;
+      let roomMax = 0;
+      let roomSaturation = 0;
+      let boardBrightest = 0;
+
+      for (let y = 0; y < scratch.height; y += 3) {
+        for (let x = 0; x < scratch.width; x += 3) {
+          const i = (y * scratch.width + x) * 4;
+          const r = data[i] as number;
+          const g = data[i + 1] as number;
+          const b = data[i + 2] as number;
+          const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+          if (x >= left && x <= right && y >= top && y <= bottom) {
+            boardBrightest = Math.max(boardBrightest, luminance);
+          } else {
+            roomSum += luminance;
+            roomCount += 1;
+            roomMax = Math.max(roomMax, luminance);
+            roomSaturation = Math.max(roomSaturation, Math.max(r, g, b) - Math.min(r, g, b));
+          }
+        }
+      }
+      return {
+        roomMean: roomSum / Math.max(1, roomCount),
+        roomMax,
+        roomSaturation,
+        boardBrightest,
+      };
+    });
+  }
+
+  /** Play a few pieces so the board has something bright in it. */
+  async function busyBoard(page: Page): Promise<void> {
+    await page.goto('/?debug=1&mode=ascent&seed=room');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(90);
+    }
+    await page.waitForTimeout(400);
+  }
+
+  test('is achromatic — no hue anywhere outside the board', async ({ page }) => {
+    await busyBoard(page);
+    const { roomSaturation } = await roomAndBoard(page);
+    // A cube at full chroma spans ~170 between its channels. The room must not
+    // come close: anything with a hue would be a second colour language.
+    expect(roomSaturation).toBeLessThan(40);
+  });
+
+  test('sits under the board rather than over it', async ({ page }) => {
+    await busyBoard(page);
+    const { roomMean, roomMax, boardBrightest } = await roomAndBoard(page);
+    // The room is a backdrop. Its brightest pixel stays below the brightest
+    // thing on the board, and on average it is far darker still.
+    expect(roomMax).toBeLessThan(boardBrightest);
+    expect(roomMean).toBeLessThan(20);
+  });
+
+  test('still moves, quietly', async ({ page }) => {
+    // Dark is not the same as dead. The dust and the shafts keep drifting.
+    await busyBoard(page);
+    const sample = (): Promise<number[]> =>
+      page.evaluate(() => {
+        const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+        const scratch = document.createElement('canvas');
+        scratch.width = 120;
+        scratch.height = 80;
+        const context = scratch.getContext('2d');
+        if (!context) return [];
+        context.drawImage(source, 0, 0, scratch.width, scratch.height);
+        return Array.from(context.getImageData(0, 0, scratch.width, scratch.height).data);
+      });
+
+    const before = await sample();
+    await page.waitForTimeout(900);
+    const after = await sample();
+    let changed = 0;
+    for (let i = 0; i < before.length; i += 4) {
+      if (Math.abs((before[i] as number) - (after[i] as number)) > 1) changed += 1;
+    }
+    expect(changed).toBeGreaterThan(20);
+  });
+});

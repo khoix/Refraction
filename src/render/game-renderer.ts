@@ -516,7 +516,7 @@ export class GameRenderer {
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.
-    orientColumnPanel(this.columnPanel, yaw, 0.95 * (1 - whiteout * 0.7));
+    orientColumnPanel(this.columnPanel, yaw, 0.62 * (1 - whiteout * 0.7));
 
     const lanes = partitionByLane(game);
     this.lockedNear.update(lanes.near, yaw, separation, whiteout);

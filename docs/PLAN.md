@@ -291,6 +291,13 @@ moment now, and it carries the M6 regression test that parses the advertised
 restart key out of the copy. Two panels announcing the same thing was one too
 many.
 
+**Note 4:** the M8 disco was reworked to an achromatic room during this
+milestone. It looked cheap, and the cause was specific: one hue clock driving
+every element in lockstep, saturation at 0.7–0.85 on unlit hard-edged
+geometry, and levels written in linear space where "nearly black" renders as
+mid-grey. DESIGN §2.4 records the diagnosis; §2.2 takes back the relaxation
+that had allowed decorative hue in the room.
+
 **Not built:** key remapping. It is listed here under "controls" but belongs
 with the input work in M11, and moved there.
 

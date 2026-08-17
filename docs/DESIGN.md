@@ -148,15 +148,20 @@ So the palette is partitioned:
 | ------------------------------------------------------------------------------------ | ----------------------------------------------- |
 | Cubes on the board                                                                   | spectrum, by lane depth from the current face   |
 | Cubes in the next-piece preview                                                      | spectrum, by the lane that piece will arrive in |
-| The environment behind the play column                                               | decorative — hue, strobe, spectacle             |
+| The environment around the board                                                     | achromatic — light, never hue                   |
 | Everything that describes the rules — HUD, meter, banners, popups, prompts, overlays | achromatic                                      |
 
 The HUD chrome is drawn from a neutral ink ramp with a single near-white accent
-(`--accent-ui`). A second colour language _that makes claims about the rules_ —
-a stage named for a spectrum band, a tinted Shift meter, rainbow scoring
-banners — is what the partition forbids. Decorative colour in the room behind
-the board makes no such claim, and the near-opaque play column is the device
-that keeps it off the cubes.
+(`--accent-ui`). The partition is now **absolute**: the only hue on screen
+belongs to a cube.
+
+That last row was briefly written the other way. The room was allowed
+"decorative hue" on the reasoning that colour behind the board makes no claim
+about the rules, and a near-opaque panel was added to keep it off the cubes.
+Both halves turned out to be wrong. The panel was the tell: a room that has to
+be walled off from the board is competing with it, not holding it. And a player
+looking at one screen does not partition it — a magenta beam and a violet cube
+are the same kind of thing until someone explains otherwise. See §2.4.
 
 Two consequences worth stating, because both replaced something that looked
 better in isolation:
@@ -187,24 +192,60 @@ When a stage does earn one, it is shown **alongside** the number rather than
 instead of it (`Stage 4 — Eclipse`), so the player never loses their place in
 the arc. And it may not be a spectrum band, for the reason in §2.2.
 
-### 2.4 The environment
+### 2.4 The environment: light, not colour
 
-The board floats in a loud space: coloured beams, cycling fragments, a pulsing
-lattice, drifting dust, and rings that ripple on clears. It exists to make the
-game feel alive, and it is allowed **hue, brightness, contrast, density,
-geometry and motion**. Decorative colour makes no claim about the rules.
+The board floats in a dark room made of **light**: shafts of cool grey standing
+around the well, white dust, dim wireframe at distance, a neutral floor lattice,
+and rings that ripple on clears. It is allowed **brightness, contrast, density,
+geometry and motion** — everything except hue.
 
-It is strictly a backdrop, by construction rather than by tuning. A near-opaque
-(~95%) panel sits behind the well, sized to the projected footprint, so a board
-pixel always wins — nothing environmental can sit between the player and a cube,
-and none of its motion is coupled to board depth. From inside the column, the
-disco is a rumour; from outside it, it is the room.
+It answers the board by getting brighter, never by changing colour: a pulse on
+lock, a ripple on a clear, a creeping density as the Shift meter fills, stronger
+movement through a turn, and a major response to a Refraction Clear or a Prism.
 
-It reacts to play: a small pulse on lock, a ripple and colour surge on a clear,
-a creeping density as the Shift meter fills, stronger movement through a turn,
-and a major response to a Refraction Clear or a Prism. Under reduced motion the
-ambience and the slow hue cycle stay; the strobe is cut entirely — a dim flash
-is still a flash.
+**What this replaced, and why.** The room was once a disco — coloured beams,
+cycling fragments, a strobe, a hue-cycled backdrop. Three things were wrong with
+it:
+
+- **One hue clock drove everything.** Dust, fragments, lattice, beams, strobe
+  and backdrop all cycled the colour wheel in lockstep at fixed offsets, which
+  reads as a hue slider being dragged rather than as a place.
+- **Saturation was very high** (0.7–0.85) on unlit materials with hard edges, so
+  the beams were flat coloured strips rather than light.
+- **The backdrop was a saturated near-black**, and a dark tint reads as dirt.
+  That is where the muddy brown came from.
+
+Three rules keep the replacement from looking cheap:
+
+- **Beams fade at both ends.** A vertex-colour ramp runs bright across the
+  board's height and falls to nothing top and bottom, so a shaft reads as light
+  with no beginning and no end. Under additive blending, black is invisible, so
+  this costs one attribute and no shader.
+- **Nothing moves in lockstep.** Each shaft has its own drift, phase and peak.
+- **The ground is a true neutral.**
+
+**Levels are stated in sRGB, not linear.** Three works in linear space and
+converts on output, which lifts the bottom end hard: a linear `0.008` — which
+reads as "nearly black" to anyone writing it — arrives on screen at about
+26/255, a mid-dark grey. That single mistake is what made the first achromatic
+pass a flat grey field brighter than the board. Every level in
+`src/render/environment.ts` now goes through `light()`, which converts
+explicitly, so the numbers mean what they look like.
+
+**The hierarchy is measured, not eyeballed.** Two end-to-end tests sample the
+canvas inside and outside the well: the room's brightest pixel must stay below
+the board's brightest, its mean must stay far below that, and its maximum
+channel spread must stay under 40 — a cube at full chroma spans about 170, so
+nothing in the room can be mistaken for one.
+
+The play column is still there but no longer load-bearing: at 62% it lets the
+dust through, so the board reads as floating in the room rather than pasted over
+it. With an achromatic room it protects against brightness, not hue.
+
+Under reduced motion the ambience stays and slows. **The strobe is gone
+entirely** — it was both the photosensitivity risk and the cheapest-looking
+element, and nothing replaced it. A space made of light does not need to flash
+to feel alive.
 
 ## 3. Lines
 

@@ -122,9 +122,55 @@ moment and can offer the mode list and the session log. M6's regression test —
 which parses the advertised restart key out of the copy so the two can never
 diverge — moved onto the new panel and still passes.
 
+### The room was reworked from a disco to light
+
+M8's environment looked cheap, and the cause turned out to be specific rather
+than a matter of taste.
+
+- **One hue clock drove everything.** Dust, fragments, lattice, beams, strobe
+  and backdrop all read from `this.hue` at fixed offsets, so the whole room
+  cycled the colour wheel in lockstep — which reads as a hue slider being
+  dragged, not as a place.
+- **Saturation sat at 0.7–0.85** on unlit materials with hard edges, so the
+  beams were flat coloured strips rather than light.
+- **The backdrop was a saturated near-black.** A dark tint reads as dirt; that
+  is where the muddy brown came from.
+
+It is now achromatic: grey light shafts that fade to nothing at both ends via a
+vertex-colour ramp, white dust, dim wireframe pushed out to distance, a neutral
+floor lattice. Each shaft has its own drift, phase and peak so the room breathes
+unevenly. The room answers play by getting brighter, never by changing colour.
+The strobe is gone entirely — it was both the photosensitivity risk and the
+cheapest-looking element, and a space made of light does not need to flash.
+
+**A colour-space bug was hiding underneath it.** The first achromatic pass still
+looked like a flat grey field brighter than the board. Measuring rather than
+squinting gave the answer: the room averaged **28.3** luminance against the
+well's **5.9**, and its brightest pixel (149) beat the brightest cube (89) — the
+hierarchy was inverted. Cutting every level barely moved it, and hiding the
+entire environment left the room at **20.3**, which proved the environment was
+not the source at all.
+
+It was the colour space. Three works in linear and converts on output, so the
+`0.008` I had written as "nearly black" was arriving at about 26/255. Every
+level now goes through a `light()` helper that converts explicitly, so the
+numbers in that file mean what they look like. Final measurements: room mean
+**8.7**, room max **62.6** against a board max of **88.9**, saturation ≤21.
+
+This also takes back M8's amendment to DESIGN §2.2, which had allowed
+decorative hue in the room. The near-opaque panel was the tell: a room that has
+to be walled off from the board is competing with it. The panel is still there
+at 62% — enough to hold brightness back, loose enough that the dust shows
+through and the board reads as floating in the room rather than pasted over it.
+
+Three end-to-end tests now pin it: the room is achromatic (max channel spread
+under 40, against ~170 for a cube at full chroma), it sits under the board (its
+brightest pixel below the board's brightest, its mean far below), and it still
+moves — dark is not the same as dead.
+
 ### Tested
 
-**296 unit tests, 51 end-to-end tests.**
+**296 unit tests, 54 end-to-end tests.**
 
 - `pause.test.ts` (10) — freezes gravity, refuses every input, restores a turn
   and a prompt mid-flight, cannot escape game over, and the determinism
