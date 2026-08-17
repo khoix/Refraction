@@ -313,12 +313,29 @@ with the input work in M11, and moved there.
 - First-run onboarding that teaches by design rather than by tutorial text:
   position is absolute, colour is relative, rotation changes viewpoint, opposite
   faces mirror, hidden geometry can be inferred before it is revealed.
-- **Ghost and contact clarity pass** — re-tune the M6 silhouettes and M7 lane
-  focus after extended playtesting: opacity, emphasis, hierarchy, and behaviour
-  on highly occluded boards.
+- **Roll the X-ray back to the rule it was meant to implement** _(play notes)_.
+  The intended behaviour was never a whole-board effect: the lanes **under** the
+  falling piece and the lanes **in front of** those are x-ray transparent, so the
+  top layer — the one carrying the ghost — reads straight through. Only the lanes
+  **behind** that are muted and darkened. What shipped instead veils the near
+  cubes and darkens the far ones across the board, which is why everything reads
+  muted. Replaces M6's first-contact shell and M7's lane-focus veil as tuned.
+- **Un-bury the ghost** _(play notes)_. It is not missing: `ghostCells()` returns
+  its cells and `showGhost` is on. The lane-focus veil draws at `renderOrder: 1`
+  over the ghost's default order, so a 0.3-opacity ghost is washed out by a
+  0.28-opacity veil painted on top of it. Fixing the item above should restore
+  it; this is a separate line because "the ghost is legible on a crowded board"
+  is the acceptance test, not a side effect.
+- **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
+  after the rollback, and check behaviour on highly occluded boards.
 
 **Exit criteria:** a new player reaches their first turn without instructions and
-understands what happened afterwards.
+understands what happened afterwards. The ghost is findable at a glance on a full
+board, and no cube is dimmed unless it sits behind the falling piece.
+
+**Sequencing:** the first two items lead this milestone. They are a live
+playability regression on `main` rather than a polish pass, and everything else
+here is built on top of a board the player can read.
 
 ---
 
@@ -329,6 +346,15 @@ understands what happened afterwards.
 - Banded, luminance, and colour-vision-safe depth ramps; lane numerals. Any
   alternative to ROYGBIV must preserve the core distinction: depth is relative
   to the current camera orientation.
+- **Key map in settings** _(play notes)_ — a visible reference for what every key
+  does. The game has never told the player its controls anywhere but the README,
+  and it now has enough of them (move, three rotation axes, depth nudge, hold,
+  hard drop, face choice, pause, mute, restart) that it has to. Precursor to the
+  remapping below, which needs somewhere to display the bindings anyway.
+- **Arrow keys move through menus** _(play notes)_ — focus travels the panels and
+  the mode grid with the same keys that move a piece, so the whole game is
+  reachable without a mouse. Implied by "completable by keyboard alone" below;
+  making it explicit because it is a real gap today, not a refinement.
 - Full key remapping; gamepad parity; touch controls with swipe and tap.
 - Responsive layout from 390 px to ultrawide; readable UI scaling.
 - Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake
