@@ -38,6 +38,7 @@ export default tseslint.config(
         console: 'readonly',
         document: 'readonly',
         fetch: 'readonly',
+        localStorage: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
         window: 'readonly',

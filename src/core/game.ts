@@ -25,10 +25,13 @@ import type { Rng } from './rng';
 import type { ClearContext } from './scoring';
 import { HARD_DROP_PER_CELL, SOFT_DROP_PER_CELL, clearLabel, scoreClear } from './scoring';
 import type { StageConfig } from './stages';
-import { gravityIntervalMs, stageForLines } from './stages';
+import { LINES_PER_STAGE, stageForLines } from './stages';
+import type { ModeConfig } from './modes';
+import { modeById, modeGravity, modeStage } from './modes';
 import type { Cell, Face, TurnDirection } from './types';
 
-export type GameStatus = 'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'gameOver';
+export type GameStatus =
+  'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'paused' | 'gameOver';
 
 /** How the player rotates the active piece. */
 export type RotationKind = 'roll' | 'yaw' | 'pitch';
@@ -43,7 +46,7 @@ export interface ActivePiece {
 }
 
 export interface GameEvent {
-  readonly type: 'lock' | 'clear' | 'turn' | 'stage' | 'gameOver' | 'hold';
+  readonly type: 'lock' | 'clear' | 'turn' | 'stage' | 'gameOver' | 'hold' | 'rescue';
   readonly lines?: number;
   readonly label?: string;
   readonly score?: number;
@@ -63,6 +66,8 @@ export interface GameEvent {
 
 export interface GameOptions {
   readonly seed: string | number;
+  /** Which mode's rules apply. Defaults to Ascent, the authored arc. */
+  readonly mode?: ModeConfig;
   /** Overrides the stage's own depth-nudge gating. Used by Prism and Zen. */
   readonly forceDepthNudge?: boolean;
   /**
@@ -109,6 +114,11 @@ export class Game {
   lines = 0;
   shiftMeter = 0;
   refractionChain = 0;
+  /** Turns taken and Prism events closed, for the run's record. */
+  turns = 0;
+  prisms = 0;
+
+  readonly mode: ModeConfig;
 
   private readonly rng: Rng;
   private readonly dealer: Dealer;
@@ -144,11 +154,14 @@ export class Game {
   private cascadeIndex = 0;
   private linesThisResolve = 0;
   private lastTurnDirection: TurnDirection = 'right';
+  /** Status to return to on resume. Null whenever the game is not paused. */
+  private statusBeforePause: GameStatus | null = null;
   private revolutionFaces = new Set<Face>();
   private events: GameEvent[] = [];
 
   constructor(options: GameOptions) {
     this.options = options;
+    this.mode = options.mode ?? modeById(null);
     this.rng = createRng(options.seed);
     this.dealer = new Dealer(this.rng, this.stage.maxTier, options.catalog ?? 'standard');
     for (let i = 0; i < 3; i += 1) this.queue.push(this.dealer.deal());
@@ -158,7 +171,12 @@ export class Game {
   // ---------------------------------------------------------------- accessors
 
   get stage(): StageConfig {
-    return stageForLines(this.lines);
+    return modeStage(this.mode, this.lines, stageForLines, LINES_PER_STAGE);
+  }
+
+  /** Cells per second right now, after the mode's own acceleration. */
+  get gravity(): number {
+    return modeGravity(this.mode, this.stage, this.lines);
   }
 
   get depthNudgeAllowed(): boolean {
@@ -347,8 +365,38 @@ export class Game {
 
   // -------------------------------------------------------------------- clock
 
+  /**
+   * Freeze the run.
+   *
+   * Pause is a real engine state rather than a flag the host holds, because
+   * every input path already refuses to act outside `falling` and
+   * `awaitingTurn` -- so one status change closes all of them at once, and the
+   * renderer can see that the game is stopped rather than inferring it.
+   *
+   * It consumes no simulated time and mutates nothing else, so `(seed, input
+   * log)` still determines the run exactly: a log with pauses in it replays
+   * identically to one without. Mid-turn and mid-cascade pauses resume into the
+   * same state with their timers untouched.
+   *
+   * Returns false when there was nothing to pause.
+   */
+  pause(): boolean {
+    if (this.status === 'paused' || this.status === 'gameOver') return false;
+    this.statusBeforePause = this.status;
+    this.status = 'paused';
+    return true;
+  }
+
+  /** Resume exactly where the pause interrupted. */
+  resume(): boolean {
+    if (this.status !== 'paused' || this.statusBeforePause === null) return false;
+    this.status = this.statusBeforePause;
+    this.statusBeforePause = null;
+    return true;
+  }
+
   tick(deltaMs: number): void {
-    if (this.status === 'gameOver') return;
+    if (this.status === 'gameOver' || this.status === 'paused') return;
 
     if (this.status === 'awaitingTurn') {
       this.turnPromptTimer += deltaMs;
@@ -377,7 +425,7 @@ export class Game {
     if (!this.active) return;
 
     this.gravityTimer += deltaMs;
-    const interval = gravityIntervalMs(this.stage);
+    const interval = 1000 / this.gravity;
     while (this.gravityTimer >= interval) {
       this.gravityTimer -= interval;
       if (!this.tryShift({ u: 0, y: -1, lane: 0 }, false)) break;
@@ -394,7 +442,7 @@ export class Game {
 
   /** Soft drop runs at a multiple of the stage's gravity. */
   softDropIntervalMs(): number {
-    return gravityIntervalMs(this.stage) / SOFT_DROP_MULTIPLIER;
+    return 1000 / this.gravity / SOFT_DROP_MULTIPLIER;
   }
 
   // ------------------------------------------------------------------ internals
@@ -473,6 +521,12 @@ export class Game {
     this.grounded = false;
 
     if (!this.fits(piece)) {
+      // A mode with no failure state takes the top of the stack off instead of
+      // ending, then places the same piece in the room that made.
+      if (this.rescue(() => this.fits(piece))) {
+        this.active = piece;
+        return;
+      }
       this.active = piece;
       this.status = 'gameOver';
       this.events.push({ type: 'gameOver' });
@@ -502,6 +556,7 @@ export class Game {
    * is the reveal, and it has to be visible to be worth anything.
    */
   private beginTurn(direction: TurnDirection): void {
+    this.turns += 1;
     this.lastTurnDirection = direction;
     this.shiftMeter = Math.max(0, this.shiftMeter - this.stage.linesPerTurn);
     this.face = turn(this.face, direction);
@@ -579,8 +634,15 @@ export class Game {
       chain: this.resolveRefraction ? this.refractionChain + 1 : 0,
       prism,
     };
-    const gained = scoreClear(context);
+    // Mode-specific scoring: Prism weights the turn's own clears, and the flat
+    // scale prices the risk each mode actually carries.
+    const gained = Math.round(
+      scoreClear(context) *
+        this.mode.scoreScale *
+        (this.resolveRefraction ? this.mode.refractionScale : 1)
+    );
     this.score += gained;
+    if (prism) this.prisms += 1;
 
     const label = clearLabel(context);
     this.events.push({
@@ -601,6 +663,36 @@ export class Game {
     this.advanceResolve();
   }
 
+  /**
+   * Make room at the top rather than ending the run.
+   *
+   * Only modes with `canFail: false` get this. Rows come off the top one at a
+   * time and nothing below moves, so the structure the player has been building
+   * is left intact -- the rescue is visibly local, not a board wipe.
+   *
+   * `canProceed` is the condition being rescued *for* -- room for a specific
+   * piece, or simply a stack below the buffer -- because "not topped out" is
+   * not the same as "the next piece fits". Rescuing only to the weaker of the
+   * two would still end the run one piece later.
+   *
+   * Returns false if the mode can fail, or if the board ran out of rows to
+   * remove without satisfying the condition (a piece that cannot fit an empty
+   * board is a bug, and is allowed to end the run rather than loop forever).
+   */
+  private rescue(canProceed: () => boolean): boolean {
+    if (this.mode.canFail) return false;
+    let removed = false;
+    // Bounded by the board height: `removeHighestRow` strictly lowers the
+    // stack each time, so this cannot spin.
+    for (let i = 0; i < BOARD_HEIGHT_TOTAL && !canProceed(); i += 1) {
+      if (!this.board.removeHighestRow()) break;
+      removed = true;
+    }
+    if (!canProceed()) return false;
+    if (removed) this.events.push({ type: 'rescue' });
+    return true;
+  }
+
   /** Board is stable. Decide what happens next. */
   private finishResolve(): void {
     this.clearingLines = [];
@@ -614,7 +706,7 @@ export class Game {
       }
     }
 
-    if (this.board.isToppedOut()) {
+    if (this.board.isToppedOut() && !this.rescue(() => !this.board.isToppedOut())) {
       this.status = 'gameOver';
       this.events.push({ type: 'gameOver' });
       return;

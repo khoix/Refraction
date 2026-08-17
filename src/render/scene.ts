@@ -44,6 +44,16 @@ export const TURN_ELEVATION_DEG = 12;
 
 /** Empty space kept around the well when fitting the camera. */
 const FIT_MARGIN = 1.6;
+/**
+ * Room left below the board, in board cells, for the Shift meter.
+ *
+ * The meter is positioned from the board's on-screen silhouette, so if the
+ * camera frames the board symmetrically there is nowhere for it to go and it
+ * falls off the bottom of the window. Rather than shrink the board on every
+ * axis, the frustum is shifted down by half this amount: the board keeps its
+ * size and simply sits above centre, which is how a HUD is composed anyway.
+ */
+const HUD_RESERVE = 1.6;
 
 /** Board coordinates are centred on the origin so the camera can orbit simply. */
 export function toSceneX(x: number): number {
@@ -205,12 +215,15 @@ export function createScene(): SceneBundle {
  * as the board moving toward or away from the player.
  */
 export function fitCamera(camera: THREE.OrthographicCamera, aspect: number): void {
-  const halfHeight = BOARD_HEIGHT / 2 + FIT_MARGIN;
+  const halfHeight = BOARD_HEIGHT / 2 + FIT_MARGIN + HUD_RESERVE / 2;
   const widestHalfWidth = (Math.SQRT1_2 * (BOARD_WIDTH + BOARD_DEPTH)) / 2 + FIT_MARGIN;
   const half = Math.max(halfHeight, widestHalfWidth / Math.max(aspect, 0.0001));
 
-  camera.top = half;
-  camera.bottom = -half;
+  // Sliding the window down leaves the gap under the board rather than around
+  // it, so the reserved space is where the meter actually needs it.
+  const drop = HUD_RESERVE / 2;
+  camera.top = half - drop;
+  camera.bottom = -half - drop;
   camera.left = -half * aspect;
   camera.right = half * aspect;
   camera.updateProjectionMatrix();

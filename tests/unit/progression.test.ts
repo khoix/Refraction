@@ -167,16 +167,31 @@ describe('the lane draw', () => {
   });
 
   it('never starves a lane past the floor', () => {
+    // The worst gap any lane reaches, rather than an assertion per lane per
+    // deal. Asserting inside the loop meant 320,000 `expect` calls, which cost
+    // over four seconds under coverage and timed out CI on a slower runner.
+    // Tracking the maximum is the same guarantee -- every gap is within the
+    // bound exactly when the largest one is -- and it reports which lane and
+    // seed actually misbehaved instead of just the first that did.
     for (const seed of ['floor-a', 'floor-b', 'floor-c', 'floor-d']) {
       const gaps = new Array<number>(DEPTH_LANES).fill(0);
+      let worst = 0;
+      let worstLane = -1;
+
       for (const lane of dealLanes(seed, 10_000)) {
         for (let i = 0; i < DEPTH_LANES; i += 1) {
-          gaps[i] = i === lane ? 0 : (gaps[i] as number) + 1;
-          // The weight ramp past the floor is steep enough that an overdue
-          // lane lands within a handful of further deals, every time.
-          expect(gaps[i]).toBeLessThanOrEqual(LANE_STARVATION_GAP + 8);
+          const gap = i === lane ? 0 : (gaps[i] as number) + 1;
+          gaps[i] = gap;
+          if (gap > worst) {
+            worst = gap;
+            worstLane = i;
+          }
         }
       }
+
+      // The weight ramp past the floor is steep enough that an overdue lane
+      // lands within a handful of further deals, every time.
+      expect(worst, `seed ${seed}, lane ${worstLane}`).toBeLessThanOrEqual(LANE_STARVATION_GAP + 8);
     }
   });
 

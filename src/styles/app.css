@@ -419,6 +419,302 @@ body {
   color: var(--text-dim);
 }
 
+/* ------------------------------------------------------------------ screens */
+
+/* Every screen sits over the live board rather than replacing it. The player
+   never loses sight of the thing they are choosing to play. */
+.screens {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 2rem 1.25rem;
+  background: rgb(5 6 10 / 0.86);
+  backdrop-filter: blur(2px);
+  overflow-y: auto;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.1rem;
+  width: min(46rem, 100%);
+  text-align: center;
+}
+
+.panel__title {
+  margin: 0;
+  font-size: clamp(1.1rem, 3vw, 1.5rem);
+  font-weight: 300;
+  letter-spacing: 0.36em;
+  text-indent: 0.36em;
+  color: var(--text-secondary);
+}
+
+.panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+.panel__hint,
+.panel__stats,
+.panel__warning {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  color: var(--text-dim);
+}
+
+.panel__warning {
+  color: var(--text-secondary);
+}
+
+.panel__score {
+  margin: 0;
+  font-size: clamp(2.4rem, 9vw, 4.5rem);
+  font-weight: 200;
+  letter-spacing: 0.04em;
+}
+
+.panel__detail {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.18em;
+  color: var(--text-secondary);
+}
+
+.panel__best {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.24em;
+  color: var(--text-dim);
+}
+
+.panel__best--new {
+  color: var(--accent-ui);
+  text-shadow: 0 0 18px rgb(var(--accent-ui-glow) / 0.4);
+}
+
+/* ------------------------------------------------------------------- title */
+
+.title {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+  margin: 0;
+  font-weight: 200;
+}
+
+.title__word {
+  font-size: clamp(2.6rem, 11vw, 6rem);
+  letter-spacing: 0.3em;
+  text-indent: 0.3em;
+  line-height: 1;
+}
+
+.title__rule {
+  font-family: var(--font-mono);
+  font-size: clamp(0.62rem, 1.8vw, 0.8rem);
+  letter-spacing: 0.22em;
+  color: var(--text-dim);
+}
+
+/* ------------------------------------------------------------------ buttons */
+
+.button {
+  appearance: none;
+  padding: 0.75rem 1.6rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  background: rgb(18 21 34 / 0.85);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.24em;
+  cursor: pointer;
+  transition:
+    color 160ms var(--ease-snap),
+    border-color 160ms var(--ease-snap),
+    background 160ms var(--ease-snap);
+}
+
+.button:hover,
+.button:focus-visible {
+  color: var(--accent-ui);
+  border-color: var(--text-dim);
+  background: var(--surface-raised);
+}
+
+.button--primary {
+  color: var(--text-primary);
+  border-color: var(--text-dim);
+}
+
+/* --------------------------------------------------------------- mode select */
+
+.modes {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: 0.7rem;
+  width: 100%;
+}
+
+.mode {
+  appearance: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1.1rem 1rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 0.7rem;
+  background: rgb(18 21 34 / 0.7);
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color 160ms var(--ease-snap),
+    background 160ms var(--ease-snap);
+}
+
+.mode:hover:not(:disabled),
+.mode:focus-visible {
+  border-color: var(--text-dim);
+  background: var(--surface-raised);
+}
+
+.mode--locked {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.mode__name {
+  font-size: 1rem;
+  letter-spacing: 0.14em;
+  color: var(--text-primary);
+}
+
+.mode__blurb {
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.mode__best {
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  color: var(--text-dim);
+}
+
+/* ----------------------------------------------------------------- settings */
+
+.fields {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  width: 100%;
+  max-width: 30rem;
+}
+
+.field {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 0.2rem 0.9rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 0.6rem;
+  background: rgb(18 21 34 / 0.6);
+  text-align: left;
+  cursor: pointer;
+}
+
+.field__input,
+.field__range {
+  grid-row: span 2;
+  accent-color: var(--accent-ui);
+  cursor: pointer;
+}
+
+.field__input {
+  width: 1.05rem;
+  height: 1.05rem;
+}
+
+.field__range {
+  width: 7rem;
+}
+
+.field__label {
+  font-size: 0.85rem;
+  color: var(--text-primary);
+}
+
+.field__hint {
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
+@media (max-width: 34rem) {
+  .panel {
+    gap: 0.85rem;
+  }
+
+  .modes {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* ------------------------------------------------- challenge and session log */
+
+.panel__entry {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.6rem;
+}
+
+/* A code is read aloud and retyped, so it is set wide and monospaced. */
+.code {
+  padding: 0.7rem 1rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  background: rgb(10 12 20 / 0.9);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+  letter-spacing: 0.34em;
+  text-align: center;
+  text-transform: uppercase;
+  width: 10rem;
+}
+
+.code:focus-visible {
+  outline: 1px solid var(--text-dim);
+  outline-offset: 2px;
+}
+
+.session {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.session__row {
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.1em;
+  color: var(--text-dim);
+}
+
 [hidden] {
   display: none !important;
 }

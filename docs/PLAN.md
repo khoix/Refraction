@@ -259,7 +259,7 @@ fills with the meter; the HUD reads as panels, not captions; `verify:full` green
 
 ---
 
-## M9 — Modes and Meta
+## M9 — Modes and Meta ✅ _shipped_
 
 **Goal:** everything around the core loop. Consumes the finalized gameplay
 rather than developing against systems still in motion.
@@ -276,6 +276,30 @@ state-machine change, made without breaking `(seed, input log)` determinism.
 
 **Exit criteria:** every mode reachable and completable; a corrupt or outdated
 save is recovered from, never crashed on.
+
+**Note 1:** a mode is pure configuration over the stage table, not a code path,
+so the engine keeps one implementation and a mode cannot introduce a rule by
+accident. Ascent and Endless were one mode described twice in the spec; they are
+now separated by what they do with content rather than with speed — DESIGN §11.1.
+
+**Note 2:** the engine note is answered. `paused` is a real `GameStatus`, and
+determinism is asserted by playing one scripted run with a pause between every
+action and one without, then comparing — DESIGN §12.
+
+**Note 3:** the game-over HUD overlay from M6 is gone; the screen owns that
+moment now, and it carries the M6 regression test that parses the advertised
+restart key out of the copy. Two panels announcing the same thing was one too
+many.
+
+**Note 4:** the M8 disco was reworked to an achromatic room during this
+milestone. It looked cheap, and the cause was specific: one hue clock driving
+every element in lockstep, saturation at 0.7–0.85 on unlit hard-edged
+geometry, and levels written in linear space where "nearly black" renders as
+mid-grey. DESIGN §2.4 records the diagnosis; §2.2 takes back the relaxation
+that had allowed decorative hue in the room.
+
+**Not built:** key remapping. It is listed here under "controls" but belongs
+with the input work in M11, and moved there.
 
 ---
 

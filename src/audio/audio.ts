@@ -14,6 +14,11 @@ export class Audio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   private enabled = true;
+  /**
+   * Kept separately from `enabled` so muting never destroys the level the
+   * player set. Unmuting returns to exactly where they left it.
+   */
+  private level = 0.7;
 
   /**
    * Create the context. Must be called from inside a user gesture, or browsers
@@ -27,7 +32,7 @@ export class Audio {
       if (!Ctor) return;
       this.context = new Ctor();
       this.master = this.context.createGain();
-      this.master.gain.value = this.enabled ? 1 : 0;
+      this.master.gain.value = this.gainValue;
       this.master.connect(this.context.destination);
     }
     if (this.context.state === 'suspended') void this.context.resume();
@@ -39,7 +44,25 @@ export class Audio {
 
   setMuted(muted: boolean): void {
     this.enabled = !muted;
-    if (this.master) this.master.gain.value = this.enabled ? 1 : 0;
+    this.applyGain();
+  }
+
+  get volume(): number {
+    return this.level;
+  }
+
+  /** Master level, 0 to 1. Independent of mute. */
+  setVolume(volume: number): void {
+    this.level = Math.min(Math.max(volume, 0), 1);
+    this.applyGain();
+  }
+
+  private get gainValue(): number {
+    return this.enabled ? this.level : 0;
+  }
+
+  private applyGain(): void {
+    if (this.master) this.master.gain.value = this.gainValue;
   }
 
   toggleMute(): boolean {

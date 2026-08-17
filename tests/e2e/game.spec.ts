@@ -4,7 +4,7 @@ import { LINES_PER_STAGE } from '../../src/core/stages';
 
 /** Wait for the first rendered frame. */
 async function boot(page: Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/?mode=ascent');
   await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('canvas.stage')).toBeVisible();
 }
@@ -29,10 +29,11 @@ async function distinctCanvasColours(page: Page): Promise<number> {
 }
 
 /**
- * Distinct colours inside the play column. The room is now a disco, so a
- * whole-canvas sample cannot tell a flat board from a dimensional one — the
- * background dominates. The opaque panel keeps the well's pixels about the
- * board.
+ * Distinct colours inside the play column.
+ *
+ * A whole-canvas sample cannot tell a flat board from a dimensional one: the
+ * room fills most of the frame, so its dust and shafts dominate the count. The
+ * play column is where the board's own colours live.
  */
 async function distinctWellColours(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -70,7 +71,7 @@ test.describe('boot', () => {
     await expect(page.locator('.hud')).toBeVisible();
     await expect(page.getByText('SCORE')).toBeVisible();
     await expect(page.getByText('LINES')).toBeVisible();
-    await expect(page.getByText('STAGE')).toBeVisible();
+    await expect(page.getByText('STAGE', { exact: true })).toBeVisible();
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
   });
 
@@ -124,14 +125,18 @@ test.describe('boot', () => {
 
   test('spaces the next-piece preview evenly in both axes', async ({ page }) => {
     await boot(page);
-    const metrics = await page.locator('.slot').first().locator('.piece').evaluate((grid) => {
-      const cells = [...grid.querySelectorAll('.piece__cell')];
-      const a = cells[0]?.getBoundingClientRect();
-      const b = cells[1]?.getBoundingClientRect();
-      const c = cells[4]?.getBoundingClientRect();
-      if (!a || !b || !c) return { count: cells.length, col: 0, row: 0 };
-      return { count: cells.length, col: b.x - a.x, row: c.y - a.y };
-    });
+    const metrics = await page
+      .locator('.slot')
+      .first()
+      .locator('.piece')
+      .evaluate((grid) => {
+        const cells = [...grid.querySelectorAll('.piece__cell')];
+        const a = cells[0]?.getBoundingClientRect();
+        const b = cells[1]?.getBoundingClientRect();
+        const c = cells[4]?.getBoundingClientRect();
+        if (!a || !b || !c) return { count: cells.length, col: 0, row: 0 };
+        return { count: cells.length, col: b.x - a.x, row: c.y - a.y };
+      });
     expect(metrics.count).toBe(16);
     expect(Math.abs(metrics.col - metrics.row)).toBeLessThan(1);
   });
@@ -151,7 +156,7 @@ test.describe('boot', () => {
 test.describe('rendering', () => {
   test('draws the board rather than a blank canvas', async ({ page }) => {
     // Reading pixels back needs preserveDrawingBuffer, which is on in debug only.
-    await page.goto('/?debug=1&seed=render');
+    await page.goto('/?debug=1&mode=ascent&seed=render');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     for (let i = 0; i < 4; i += 1) {
       await page.keyboard.press('Space');
@@ -166,10 +171,10 @@ test.describe('rendering', () => {
     // The central visual rule: the board reads as 2D until it rotates. Flat
     // tiles are unshaded, so they yield few distinct colours; lit cubes with
     // visible tops and sides yield many more. Sample the well, not the whole
-    // canvas — the disco behind the column would drown the signal.
+    // canvas — the room behind the column would drown the signal.
     // Stretch the turn so the dimensional peak cannot be missed under
     // parallel load: a 750ms window is shorter than a stalled frame.
-    await page.goto('/?debug=1&seed=flatness&turnMs=4000');
+    await page.goto('/?debug=1&mode=ascent&seed=flatness&turnMs=4000');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     await page.evaluate(() => {
@@ -248,7 +253,7 @@ test.describe('controls', () => {
   });
 
   test('the key the game-over screen advertises actually restarts', async ({ page }) => {
-    await page.goto('/?debug=1&seed=restart');
+    await page.goto('/?debug=1&mode=ascent&seed=restart');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -256,7 +261,7 @@ test.describe('controls', () => {
       game.status = 'gameOver';
     });
 
-    const hint = page.locator('.overlay__hint');
+    const hint = page.locator('.panel--over .panel__hint');
     await expect(hint).toBeVisible();
     // Parse the key out of the hint itself, so the copy and the binding can
     // never advertise different keys again.
@@ -264,7 +269,7 @@ test.describe('controls', () => {
     expect(advertised).toBeTruthy();
 
     await page.keyboard.press(advertised as string);
-    await expect(page.locator('.overlay__hint')).toBeHidden();
+    await expect(page.locator('.panel--over')).toBeHidden();
     await expect(page.locator('.stat__value').first()).toHaveText('0');
   });
 });
@@ -272,7 +277,7 @@ test.describe('controls', () => {
 test.describe('the turn', () => {
   /** Reach a filled Shift meter directly via the debug hook. */
   async function armTheTurn(page: Page): Promise<void> {
-    await page.goto('/?debug=1&seed=e2e');
+    await page.goto('/?debug=1&mode=ascent&seed=e2e');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -323,7 +328,7 @@ test.describe('the turn', () => {
 
   test('holds the revealed lines lit until the board has finished turning', async ({ page }) => {
     // A stretched turn makes the intermediate state observable at all.
-    await page.goto('/?debug=1&seed=reveal&turnMs=3000');
+    await page.goto('/?debug=1&mode=ascent&seed=reveal&turnMs=3000');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -373,7 +378,7 @@ test.describe('the turn', () => {
 
 test.describe('feel', () => {
   test('shows a score popup when a line clears', async ({ page }) => {
-    await page.goto('/?debug=1&seed=popup');
+    await page.goto('/?debug=1&mode=ascent&seed=popup');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -414,7 +419,7 @@ test.describe('feel', () => {
    * A falling piece changes the picture every tick, which would drown it out.
    */
   async function frozenBoard(page: Page, query: string): Promise<void> {
-    await page.goto(`/?debug=1&seed=calm${query}`);
+    await page.goto(`/?debug=1&mode=ascent&seed=calm${query}`);
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -500,7 +505,7 @@ test.describe('feel', () => {
 test.describe('progression', () => {
   /** Advance the run to a chosen stage by handing it cleared lines. */
   async function reachStage(page: Page, stageIndex: number): Promise<void> {
-    await page.goto('/?debug=1&seed=arc');
+    await page.goto('/?debug=1&mode=ascent&seed=arc');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(
       ({ index, perStage }) => {
@@ -541,7 +546,7 @@ test.describe('progression', () => {
    * shown two colour languages at once with nothing to tell them apart.
    */
   test('never tints the stage readout, at any stage', async ({ page }) => {
-    await page.goto('/?debug=1&seed=colour');
+    await page.goto('/?debug=1&mode=ascent&seed=colour');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     const atStageOne = await inkOf(page, '.stat__value', 2);
@@ -562,7 +567,7 @@ test.describe('progression', () => {
   });
 
   test('keeps numbering past the last authored stage', async ({ page }) => {
-    await page.goto('/?debug=1&seed=endless');
+    await page.goto('/?debug=1&mode=ascent&seed=endless');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate((perStage) => {
       const game = window.__refraction?.game;
@@ -576,7 +581,7 @@ test.describe('experiments', () => {
   test('the experimental piece vocabulary boots and plays cleanly', async ({ page }) => {
     const problems: string[] = [];
     page.on('pageerror', (error) => problems.push(error.message));
-    await page.goto('/?debug=1&seed=exp&pieces=experimental');
+    await page.goto('/?debug=1&mode=ascent&seed=exp&pieces=experimental');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     for (let i = 0; i < 6; i += 1) {
@@ -596,5 +601,458 @@ test.describe('layout', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe('screens', () => {
+  test('opens on the title rather than dropping straight into a run', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await expect(page.locator('.title__word')).toHaveText('REFRACTION');
+    // The room is alive behind the title from the first frame.
+    await expect(page.locator('canvas.stage')).toBeVisible();
+  });
+
+  test('walks from title to a running game', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.panel--modes')).toBeVisible();
+    await page.locator('.mode[data-mode="ascent"]').click();
+    await expect(page.locator('.screens')).toBeHidden();
+    await expect(page.locator('.hud')).toBeVisible();
+  });
+
+  test('offers every mode, with the expert one locked', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.mode')).toHaveCount(6);
+    await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toBeDisabled();
+    await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toContainText('Reach stage 5');
+    await expect(page.locator('.mode[data-mode="ascent"]')).toBeEnabled();
+  });
+
+  test('pauses and resumes on Escape without advancing the board', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=pause');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.panel--paused')).toBeVisible();
+    // Pause is an engine state, not a host flag.
+    expect(await page.evaluate(() => window.__refraction?.game.status)).toBe('paused');
+
+    const height = (): Promise<number> =>
+      page.evaluate(() => window.__refraction?.game.active?.y ?? -1);
+    const before = await height();
+    await page.waitForTimeout(700);
+    expect(await height()).toBe(before);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.panel--paused')).toBeHidden();
+    expect(await page.evaluate(() => window.__refraction?.game.status)).not.toBe('paused');
+  });
+
+  test('does not let menu keystrokes reach the piece', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=gated');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('Escape');
+
+    const column = (): Promise<number> =>
+      page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
+    const before = await column();
+    for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(150);
+    expect(await column()).toBe(before);
+  });
+});
+
+test.describe('settings', () => {
+  test('persists a change across a reload', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    const bloom = page.locator('[data-field="bloom"] input');
+    await expect(bloom).toBeChecked();
+    await bloom.uncheck();
+
+    await page.reload();
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator('[data-field="bloom"] input')).not.toBeChecked();
+  });
+
+  test('reaches the renderer, not just the save', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=prefs');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.locator('[data-field="screenShake"] input').uncheck();
+
+    expect(await page.evaluate(() => window.__refraction?.renderer.preferences.screenShake)).toBe(
+      false
+    );
+  });
+
+  test('mutes from the settings panel and from the M key alike', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=mute');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('KeyM');
+    await expect(page.locator('.mute')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    const sound = page.locator('[data-field="sound"] input');
+    await expect(sound).not.toBeChecked();
+    await sound.check();
+    await expect(page.locator('.mute')).toBeHidden();
+  });
+});
+
+test.describe('persistence', () => {
+  /** End the run in progress the way the engine would. */
+  async function endRun(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      game.status = 'gameOver';
+    });
+    await expect(page.locator('.panel--over')).toBeVisible();
+  }
+
+  test('records a finished run and shows it on the mode card', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=record');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('Space');
+    await endRun(page);
+
+    expect(await page.evaluate(() => window.__refraction?.save().stats.runs ?? 0)).toBe(1);
+
+    await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
+    await expect(page.locator('.mode[data-mode="ascent"]')).not.toContainText('Not yet played');
+  });
+
+  test('logs the run on the title screen', async ({ page }) => {
+    await page.goto('/?debug=1&mode=flatland&seed=log');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await endRun(page);
+    await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
+    await page.getByRole('button', { name: 'BACK' }).click();
+    await expect(page.locator('.session__row').first()).toContainText('Flatland');
+  });
+
+  test('recovers from a corrupt save rather than refusing to boot', async ({ page }) => {
+    const problems: string[] = [];
+    page.on('pageerror', (error) => problems.push(error.message));
+
+    await page.goto('/');
+    await page.evaluate(() => localStorage.setItem('refraction.save.v1', '{"records":{"asc'));
+    await page.reload();
+
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.mode')).toHaveCount(6);
+    expect(problems).toEqual([]);
+  });
+
+  test('honours an unlock earned in an earlier session', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.reload();
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toBeEnabled();
+  });
+
+  test('a deep link cannot open a locked mode', async ({ page }) => {
+    await page.goto('/?mode=blindSpectrum');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    // Held at the title rather than dropped into a mode not yet earned.
+    await expect(page.locator('.panel--title')).toBeVisible();
+  });
+});
+
+test.describe('challenges', () => {
+  test('rejects a code that is not one, without starting a run', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'CHALLENGE' }).click();
+    await page.locator('.code').fill('nonsense');
+    await page.getByRole('button', { name: 'START' }).click();
+    await expect(page.locator('.panel--challenge')).toBeVisible();
+    await expect(page.locator('.panel--challenge .panel__hint')).toContainText('not a challenge');
+  });
+
+  test("starts today's challenge and names it on the game-over screen", async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'CHALLENGE' }).click();
+    await page.getByRole('button', { name: "TODAY'S CHALLENGE" }).click();
+    await expect(page.locator('.screens')).toBeHidden();
+
+    const daily = await page.locator('.code').inputValue();
+    expect(daily).toHaveLength(7);
+
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (game) game.status = 'gameOver';
+    });
+    await expect(page.locator('.panel--over .panel__detail')).toContainText(daily);
+  });
+
+  test('the same code gives the same game', async ({ page }) => {
+    const fingerprint = async (): Promise<string> => {
+      await page.goto('/?debug=1&challenge=A1B2C3D');
+      await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+      return page.evaluate(() => {
+        const game = window.__refraction?.game;
+        if (!game) return '';
+        return game.preview.map((entry) => `${entry.def.id}@${entry.lane}`).join('|');
+      });
+    };
+    const first = await fingerprint();
+    expect(first).not.toBe('');
+    expect(await fingerprint()).toBe(first);
+  });
+});
+
+test.describe('modes in play', () => {
+  test('Flatland deals only flat pieces', async ({ page }) => {
+    await page.goto('/?debug=1&mode=flatland&seed=flat');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const allPlanar = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) return false;
+      const shapes = [game.active?.offsets ?? [], ...game.preview.map((p) => p.cells)];
+      return shapes.every((cells) => new Set(cells.map((c) => c.z)).size === 1);
+    });
+    expect(allPlanar).toBe(true);
+  });
+
+  test('Blind Spectrum hides depth in the board and the preview alike', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.goto('/?debug=1&mode=blindSpectrum&seed=blind');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    expect(await page.evaluate(() => window.__refraction?.renderer.preferences.depthColour)).toBe(
+      false
+    );
+
+    // The preview must not leak what the board hides: a coloured next-piece
+    // would hand back the very lane this mode withholds.
+    const spreads = await page.evaluate(() => {
+      const cells = [...document.querySelectorAll('.slot__body .piece__cell--filled')];
+      return cells.map((cell) => {
+        const [r, g, b] = (getComputedStyle(cell).backgroundColor.match(/\d+/g) ?? []).map(Number);
+        return Math.max(r!, g!, b!) - Math.min(r!, g!, b!);
+      });
+    });
+    expect(spreads.length).toBeGreaterThan(0);
+    for (const spread of spreads) expect(spread).toBeLessThan(24);
+  });
+
+  test('Zen trims the stack instead of ending the run', async ({ page }) => {
+    await page.goto('/?debug=1&mode=zen&seed=zen');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let y = 0; y < 20; y += 1) {
+        for (let x = 1; x < 8; x += 1) {
+          for (let z = 0; z < 8; z += 1) game.board.fill({ x, y, z });
+        }
+      }
+    });
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(600);
+
+    await expect(page.locator('.panel--over')).toBeHidden();
+    expect(await page.evaluate(() => window.__refraction?.game.status)).not.toBe('gameOver');
+  });
+});
+
+test.describe('the room', () => {
+  /**
+   * Sample the canvas inside and outside the play column.
+   *
+   * The room is made of light, not colour, and it sits *under* the board in the
+   * visual hierarchy. Both of those are easy to lose by accident -- the room
+   * once ran on a hue clock at 0.85 saturation, and its levels were written in
+   * linear space where a value that reads as "nearly black" arrives on screen
+   * as a mid-dark grey. These are the two numbers that catch either mistake.
+   */
+  async function roomAndBoard(page: Page): Promise<{
+    roomMean: number;
+    roomMax: number;
+    roomSaturation: number;
+    boardBrightest: number;
+  }> {
+    return page.evaluate(() => {
+      const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+      const renderer = window.__refraction?.renderer;
+      if (!renderer) throw new Error('debug hook unavailable');
+      const rect = renderer.wellScreenRect();
+      const box = source.getBoundingClientRect();
+      const scaleX = source.width / Math.max(1, box.width);
+      const scaleY = source.height / Math.max(1, box.height);
+
+      const scratch = document.createElement('canvas');
+      scratch.width = source.width;
+      scratch.height = source.height;
+      const context = scratch.getContext('2d');
+      if (!context) throw new Error('no 2d context');
+      context.drawImage(source, 0, 0);
+      const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+      const left = (rect.left - box.left) * scaleX;
+      const right = left + rect.width * scaleX;
+      const top = (rect.top - box.top) * scaleY;
+      const bottom = top + rect.height * scaleY;
+
+      let roomSum = 0;
+      let roomCount = 0;
+      let roomMax = 0;
+      let roomSaturation = 0;
+      let boardBrightest = 0;
+
+      for (let y = 0; y < scratch.height; y += 3) {
+        for (let x = 0; x < scratch.width; x += 3) {
+          const i = (y * scratch.width + x) * 4;
+          const r = data[i] as number;
+          const g = data[i + 1] as number;
+          const b = data[i + 2] as number;
+          const luminance = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+
+          if (x >= left && x <= right && y >= top && y <= bottom) {
+            boardBrightest = Math.max(boardBrightest, luminance);
+          } else {
+            roomSum += luminance;
+            roomCount += 1;
+            roomMax = Math.max(roomMax, luminance);
+            roomSaturation = Math.max(roomSaturation, Math.max(r, g, b) - Math.min(r, g, b));
+          }
+        }
+      }
+      return {
+        roomMean: roomSum / Math.max(1, roomCount),
+        roomMax,
+        roomSaturation,
+        boardBrightest,
+      };
+    });
+  }
+
+  /** Play a few pieces so the board has something bright in it. */
+  async function busyBoard(page: Page): Promise<void> {
+    await page.goto('/?debug=1&mode=ascent&seed=room');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
+      await page.keyboard.press('Space');
+      await page.waitForTimeout(90);
+    }
+    await page.waitForTimeout(400);
+  }
+
+  test('is achromatic — no hue anywhere outside the board', async ({ page }) => {
+    await busyBoard(page);
+    const { roomSaturation } = await roomAndBoard(page);
+    // A cube at full chroma spans ~170 between its channels. The room must not
+    // come close: anything with a hue would be a second colour language.
+    expect(roomSaturation).toBeLessThan(40);
+  });
+
+  test('sits under the board rather than over it', async ({ page }) => {
+    await busyBoard(page);
+    const { roomMean, roomMax, boardBrightest } = await roomAndBoard(page);
+    // The room is a backdrop. Its brightest pixel stays below the brightest
+    // thing on the board, and on average it is far darker still.
+    expect(roomMax).toBeLessThan(boardBrightest);
+    expect(roomMean).toBeLessThan(20);
+  });
+
+  test('still moves, quietly', async ({ page }) => {
+    // Dark is not the same as dead. The dust and the shafts keep drifting.
+    await busyBoard(page);
+    const sample = (): Promise<number[]> =>
+      page.evaluate(() => {
+        const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+        const scratch = document.createElement('canvas');
+        scratch.width = 120;
+        scratch.height = 80;
+        const context = scratch.getContext('2d');
+        if (!context) return [];
+        context.drawImage(source, 0, 0, scratch.width, scratch.height);
+        return Array.from(context.getImageData(0, 0, scratch.width, scratch.height).data);
+      });
+
+    const before = await sample();
+    await page.waitForTimeout(900);
+    const after = await sample();
+    let changed = 0;
+    for (let i = 0; i < before.length; i += 4) {
+      if (Math.abs((before[i] as number) - (after[i] as number)) > 1) changed += 1;
+    }
+    expect(changed).toBeGreaterThan(20);
+  });
+});
+
+test.describe('the Shift meter stays on screen', () => {
+  /** How far the meter's box falls outside the viewport, in pixels. */
+  async function overflowBelow(page: Page): Promise<number> {
+    return page.evaluate(() => {
+      const shift = document.querySelector('.hud__shift');
+      if (!shift) return Number.NaN;
+      const rect = shift.getBoundingClientRect();
+      return rect.bottom - window.innerHeight;
+    });
+  }
+
+  const viewports = [
+    { name: 'a normal window', width: 1440, height: 900 },
+    { name: 'a laptop', width: 1280, height: 720 },
+    { name: 'a short window', width: 1280, height: 560 },
+    { name: 'a phone', width: 390, height: 844 },
+    { name: 'landscape on a phone', width: 844, height: 390 },
+  ];
+
+  for (const viewport of viewports) {
+    test(`is fully visible on ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto('/?debug=1&mode=ascent&seed=shift');
+      await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+      await page.waitForTimeout(200);
+
+      await expect(page.locator('.hud__shift')).toBeVisible();
+      // The camera reserves room below the board and the layout clamps to the
+      // window, so the meter cannot fall off the bottom at any aspect.
+      expect(await overflowBelow(page)).toBeLessThanOrEqual(0);
+      await expect(page.locator('.meter__pip')).toHaveCount(5);
+    });
+  }
+
+  test('sits below the board, not over it', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/?debug=1&mode=ascent&seed=under');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    const gap = await page.evaluate(() => {
+      const shift = document.querySelector('.hud__shift');
+      const renderer = window.__refraction?.renderer;
+      if (!shift || !renderer) return Number.NaN;
+      const well = renderer.wellScreenRect();
+      return shift.getBoundingClientRect().top - (well.top + well.height);
+    });
+    // Clear of the board's silhouette rather than clamped on top of it.
+    expect(gap).toBeGreaterThanOrEqual(0);
   });
 });

@@ -1,20 +1,41 @@
 /**
  * The reactive environment, and the debris a clear throws off.
  *
- * The board floats in a loud space: coloured beams, cycling fragments, a
- * pulsing lattice, drifting dust, and rings that ripple outward when lines
- * clear. Decorative colour is allowed here -- it makes no claim about the
- * rules. The near-opaque play column is what keeps that colour from ever
- * sitting on a cube, so a hue on the board is still only ever a depth claim.
+ * The room is made of **light, not colour**. Every element here is achromatic:
+ * shafts of cool grey light, white dust, dim wireframe, a neutral floor
+ * lattice, and rings that ripple outward when lines clear. It reacts to play
+ * through brightness and motion, and never through hue.
+ *
+ * That is a rule, not a preference. This space once ran on a single hue clock
+ * -- dust, fragments, lattice, beams, strobe and backdrop all cycling the
+ * colour wheel in lockstep at 0.7-0.85 saturation -- and it read as a
+ * screensaver: flat coloured strips with hard edges over a saturated near-black
+ * that came out muddy brown. Worse, it fought the one thing the game means by
+ * colour. A room that needs a near-opaque panel to keep it off the cubes is a
+ * room competing with the board rather than holding it.
+ *
+ * Achromatic solves both at once. Grey light cannot be mistaken for a depth
+ * claim, so the only hue on screen still belongs to a cube, and the space can
+ * sit right up against the board instead of being walled off from it.
+ *
+ * The craft rules that keep it from looking cheap:
+ *
+ * - **Beams fade at both ends.** A vertex-colour ramp runs bright at the
+ *   board's height and falls to black top and bottom, so a shaft reads as light
+ *   with no beginning and no end rather than as a rectangle someone drew.
+ * - **Nothing moves in lockstep.** Each beam has its own drift, phase and peak,
+ *   so the room breathes unevenly the way a real one does.
+ * - **The ground is a true neutral.** A saturated near-black is a tint, and
+ *   dark tints read as dirt.
  *
  * It is strictly a backdrop. Every element draws in the opaque pass with a
- * negative render order and no depth writes, so board pixels always paint
- * over environment pixels. Brightness is carried by additive colour rather
- * than opacity so the elements can live in the opaque pass at all.
+ * negative render order and no depth writes, so board pixels always paint over
+ * environment pixels. Brightness is carried by additive colour rather than
+ * opacity so the elements can live in the opaque pass at all.
  *
- * Debris is gameplay feedback rather than scenery: it erupts from the cells
- * a clear removed, carries their spectrum colour truthfully, and draws over
- * the board like the other clear effects.
+ * Debris is the one exception, and it is gameplay feedback rather than scenery:
+ * it erupts from the cells a clear removed and carries their spectrum colour
+ * truthfully, because that colour *is* a depth claim.
  */
 
 import * as THREE from 'three';
@@ -26,8 +47,14 @@ const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
 const DUST_COUNT = 520;
 
-const FRAGMENT_COUNT = 18;
-const BEAM_COUNT = 7;
+const FRAGMENT_COUNT = 14;
+/**
+ * Fewer, wider, softer than the disco's seven hard strips. A shaft of light
+ * only reads as light if there is room around it.
+ */
+const BEAM_COUNT = 5;
+/** Vertical segments per beam, for the falloff ramp along its length. */
+const BEAM_SEGMENTS = 16;
 const RIPPLE_POOL = 5;
 const RIPPLE_LIFE_MS = 950;
 
@@ -42,8 +69,22 @@ function backdropMaterialSettings(material: THREE.Material): void {
   material.transparent = false;
 }
 
-function hueColor(hue: number, sat: number, lit: number): THREE.Color {
-  return new THREE.Color().setHSL(((hue % 1) + 1) % 1, sat, lit);
+/**
+ * A neutral at a given brightness, very slightly cool.
+ *
+ * Not pure grey: a trace of blue keeps the room from reading as a
+ * black-and-white photograph, and at this saturation it cannot be mistaken for
+ * a hue that means something.
+ *
+ * **`level` is sRGB, not linear.** Three works in linear space and converts on
+ * output, which lifts the bottom end hard: a linear 0.008 -- which reads as
+ * "nearly black" to anyone writing it -- arrives on screen at about 26/255, a
+ * mid-dark grey. That mistake is what made the old room a flat grey field, and
+ * it is why every level in this file is stated the way it will actually look.
+ */
+function light(level: number): THREE.Color {
+  const value = Math.max(0, level);
+  return new THREE.Color().setRGB(value * 0.94, value * 0.97, value, THREE.SRGBColorSpace);
 }
 
 function dustCloud(seedAngle: number): THREE.Points {
@@ -69,20 +110,21 @@ function dustCloud(seedAngle: number): THREE.Points {
 function fragmentField(): THREE.Group {
   const group = new THREE.Group();
   for (let i = 0; i < FRAGMENT_COUNT; i += 1) {
-    const size = 1.2 + Math.random() * 3.8;
+    const size = 1.1 + Math.random() * 2.6;
     const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size));
     const material = new THREE.LineBasicMaterial();
     backdropMaterialSettings(material);
     const fragment = new THREE.LineSegments(edges, material);
     const angle = Math.random() * Math.PI * 2;
-    const radius = 18 + Math.random() * 24;
+    // Well clear of the board, so the field reads as distance rather than as
+    // clutter drawn across the well.
+    const radius = 26 + Math.random() * 22;
     fragment.position.set(
       Math.cos(angle) * radius,
       (Math.random() - 0.4) * BOARD_HEIGHT * 2.2,
       Math.sin(angle) * radius
     );
     fragment.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-    fragment.userData.hue = i / FRAGMENT_COUNT;
     fragment.renderOrder = BACKDROP_ORDER;
     fragment.frustumCulled = false;
     group.add(fragment);
@@ -109,18 +151,49 @@ function floorLattice(): THREE.LineSegments {
   return lattice;
 }
 
-function discoBeams(): THREE.Group {
+/**
+ * Shafts of light standing around the board.
+ *
+ * The falloff is the whole trick. A flat plane at constant brightness reads as
+ * a coloured strip of paper; the same plane with its brightness ramped to
+ * nothing at both ends reads as light passing through. The ramp is baked into
+ * vertex colours -- under additive blending, black is invisible -- so it costs
+ * one attribute and no shader.
+ */
+function lightShafts(): THREE.Group {
   const group = new THREE.Group();
   for (let i = 0; i < BEAM_COUNT; i += 1) {
-    const geometry = new THREE.PlaneGeometry(1.4, 90);
-    const material = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
+    const width = 2.2 + Math.random() * 2.0;
+    const geometry = new THREE.PlaneGeometry(width, 96, 1, BEAM_SEGMENTS);
+
+    // Brightest across the board's own height, falling to nothing top and
+    // bottom, so a shaft has no visible beginning or end.
+    const position = geometry.getAttribute('position');
+    const shade = new Float32Array(position.count * 3);
+    for (let v = 0; v < position.count; v += 1) {
+      const t = Math.abs(position.getY(v)) / 48;
+      const falloff = Math.max(0, 1 - t * t);
+      shade[v * 3] = falloff;
+      shade[v * 3 + 1] = falloff;
+      shade[v * 3 + 2] = falloff;
+    }
+    geometry.setAttribute('color', new THREE.BufferAttribute(shade, 3));
+
+    const material = new THREE.MeshBasicMaterial({
+      side: THREE.DoubleSide,
+      vertexColors: true,
+    });
     backdropMaterialSettings(material);
+
     const beam = new THREE.Mesh(geometry, material);
-    const angle = (i / BEAM_COUNT) * Math.PI * 2;
-    beam.position.set(Math.cos(angle) * 16, 0, Math.sin(angle) * 16);
-    beam.rotation.z = (Math.random() - 0.5) * 0.6;
-    beam.userData.hue = i / BEAM_COUNT;
-    beam.userData.spin = 0.0004 + i * 0.00007;
+    const angle = (i / BEAM_COUNT) * Math.PI * 2 + Math.random() * 0.5;
+    const radius = 15 + Math.random() * 9;
+    beam.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
+    beam.rotation.z = (Math.random() - 0.5) * 0.5;
+    // Its own drift, phase and peak, so no two breathe together.
+    beam.userData.spin = 0.00018 + Math.random() * 0.00022;
+    beam.userData.phase = Math.random() * Math.PI * 2;
+    beam.userData.peak = 0.5 + Math.random() * 0.5;
     beam.renderOrder = BACKDROP_ORDER;
     beam.frustumCulled = false;
     group.add(beam);
@@ -133,7 +206,6 @@ interface Ripple {
   readonly material: THREE.LineBasicMaterial;
   ageMs: number;
   strength: number;
-  hue: number;
 }
 
 function buildRipple(): Ripple {
@@ -151,7 +223,7 @@ function buildRipple(): Ripple {
   ring.renderOrder = BACKDROP_ORDER;
   ring.frustumCulled = false;
   ring.visible = false;
-  return { ring, material, ageMs: RIPPLE_LIFE_MS, strength: 0, hue: 0 };
+  return { ring, material, ageMs: RIPPLE_LIFE_MS, strength: 0 };
 }
 
 export class Environment {
@@ -163,14 +235,13 @@ export class Environment {
   private readonly fragments: THREE.Group;
   private readonly lattice: THREE.LineSegments;
   private readonly beams: THREE.Group;
-  private readonly strobe: THREE.Mesh;
   private readonly ripples: Ripple[] = [];
 
   private pulse = 0;
   private tension = 0;
   private turnDrive = 0;
-  private hue = 0;
-  private strobePhase = 0;
+  /** Free-running clock for the beams' individual breathing. */
+  private phase = 0;
   private readonly reducedMotion: boolean;
   private readonly intensity: number;
 
@@ -182,21 +253,15 @@ export class Environment {
     this.dustFar = dustCloud(2.1);
     this.fragments = fragmentField();
     this.lattice = floorLattice();
-    this.beams = discoBeams();
+    this.beams = lightShafts();
 
-    const strobeGeometry = new THREE.PlaneGeometry(180, 180);
-    const strobeMaterial = new THREE.MeshBasicMaterial({ side: THREE.DoubleSide });
-    backdropMaterialSettings(strobeMaterial);
-    this.strobe = new THREE.Mesh(strobeGeometry, strobeMaterial);
-    this.strobe.position.z = -50;
-    this.strobe.renderOrder = BACKDROP_ORDER - 1;
-    this.strobe.frustumCulled = false;
-    this.strobe.visible = !reducedMotion;
+    // The strobe is gone. It was the photosensitivity risk and the single
+    // cheapest-looking thing in the room, and nothing replaced it: a space made
+    // of light does not need to flash to feel alive.
 
     for (let i = 0; i < RIPPLE_POOL; i += 1) this.ripples.push(buildRipple());
 
     this.group.add(
-      this.strobe,
       this.dustNear,
       this.dustFar,
       this.fragments,
@@ -215,7 +280,6 @@ export class Environment {
     if (!idle) return;
     idle.ageMs = 0;
     idle.strength = strength * this.intensity;
-    idle.hue = this.hue;
     idle.ring.visible = true;
   }
 
@@ -230,61 +294,47 @@ export class Environment {
 
     const drive = 1 + this.tension * 0.9 + this.turnDrive * 2.6 + this.pulse * 1.4;
     const step = deltaMs * 0.000018 * drive * this.intensity;
-    this.hue += deltaMs * 0.000045 * (this.reducedMotion ? 0.25 : 1) * drive;
+    this.phase += deltaMs * 0.00035 * (this.reducedMotion ? 0.4 : 1);
 
     this.dustNear.rotation.y += step * 3;
     this.dustFar.rotation.y -= step * 2;
     this.fragments.rotation.y += step;
-    this.beams.rotation.y += step * 1.8;
+    this.beams.rotation.y += step * 1.4;
 
+    // One brightness signal for the whole room. Everything below is a level,
+    // never a hue: the room answers the board by getting brighter, not by
+    // changing colour.
     const glow = this.pulse + this.tension * 0.3;
-    (this.dustNear.material as THREE.PointsMaterial).color.copy(
-      hueColor(this.hue, 0.55, 0.28 + glow * 0.35)
-    );
-    (this.dustFar.material as THREE.PointsMaterial).color.copy(
-      hueColor(this.hue + 0.18, 0.5, 0.16 + glow * 0.28)
-    );
-    (this.dustNear.material as THREE.PointsMaterial).size = 2.6 + this.pulse * 2.2;
+
+    (this.dustNear.material as THREE.PointsMaterial).color.copy(light(0.26 + glow * 0.3));
+    (this.dustFar.material as THREE.PointsMaterial).color.copy(light(0.13 + glow * 0.16));
+    (this.dustNear.material as THREE.PointsMaterial).size = 1.9 + this.pulse * 1.2;
 
     this.fragments.children.forEach((child, index) => {
       const fragment = child as THREE.LineSegments;
-      const hue = (fragment.userData.hue as number) + this.hue;
-      (fragment.material as THREE.LineBasicMaterial).color.copy(
-        hueColor(hue, 0.7, 0.18 + glow * 0.35)
-      );
+      // Each fragment sits at its own level, so the field has depth rather
+      // than reading as one flat sheet of wireframe.
+      const own = 0.055 + (((index * 37) % 11) / 11) * 0.05;
+      (fragment.material as THREE.LineBasicMaterial).color.copy(light(own + glow * 0.14));
       fragment.rotation.x += step * 0.7;
-      fragment.scale.setScalar(1 + this.pulse * 0.18 + Math.sin(this.hue * 8 + index) * 0.08);
+      fragment.scale.setScalar(1 + this.pulse * 0.1);
     });
 
-    (this.lattice.material as THREE.LineBasicMaterial).color.copy(
-      hueColor(this.hue + 0.5, 0.45, 0.1 + glow * 0.22)
-    );
+    (this.lattice.material as THREE.LineBasicMaterial).color.copy(light(0.085 + glow * 0.11));
 
     this.beams.children.forEach((child) => {
       const beam = child as THREE.Mesh;
       beam.rotation.y += (beam.userData.spin as number) * deltaMs * drive;
-      const hue = (beam.userData.hue as number) + this.hue * 1.4;
-      (beam.material as THREE.MeshBasicMaterial).color.copy(
-        hueColor(hue, 0.85, 0.08 + glow * 0.18 + this.turnDrive * 0.1)
-      );
+      // Its own phase and peak, so the room breathes unevenly.
+      const breath = 0.6 + 0.4 * Math.sin(this.phase + (beam.userData.phase as number));
+      const level = (beam.userData.peak as number) * breath * (0.05 + glow * 0.06);
+      (beam.material as THREE.MeshBasicMaterial).color.copy(light(level + this.turnDrive * 0.045));
     });
 
-    // Strobe is the photosensitivity risk. Under reduced motion it is gone
-    // entirely, not scaled -- a dim flash is still a flash.
-    if (!this.reducedMotion) {
-      this.strobePhase += deltaMs * (0.009 + this.pulse * 0.02 + this.turnDrive * 0.012);
-      const flash = Math.max(0, Math.sin(this.strobePhase) ** 32) * (0.08 + this.pulse * 0.22);
-      (this.strobe.material as THREE.MeshBasicMaterial).color.copy(
-        hueColor(this.hue + 0.08, 0.6, flash)
-      );
-      this.strobe.rotation.y = THREE.MathUtils.degToRad(yawDegrees);
-    }
-
-    this.backdrop.setHSL(
-      ((this.hue + 0.72) % 1 + 1) % 1,
-      0.35 + this.tension * 0.15,
-      0.035 + glow * 0.04
-    );
+    // A true neutral ground. A saturated near-black is a tint, and dark tints
+    // read as dirt -- which is exactly how the old hue-cycled backdrop looked.
+    const ground = 0.035 + glow * 0.03;
+    this.backdrop.setRGB(ground * 0.92, ground * 0.96, ground, THREE.SRGBColorSpace);
 
     const yawRad = THREE.MathUtils.degToRad(yawDegrees);
     for (const ripple of this.ripples) {
@@ -296,9 +346,7 @@ export class Environment {
       const t = Math.min(1, ripple.ageMs / RIPPLE_LIFE_MS);
       ripple.ring.scale.setScalar(9 + t * 26);
       ripple.ring.rotation.y = yawRad;
-      ripple.material.color.copy(
-        hueColor(ripple.hue + t * 0.15, 0.8, (1 - t) * (1 - t) * 0.45 * ripple.strength)
-      );
+      ripple.material.color.copy(light((1 - t) * (1 - t) * 0.5 * ripple.strength));
     }
   }
 
@@ -403,7 +451,7 @@ export class Debris {
     let alive = 0;
 
     for (let i = 0; i < DEBRIS_POOL; i += 1) {
-      if (this.ages[i] as number >= DEBRIS_LIFE_MS) continue;
+      if ((this.ages[i] as number) >= DEBRIS_LIFE_MS) continue;
       this.ages[i] = (this.ages[i] as number) + deltaMs;
       const age = this.ages[i] as number;
       if (age < 0) {
@@ -417,11 +465,13 @@ export class Debris {
       }
       alive += 1;
 
-      this.positions[i * 3] = (this.positions[i * 3] as number) + (this.velocities[i * 3] as number) * deltaMs;
+      this.positions[i * 3] =
+        (this.positions[i * 3] as number) + (this.velocities[i * 3] as number) * deltaMs;
       const vy = (this.velocities[i * 3 + 1] as number) - DEBRIS_GRAVITY * deltaMs;
       this.velocities[i * 3 + 1] = vy;
       this.positions[i * 3 + 1] = (this.positions[i * 3 + 1] as number) + vy * deltaMs;
-      this.positions[i * 3 + 2] = (this.positions[i * 3 + 2] as number) + (this.velocities[i * 3 + 2] as number) * deltaMs;
+      this.positions[i * 3 + 2] =
+        (this.positions[i * 3 + 2] as number) + (this.velocities[i * 3 + 2] as number) * deltaMs;
 
       const fade = 1 - age / DEBRIS_LIFE_MS;
       this.colors[i * 3] = (this.colors[i * 3] as number) * (0.9 + 0.1 * fade);

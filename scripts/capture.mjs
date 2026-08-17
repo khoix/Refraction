@@ -53,15 +53,36 @@ async function main() {
     const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
     // A stretched turn makes a chosen moment of the rotation reachable: screenshot
     // latency is unpredictable and would otherwise land wherever it lands.
-    await page.goto(`${URL}/?debug=1&seed=capture&turnMs=6000`);
-    await page.waitForSelector('#app[data-ready="true"]');
-    await sleep(700);
-
     const shot = async (name) => {
       const file = resolve(OUTPUT_DIR, `${name}.png`);
       await page.screenshot({ path: file });
       console.log(`wrote ${file}`);
     };
+
+    // The front door first. A save with the expert mode already earned, so the
+    // menu shows a locked card and an unlocked one side by side.
+    await page.goto(`${URL}/`);
+    await page.waitForSelector('#app[data-ready="true"]');
+    await sleep(600);
+    await shot('00-title');
+
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await sleep(350);
+    await shot('00-modes');
+
+    await page.getByRole('button', { name: 'BACK' }).click();
+    await page.getByRole('button', { name: 'CHALLENGE' }).click();
+    await sleep(300);
+    await shot('00-challenge');
+
+    await page.getByRole('button', { name: 'BACK' }).click();
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await sleep(300);
+    await shot('00-settings');
+
+    await page.goto(`${URL}/?debug=1&mode=ascent&seed=capture&turnMs=6000`);
+    await page.waitForSelector('#app[data-ready="true"]');
+    await sleep(700);
 
     await shot('01-start');
 
@@ -162,12 +183,12 @@ async function main() {
     await sleep(6300); // the turn, then the bloom
     await shot('07-full-spectrum');
 
-    if (await page.locator('.overlay').isVisible()) await shot('08-game-over');
+    if (await page.locator('.panel--over').isVisible()) await shot('08-game-over');
 
     // M6 scenes get a fresh page: the prism aftermath above leaves the
     // renderer's stretched turn and whiteout mid-flight, which would colour
     // everything that follows.
-    await page.goto(`${URL}/?debug=1&seed=xray-capture`);
+    await page.goto(`${URL}/?debug=1&mode=ascent&seed=xray-capture`);
     await page.waitForSelector('#app[data-ready="true"]');
     await sleep(400);
 
@@ -240,7 +261,7 @@ async function main() {
     await shot('11-clear-debris');
 
     // M6: the experimental piece vocabulary, dealt from the first bag.
-    await page.goto(`${URL}/?debug=1&seed=exp-capture&pieces=experimental`);
+    await page.goto(`${URL}/?debug=1&mode=ascent&seed=exp-capture&pieces=experimental`);
     await page.waitForSelector('#app[data-ready="true"]');
     for (let i = 0; i < 5; i += 1) {
       await page.keyboard.press(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
@@ -249,6 +270,37 @@ async function main() {
     }
     await sleep(400);
     await shot('12-experimental');
+
+    // Pause, over a run in progress.
+    await page.goto(`${URL}/?debug=1&mode=ascent&seed=pause-capture`);
+    await page.waitForSelector('#app[data-ready="true"]');
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
+      await page.keyboard.press('Space');
+      await sleep(110);
+    }
+    await page.keyboard.press('Escape');
+    await sleep(350);
+    await shot('13-paused');
+
+    // Blind Spectrum. The deep link honours the lock, so grant it in the save
+    // first, the way a player would have earned it.
+    await page.goto(`${URL}/`);
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.goto(`${URL}/?debug=1&mode=blindSpectrum&seed=blind-capture`);
+    await page.waitForSelector('#app[data-ready="true"]');
+    for (let i = 0; i < 8; i += 1) {
+      await page.keyboard.press(i % 2 === 0 ? 'ArrowLeft' : 'ArrowRight');
+      await page.keyboard.press('Space');
+      await sleep(110);
+    }
+    await sleep(400);
+    await shot('14-blind-spectrum');
 
     await browser.close();
   } finally {

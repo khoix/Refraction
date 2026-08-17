@@ -73,6 +73,29 @@ export interface GameRendererOptions {
   readonly reducedMotion?: boolean;
 }
 
+/**
+ * Player-facing render preferences.
+ *
+ * These change while the game is running -- the settings panel is reachable
+ * from pause -- so they are mutable state rather than constructor options.
+ */
+export interface RenderPreferences {
+  readonly reducedMotion: boolean;
+  readonly screenShake: boolean;
+  readonly bloom: boolean;
+  readonly showGhost: boolean;
+  /** False in Blind Spectrum: cubes are drawn in one neutral fill. */
+  readonly depthColour: boolean;
+}
+
+const DEFAULT_PREFERENCES: RenderPreferences = {
+  reducedMotion: false,
+  screenShake: true,
+  bloom: true,
+  showGhost: true,
+  depthColour: true,
+};
+
 export interface WellScreenRect {
   readonly left: number;
   readonly top: number;
@@ -190,6 +213,8 @@ export class GameRenderer {
   private readonly environment: Environment;
   private readonly debris = new Debris();
   private readonly composer: EffectComposer;
+  /** Every layer that draws cubes, for settings that apply to all of them. */
+  private readonly voxelLayers: readonly VoxelLayer[];
   private readonly lights: SceneLights;
   private readonly well: Well;
   private readonly columnPanel: THREE.Mesh;
@@ -204,7 +229,7 @@ export class GameRenderer {
   private prismElapsed = PRISM_BLOOM_MS;
   private shakeElapsed = SHAKE_DECAY_MS;
   private shakeStrength = 0;
-  private readonly reducedMotion: boolean;
+  private prefs: RenderPreferences = DEFAULT_PREFERENCES;
   private readonly turnDurationMs: number;
 
   constructor(
@@ -212,7 +237,7 @@ export class GameRenderer {
     options: GameRendererOptions = {}
   ) {
     this.turnDurationMs = options.turnDurationMs ?? TURN_DURATION_MS;
-    this.reducedMotion = options.reducedMotion ?? false;
+    this.prefs = { ...DEFAULT_PREFERENCES, reducedMotion: options.reducedMotion ?? false };
     this.turnElapsed = this.turnDurationMs;
     this.renderer = new THREE.WebGLRenderer({
       canvas,
@@ -236,6 +261,19 @@ export class GameRenderer {
 
     this.environment = new Environment(this.reducedMotion);
     this.columnPanel = createColumnPanel();
+    this.voxelLayers = [
+      this.lockedNear,
+      this.lockedFocal,
+      this.lockedFar,
+      this.active,
+      this.ghost,
+      this.glow,
+      this.activeHidden,
+      this.ghostHidden,
+      this.contact,
+      this.lockFlashLayer,
+    ];
+
     this.scene.add(
       this.environment.group,
       this.columnPanel,
@@ -289,9 +327,28 @@ export class GameRenderer {
     this.prismElapsed = 0;
   }
 
+  /**
+   * Apply a settings change. Takes effect on the next frame.
+   *
+   * These are mutable rather than constructor options because the settings
+   * panel is reachable from pause, so they change while a run is in progress.
+   */
+  setPreferences(patch: Partial<RenderPreferences>): void {
+    this.prefs = { ...this.prefs, ...patch };
+    for (const layer of this.voxelLayers) layer.setDepthColour(this.prefs.depthColour);
+  }
+
+  get preferences(): RenderPreferences {
+    return this.prefs;
+  }
+
+  private get reducedMotion(): boolean {
+    return this.prefs.reducedMotion;
+  }
+
   /** Knock the camera. `strength` is a 0..1 multiplier on the peak amplitude. */
   shake(strength: number): void {
-    if (this.reducedMotion) return;
+    if (this.reducedMotion || !this.prefs.screenShake) return;
     this.shakeStrength = Math.max(this.shakeStrength, THREE.MathUtils.clamp(strength, 0, 1));
     this.shakeElapsed = 0;
   }
@@ -307,6 +364,7 @@ export class GameRenderer {
     if (this.prismElapsed >= PRISM_BLOOM_MS) return 0;
     const t = this.prismElapsed / PRISM_BLOOM_MS;
     const shape = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
+    if (!this.prefs.bloom) return 0;
     return THREE.MathUtils.clamp(shape, 0, 1) * (this.reducedMotion ? 0.35 : 0.92);
   }
 
@@ -458,7 +516,7 @@ export class GameRenderer {
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.
-    orientColumnPanel(this.columnPanel, yaw, 0.95 * (1 - whiteout * 0.7));
+    orientColumnPanel(this.columnPanel, yaw, 0.62 * (1 - whiteout * 0.7));
 
     const lanes = partitionByLane(game);
     this.lockedNear.update(lanes.near, yaw, separation, whiteout);
@@ -475,7 +533,7 @@ export class GameRenderer {
     this.glow.setOpacity(0.3 + 0.28 * Math.sin(this.glowElapsed * 0.011) + whiteout * 0.4);
 
     const activeCells = game.activeCells();
-    const ghostCells = game.status === 'falling' ? game.ghostCells() : [];
+    const ghostCells = this.prefs.showGhost && game.status === 'falling' ? game.ghostCells() : [];
     this.active.update(activeCells, yaw, separation, whiteout);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(ghostCells, yaw, 0.78 * separation);

@@ -14,6 +14,15 @@ export const ARR_MS = 33;
 
 export interface InputHandlers {
   readonly onRestart: () => void;
+  /** Esc, and any other request to open or dismiss the pause menu. */
+  readonly onPause: () => void;
+  /**
+   * Whether the engine should see this key at all.
+   *
+   * False while a menu is up. The controller still forgets held keys on the way
+   * in, so a key held down across a pause does not come back stuck.
+   */
+  readonly accepts: () => boolean;
   readonly onTurn: (direction: 'left' | 'right') => void;
   /** Any key at all. Browsers refuse to start audio outside a user gesture. */
   readonly onInteract: () => void;
@@ -52,6 +61,17 @@ export class InputController {
   private handleDown(event: KeyboardEvent): void {
     const game = this.game();
     this.handlers.onInteract();
+
+    if (event.code === 'Escape') {
+      this.releaseAll();
+      this.handlers.onPause();
+      event.preventDefault();
+      return;
+    }
+
+    // A menu owns the keyboard while it is up. Movement keys must not reach the
+    // engine, or the piece drifts behind the panel while the player reads it.
+    if (!this.handlers.accepts()) return;
 
     if (event.code === 'KeyM') {
       this.handlers.onToggleMute();
@@ -153,10 +173,17 @@ export class InputController {
     }
   }
 
+  /** Forget every held key. Used when a menu takes the keyboard. */
+  private releaseAll(): void {
+    this.left.held = false;
+    this.right.held = false;
+    this.softDropHeld = false;
+  }
+
   /** Drive key repeat. Called once per simulation step. */
   update(deltaMs: number): void {
     const game = this.game();
-    if (game.status !== 'falling') return;
+    if (game.status !== 'falling' || !this.handlers.accepts()) return;
 
     this.repeat(this.left, deltaMs, () => game.moveHorizontal(-1));
     this.repeat(this.right, deltaMs, () => game.moveHorizontal(1));
