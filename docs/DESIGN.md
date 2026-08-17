@@ -144,15 +144,15 @@ taught them anyway.
 
 So the palette is partitioned:
 
-| Surface                                                          | Colour                                          |
-| ---------------------------------------------------------------- | ----------------------------------------------- |
-| Cubes on the board                                               | spectrum, by lane depth from the current face   |
-| Cubes in the next-piece preview                                  | spectrum, by the lane that piece will arrive in |
-| The environment behind the play column                           | decorative — hue, strobe, spectacle             |
-| Everything that describes the rules — HUD, meter, banners, popups, prompts, overlays | achromatic                          |
+| Surface                                                                              | Colour                                          |
+| ------------------------------------------------------------------------------------ | ----------------------------------------------- |
+| Cubes on the board                                                                   | spectrum, by lane depth from the current face   |
+| Cubes in the next-piece preview                                                      | spectrum, by the lane that piece will arrive in |
+| The environment behind the play column                                               | decorative — hue, strobe, spectacle             |
+| Everything that describes the rules — HUD, meter, banners, popups, prompts, overlays | achromatic                                      |
 
 The HUD chrome is drawn from a neutral ink ramp with a single near-white accent
-(`--accent-ui`). A second colour language *that makes claims about the rules* —
+(`--accent-ui`). A second colour language _that makes claims about the rules_ —
 a stage named for a spectrum band, a tinted Shift meter, rainbow scoring
 banners — is what the partition forbids. Decorative colour in the room behind
 the board makes no such claim, and the near-opaque play column is the device
@@ -500,7 +500,7 @@ at least two of:
   with a restrained inner highlight on the cells `firstContactCells()` names
   as the ones the piece will actually touch; cubes farther than the piece
   darken toward the void, keeping their hue. The gradient is relative to the
-  *piece*, moves when the piece moves, and vanishes at lock — it cannot be
+  _piece_, moves when the piece moves, and vanishes at lock — it cannot be
   read as an absolute distance cue the way size falloff or haze would. Gated
   to `falling`; off during a turn, when lanes are being remapped.
 - **Ghost piece** — rendered at the true landing depth, in that lane's colour.
@@ -547,13 +547,13 @@ here than it normally would: §2.1 leaves colour carrying the depth information
 alone, so a second channel is worth having for players still learning to read
 the spectrum, and for anyone whose colour vision makes the ramp harder.
 
-| Event         | Sound                                                             |
-| ------------- | ----------------------------------------------------------------- |
-| Lock          | short, soft, pitched by the piece's nearest lane                  |
-| Clear         | one note per line, rising; brighter with each cascade step        |
+| Event         | Sound                                                              |
+| ------------- | ------------------------------------------------------------------ |
+| Lock          | short, soft, pitched by the piece's nearest lane                   |
+| Clear         | one note per line, rising; brighter with each cascade step         |
 | Turn          | a filtered sweep, falling when choosing left and rising when right |
-| Full Spectrum | every band at once — the audible form of white light              |
-| Game over     | a single low fall                                                 |
+| Full Spectrum | every band at once — the audible form of white light               |
+| Game over     | a single low fall                                                  |
 
 Decisions live in `src/audio/tones.ts` as pure data and are unit-tested;
 `audio.ts` only turns them into sound. Audio starts on the first key press,
@@ -562,16 +562,150 @@ mutes.
 
 ## 11. Modes
 
-| Mode               | Description                                                     |
-| ------------------ | --------------------------------------------------------------- |
-| **Ascent**         | Primary progression. Stage 1 upward, no end.                    |
-| **Endless**        | Score attack, continuously increasing speed and complexity.     |
-| **Prism**          | Frequent turns, scoring weighted to multi-face chains.          |
-| **Flatland**       | Planar pieces only, board still turns. Pure projection reading. |
-| **Blind Spectrum** | No depth colour. Unlockable expert mode.                        |
-| **Zen**            | No failure state. Depth Nudge always on.                        |
+A mode is **pure configuration** over the stage table, not a code path. The
+engine keeps one implementation and modes select from it, so a mode cannot
+introduce a rule by accident. The table lives in `src/core/modes.ts`.
 
-## 12. Rendering targets
+| Mode               | Start | Score | Rules                                                          |
+| ------------------ | ----- | ----- | -------------------------------------------------------------- |
+| **Ascent**         | 1     | ×1    | The authored arc, unmodified. Content reveals on schedule.     |
+| **Endless**        | 6\*   | ×1    | Everything unlocked, stage pinned, gravity compounds per line. |
+| **Prism**          | 3     | ×1    | Meter of 2, Depth Nudge on, refraction clears score double.    |
+| **Flatland**       | 2     | ×1    | Tier 1 only — planar pieces, forever. The board still turns.   |
+| **Blind Spectrum** | 4     | ×1.5  | No depth colour at all. Unlocked by reaching stage 5.          |
+| **Zen**            | 2     | ×0.25 | Stage pinned, no failure state, Depth Nudge on.                |
+
+\* Endless pins stage 6 for its **content** and scales gravity to ×0.54 for its
+**speed**, opening at roughly stage 4's pace. See §11.2.
+
+### 11.1 Ascent and Endless **[GAP — the proposal described one mode twice]**
+
+As written, "primary progression" and "score attack with continuously increasing
+speed" are the same mode. They are separated by what they do with _content_:
+
+- **Ascent** is the authored arc. It starts at stage 1 and reveals the game on
+  schedule — flat pieces, then screws, then the tripod, then depth control —
+  climbing the stage table in steps.
+- **Endless** starts past the reveal with everything already available, pins the
+  stage table, and accelerates smoothly and without end instead. Nothing new
+  ever arrives; only the pace changes.
+
+One is the game. The other is the treadmill.
+
+### 11.2 Why Endless pins a late stage and then slows it down
+
+A pinned stage never advances, so whatever tier it carries is the tier that mode
+has forever. Stage 4 only reaches tier 3, so pinning stage 4 would withhold tier
+4 permanently — contradicting the mode's own promise.
+
+So Endless pins **stage 6**, the first stage with every tier available, and uses
+`gravityScale` to walk the opening speed back to about stage 4's. Content and
+pace are separate knobs, and this is the case that proves they had to be.
+
+### 11.3 Acceleration is one curve or the other, never both
+
+A mode either climbs the stage table (`pinStage: false`) or compounds gravity
+per cleared line (`continuousGravity: true`). Never both: the two curves were
+tuned independently, and multiplying them produces a ramp nobody chose. Asserted
+in `tests/unit/modes.test.ts`.
+
+### 11.4 `maxTier` is a ceiling, not a floor
+
+A mode may restrict what the stage table would have dealt — Flatland holds the
+game at planar pieces for its whole length — but never introduce a piece ahead
+of the schedule. Overrides apply with `Math.min`, asserted across every mode and
+every stage.
+
+### 11.5 Mode-specific scoring **[GAP]**
+
+Modes are not equally dangerous, and a scoreboard that ignored that would rank a
+Zen session above a real run. Two multipliers, both on the mode:
+
+- `scoreScale` prices the risk the mode carries. Zen cannot be lost, so it pays
+  ×0.25; Blind Spectrum asks the hardest thing the game has, so it pays ×1.5.
+- `refractionScale` weights clears the turn itself made eligible. Prism doubles
+  them; every other mode leaves the scoring table exactly as designed.
+
+### 11.6 Zen has no failure state **[GAP]**
+
+"No failure state" needs an answer for what happens when the stack reaches the
+top, and the proposal gives none.
+
+**Resolution: trim the top row.** When a piece cannot spawn, the highest occupied
+row is deleted outright and the piece retried, repeating until it fits. Nothing
+collapses and nothing below moves, so the structure the player has been building
+survives exactly as it was and the rescue reads as local rather than as a board
+wipe. A `rescue` event fires so the interface can say `OVERFLOW CLEARED` — rows
+vanishing silently would look like a bug.
+
+The condition rescued _for_ is "the next piece fits", not "the stack is below the
+buffer". Those are not the same, and rescuing only to the weaker one would end
+the run a piece later anyway.
+
+## 12. Pause **[GAP]**
+
+Pause is a **state of the engine**, not a flag the host holds: `GameStatus` gains
+`paused`, and `pause()` / `resume()` move in and out of it.
+
+Every input path already refuses to act outside `falling` and `awaitingTurn`, so
+one status change closes all of them at once — and the renderer can _see_ that
+the game is stopped rather than inferring it from the host.
+
+It consumes no simulated time and mutates nothing but the status and the state
+to return to, so **`(seed, input log)` still determines the run exactly**: a log
+with pauses in it replays identically to one without. A pause mid-turn or
+mid-cascade resumes into the same state with its timers untouched. This is
+asserted directly in `tests/unit/pause.test.ts` by playing one scripted run with
+a pause between every action and one without, and comparing the results.
+
+The room keeps rendering behind the pause panel. The engine is frozen but the
+environment is not — it drifts and breathes on the title screen and under the
+menus, which is the point of it.
+
+## 13. Persistence **[GAP]**
+
+One versioned record in `localStorage` under `refraction.save.v1`: settings,
+per-mode bests, lifetime stats, a session log, and the mode last played.
+
+Parsing lives in `src/core/save.ts` and knows nothing about browsers; the
+`localStorage` access is isolated in `src/ui/storage.ts`. The game runs
+identically with storage unavailable — it simply forgets.
+
+**`migrate` never throws and always returns something playable.** A save file is
+the one input the game cannot validate at its source: it may come from an older
+build, a different app on the same origin, a torn write, or a user editing it by
+hand. Every field is recovered independently, so a corrupt settings block cannot
+take the high scores down with it.
+
+Three consequences worth stating:
+
+- **Records are read by iterating the known modes**, never the file's own keys.
+  A save naming a mode that no longer exists loses that entry rather than
+  resurrecting it.
+- **`stats.bestStage` is reconciled against the per-mode records**, taking the
+  higher of the two. Unlocks hang off that number, and a player who has earned
+  an expert mode must not have it taken back by a damaged stats block.
+- **A damaged session entry is dropped, not repaired.** The log is decoration,
+  not a record of achievement, and repairing an entry would put a run on the
+  board that never happened.
+
+## 14. Seeded challenges **[GAP]**
+
+A challenge is a `(mode, seed)` pair carried as a seven-character code: one
+character naming the mode, six encoding the seed. Two people entering the same
+code get bit-identical runs, because the engine is already fully determined by
+`(seed, input log)` — the code is only a way of naming a seed out loud.
+
+- The seed half is **Crockford base32** (no `I`, `L`, `O`, `U`), so `1`/`I`/`L`
+  and `0`/`O` cannot be confused and a code cannot accidentally spell a word.
+- Parsing is deliberately forgiving about case, spaces and dashes, because a
+  code is something people read aloud and retype.
+- The **daily challenge** is the same machinery with the UTC date as the seed:
+  no server, no clock authority, no storage. UTC rather than local time so that
+  "today's challenge" names the same run everywhere — a leaderboard split by
+  timezone would be two leaderboards.
+
+## 15. Rendering targets
 
 | Target                | Budget                                              |
 | --------------------- | --------------------------------------------------- |
@@ -587,7 +721,7 @@ outline; ACES tonemapping; selective bloom thresholded high so only clears and
 Prism events bloom; MSAA over FXAA for edge crispness; `devicePixelRatio`
 clamped to 2.
 
-## 13. Determinism
+## 16. Determinism
 
 Every random draw — piece bag, lane bag, cosmetic jitter — comes from the seeded
 stream in `src/core/rng.ts`. A run is fully reproducible from `(seed, input

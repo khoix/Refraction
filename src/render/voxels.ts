@@ -20,6 +20,15 @@ import { toSceneX, toSceneY, toSceneZ } from './scene';
 const MAX_INSTANCES = BOARD_WIDTH * BOARD_HEIGHT * BOARD_DEPTH;
 /** Gap between neighbouring cubes, so silhouette edges stay crisp. */
 const CUBE_GAP = 0.92;
+/**
+ * Fill used when depth colour is switched off, for Blind Spectrum.
+ *
+ * A single neutral, so cubes still read against the background and against each
+ * other by silhouette alone -- but carry no depth information whatsoever.
+ * Deliberately achromatic: a tinted "neutral" would leak a hint of a hue back
+ * into a mode whose whole point is that there is none.
+ */
+const BLIND_FILL = { r: 0.62, g: 0.64, b: 0.68 } as const;
 
 export interface VoxelLayerOptions {
   readonly opacity?: number;
@@ -54,6 +63,7 @@ export class VoxelLayer {
   private readonly quaternion = new THREE.Quaternion();
   private readonly scaleVector = new THREE.Vector3();
   private readonly color = new THREE.Color();
+  private depthColour = true;
 
   constructor(options: VoxelLayerOptions = {}) {
     const geometry = new RoundedBoxGeometry(1, 1, 1, 3, 0.11);
@@ -112,6 +122,17 @@ export class VoxelLayer {
    * reading colour. It also has to be uniform for a near cube to cover the ones
    * behind it exactly, which is what keeps the settled board looking flat.
    */
+  /**
+   * Draw cubes in one neutral fill instead of their depth colour.
+   *
+   * A layer flag rather than another `update` argument: every call site would
+   * otherwise have to pass it through, and this is a property of the mode, not
+   * of any individual frame.
+   */
+  setDepthColour(enabled: boolean): void {
+    this.depthColour = enabled;
+  }
+
   update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1, whiteout = 0, dim = 0): void {
     const count = Math.min(cells.length, this.mesh.instanceMatrix.count);
     this.mesh.count = count;
@@ -130,7 +151,7 @@ export class VoxelLayer {
 
       // Full Spectrum drives every band toward white, which is the whole colour
       // metaphor stated literally: the visible spectrum combined is white light.
-      const { r, g, b } = depthColor(depth);
+      const { r, g, b } = this.depthColour ? depthColor(depth) : BLIND_FILL;
       const lit = 1 - toVoid;
       this.color.setRGB(
         THREE.MathUtils.lerp(r, 1, toWhite) * lit,

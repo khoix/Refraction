@@ -25,21 +25,35 @@ and violet from the opposite one without ever moving.
 
 ## Status
 
-**M8 — Spectacle and the HUD.** The room is a disco: coloured beams, cycling
-fragments, a strobe that reduced-motion cuts entirely. A ~95% opaque panel
-behind the well keeps that colour off the cubes. The Shift meter is a
-segmented bar under the column, and the HUD is framed modules rather than
-floating captions. Modes and persistence come next.
+**M9 — Modes and Meta.** A complete game: title, six modes, pause, settings,
+seeded challenges, and scores that survive a reload. The room is a disco —
+coloured beams, cycling fragments, a strobe that reduced-motion cuts entirely —
+with a ~95% opaque panel behind the well keeping that colour off the cubes. The
+comprehension tools come next.
+
+| Mode               | What it is                                          |
+| ------------------ | --------------------------------------------------- |
+| **Ascent**         | The full arc. Starts flat and teaches itself.       |
+| **Endless**        | Everything unlocked, accelerating without end.      |
+| **Prism**          | The board turns constantly. Chains are everything.  |
+| **Flatland**       | Flat pieces only. The board still turns.            |
+| **Blind Spectrum** | No depth colour. Unlocked by reaching stage 5.      |
+| **Zen**            | No failure. Build and turn for as long as you like. |
+
+A challenge code is seven characters naming a mode and a seed. Two people
+entering the same one get bit-identical runs; the daily code is derived from the
+UTC date by every copy of the game independently.
 
 Stages are numbered, not named. A hue on a cube is a depth claim; a hue in
 the room is decoration; a hue on the HUD would be a second rules language,
 which is the thing the colour rule forbids.
 
 Controls: arrows or WASD to move, `Z`/`X` to rotate, `Space` to hard drop,
-`C` to hold, `←`/`→` to choose a face when the Shift meter fills, `M` to mute,
-`Enter` to restart after a game over.
+`C` to hold, `←`/`→` to choose a face when the Shift meter fills, `Esc` to
+pause, `M` to mute, `Enter` to restart after a game over.
 
-Flags: `?pieces=experimental` deals the M6.5 playtest vocabulary (screws from
+Flags: `?mode=prism` and `?challenge=CODE` open a run directly, both still
+respecting the unlock; `?pieces=experimental` deals the M6.5 playtest vocabulary (screws from
 stage 1, a tricube, non-planar pentacubes); `?reducedMotion=1` forces the
 reduced-motion and photosensitivity guards.
 

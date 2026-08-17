@@ -4,7 +4,7 @@ import { LINES_PER_STAGE } from '../../src/core/stages';
 
 /** Wait for the first rendered frame. */
 async function boot(page: Page): Promise<void> {
-  await page.goto('/');
+  await page.goto('/?mode=ascent');
   await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
   await expect(page.locator('canvas.stage')).toBeVisible();
 }
@@ -70,7 +70,7 @@ test.describe('boot', () => {
     await expect(page.locator('.hud')).toBeVisible();
     await expect(page.getByText('SCORE')).toBeVisible();
     await expect(page.getByText('LINES')).toBeVisible();
-    await expect(page.getByText('STAGE')).toBeVisible();
+    await expect(page.getByText('STAGE', { exact: true })).toBeVisible();
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
   });
 
@@ -124,14 +124,18 @@ test.describe('boot', () => {
 
   test('spaces the next-piece preview evenly in both axes', async ({ page }) => {
     await boot(page);
-    const metrics = await page.locator('.slot').first().locator('.piece').evaluate((grid) => {
-      const cells = [...grid.querySelectorAll('.piece__cell')];
-      const a = cells[0]?.getBoundingClientRect();
-      const b = cells[1]?.getBoundingClientRect();
-      const c = cells[4]?.getBoundingClientRect();
-      if (!a || !b || !c) return { count: cells.length, col: 0, row: 0 };
-      return { count: cells.length, col: b.x - a.x, row: c.y - a.y };
-    });
+    const metrics = await page
+      .locator('.slot')
+      .first()
+      .locator('.piece')
+      .evaluate((grid) => {
+        const cells = [...grid.querySelectorAll('.piece__cell')];
+        const a = cells[0]?.getBoundingClientRect();
+        const b = cells[1]?.getBoundingClientRect();
+        const c = cells[4]?.getBoundingClientRect();
+        if (!a || !b || !c) return { count: cells.length, col: 0, row: 0 };
+        return { count: cells.length, col: b.x - a.x, row: c.y - a.y };
+      });
     expect(metrics.count).toBe(16);
     expect(Math.abs(metrics.col - metrics.row)).toBeLessThan(1);
   });
@@ -151,7 +155,7 @@ test.describe('boot', () => {
 test.describe('rendering', () => {
   test('draws the board rather than a blank canvas', async ({ page }) => {
     // Reading pixels back needs preserveDrawingBuffer, which is on in debug only.
-    await page.goto('/?debug=1&seed=render');
+    await page.goto('/?debug=1&mode=ascent&seed=render');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     for (let i = 0; i < 4; i += 1) {
       await page.keyboard.press('Space');
@@ -169,7 +173,7 @@ test.describe('rendering', () => {
     // canvas — the disco behind the column would drown the signal.
     // Stretch the turn so the dimensional peak cannot be missed under
     // parallel load: a 750ms window is shorter than a stalled frame.
-    await page.goto('/?debug=1&seed=flatness&turnMs=4000');
+    await page.goto('/?debug=1&mode=ascent&seed=flatness&turnMs=4000');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     await page.evaluate(() => {
@@ -248,7 +252,7 @@ test.describe('controls', () => {
   });
 
   test('the key the game-over screen advertises actually restarts', async ({ page }) => {
-    await page.goto('/?debug=1&seed=restart');
+    await page.goto('/?debug=1&mode=ascent&seed=restart');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -256,7 +260,7 @@ test.describe('controls', () => {
       game.status = 'gameOver';
     });
 
-    const hint = page.locator('.overlay__hint');
+    const hint = page.locator('.panel--over .panel__hint');
     await expect(hint).toBeVisible();
     // Parse the key out of the hint itself, so the copy and the binding can
     // never advertise different keys again.
@@ -264,7 +268,7 @@ test.describe('controls', () => {
     expect(advertised).toBeTruthy();
 
     await page.keyboard.press(advertised as string);
-    await expect(page.locator('.overlay__hint')).toBeHidden();
+    await expect(page.locator('.panel--over')).toBeHidden();
     await expect(page.locator('.stat__value').first()).toHaveText('0');
   });
 });
@@ -272,7 +276,7 @@ test.describe('controls', () => {
 test.describe('the turn', () => {
   /** Reach a filled Shift meter directly via the debug hook. */
   async function armTheTurn(page: Page): Promise<void> {
-    await page.goto('/?debug=1&seed=e2e');
+    await page.goto('/?debug=1&mode=ascent&seed=e2e');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -323,7 +327,7 @@ test.describe('the turn', () => {
 
   test('holds the revealed lines lit until the board has finished turning', async ({ page }) => {
     // A stretched turn makes the intermediate state observable at all.
-    await page.goto('/?debug=1&seed=reveal&turnMs=3000');
+    await page.goto('/?debug=1&mode=ascent&seed=reveal&turnMs=3000');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -373,7 +377,7 @@ test.describe('the turn', () => {
 
 test.describe('feel', () => {
   test('shows a score popup when a line clears', async ({ page }) => {
-    await page.goto('/?debug=1&seed=popup');
+    await page.goto('/?debug=1&mode=ascent&seed=popup');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -414,7 +418,7 @@ test.describe('feel', () => {
    * A falling piece changes the picture every tick, which would drown it out.
    */
   async function frozenBoard(page: Page, query: string): Promise<void> {
-    await page.goto(`/?debug=1&seed=calm${query}`);
+    await page.goto(`/?debug=1&mode=ascent&seed=calm${query}`);
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -500,7 +504,7 @@ test.describe('feel', () => {
 test.describe('progression', () => {
   /** Advance the run to a chosen stage by handing it cleared lines. */
   async function reachStage(page: Page, stageIndex: number): Promise<void> {
-    await page.goto('/?debug=1&seed=arc');
+    await page.goto('/?debug=1&mode=ascent&seed=arc');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate(
       ({ index, perStage }) => {
@@ -541,7 +545,7 @@ test.describe('progression', () => {
    * shown two colour languages at once with nothing to tell them apart.
    */
   test('never tints the stage readout, at any stage', async ({ page }) => {
-    await page.goto('/?debug=1&seed=colour');
+    await page.goto('/?debug=1&mode=ascent&seed=colour');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     const atStageOne = await inkOf(page, '.stat__value', 2);
@@ -562,7 +566,7 @@ test.describe('progression', () => {
   });
 
   test('keeps numbering past the last authored stage', async ({ page }) => {
-    await page.goto('/?debug=1&seed=endless');
+    await page.goto('/?debug=1&mode=ascent&seed=endless');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.evaluate((perStage) => {
       const game = window.__refraction?.game;
@@ -576,7 +580,7 @@ test.describe('experiments', () => {
   test('the experimental piece vocabulary boots and plays cleanly', async ({ page }) => {
     const problems: string[] = [];
     page.on('pageerror', (error) => problems.push(error.message));
-    await page.goto('/?debug=1&seed=exp&pieces=experimental');
+    await page.goto('/?debug=1&mode=ascent&seed=exp&pieces=experimental');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
 
     for (let i = 0; i < 6; i += 1) {
@@ -596,5 +600,280 @@ test.describe('layout', () => {
       () => document.documentElement.scrollWidth - document.documentElement.clientWidth
     );
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+});
+
+test.describe('screens', () => {
+  test('opens on the title rather than dropping straight into a run', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await expect(page.locator('.title__word')).toHaveText('REFRACTION');
+    // The room is alive behind the title from the first frame.
+    await expect(page.locator('canvas.stage')).toBeVisible();
+  });
+
+  test('walks from title to a running game', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.panel--modes')).toBeVisible();
+    await page.locator('.mode[data-mode="ascent"]').click();
+    await expect(page.locator('.screens')).toBeHidden();
+    await expect(page.locator('.hud')).toBeVisible();
+  });
+
+  test('offers every mode, with the expert one locked', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.mode')).toHaveCount(6);
+    await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toBeDisabled();
+    await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toContainText('Reach stage 5');
+    await expect(page.locator('.mode[data-mode="ascent"]')).toBeEnabled();
+  });
+
+  test('pauses and resumes on Escape without advancing the board', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=pause');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.panel--paused')).toBeVisible();
+    // Pause is an engine state, not a host flag.
+    expect(await page.evaluate(() => window.__refraction?.game.status)).toBe('paused');
+
+    const height = (): Promise<number> =>
+      page.evaluate(() => window.__refraction?.game.active?.y ?? -1);
+    const before = await height();
+    await page.waitForTimeout(700);
+    expect(await height()).toBe(before);
+
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.panel--paused')).toBeHidden();
+    expect(await page.evaluate(() => window.__refraction?.game.status)).not.toBe('paused');
+  });
+
+  test('does not let menu keystrokes reach the piece', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=gated');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('Escape');
+
+    const column = (): Promise<number> =>
+      page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
+    const before = await column();
+    for (let i = 0; i < 4; i += 1) await page.keyboard.press('ArrowLeft');
+    await page.waitForTimeout(150);
+    expect(await column()).toBe(before);
+  });
+});
+
+test.describe('settings', () => {
+  test('persists a change across a reload', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    const bloom = page.locator('[data-field="bloom"] input');
+    await expect(bloom).toBeChecked();
+    await bloom.uncheck();
+
+    await page.reload();
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator('[data-field="bloom"] input')).not.toBeChecked();
+  });
+
+  test('reaches the renderer, not just the save', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=prefs');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.locator('[data-field="screenShake"] input').uncheck();
+
+    expect(await page.evaluate(() => window.__refraction?.renderer.preferences.screenShake)).toBe(
+      false
+    );
+  });
+
+  test('mutes from the settings panel and from the M key alike', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=mute');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('KeyM');
+    await expect(page.locator('.mute')).toBeVisible();
+
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    const sound = page.locator('[data-field="sound"] input');
+    await expect(sound).not.toBeChecked();
+    await sound.check();
+    await expect(page.locator('.mute')).toBeHidden();
+  });
+});
+
+test.describe('persistence', () => {
+  /** End the run in progress the way the engine would. */
+  async function endRun(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      game.status = 'gameOver';
+    });
+    await expect(page.locator('.panel--over')).toBeVisible();
+  }
+
+  test('records a finished run and shows it on the mode card', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=record');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('Space');
+    await endRun(page);
+
+    expect(await page.evaluate(() => window.__refraction?.save().stats.runs ?? 0)).toBe(1);
+
+    await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
+    await expect(page.locator('.mode[data-mode="ascent"]')).not.toContainText('Not yet played');
+  });
+
+  test('logs the run on the title screen', async ({ page }) => {
+    await page.goto('/?debug=1&mode=flatland&seed=log');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await endRun(page);
+    await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
+    await page.getByRole('button', { name: 'BACK' }).click();
+    await expect(page.locator('.session__row').first()).toContainText('Flatland');
+  });
+
+  test('recovers from a corrupt save rather than refusing to boot', async ({ page }) => {
+    const problems: string[] = [];
+    page.on('pageerror', (error) => problems.push(error.message));
+
+    await page.goto('/');
+    await page.evaluate(() => localStorage.setItem('refraction.save.v1', '{"records":{"asc'));
+    await page.reload();
+
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.mode')).toHaveCount(6);
+    expect(problems).toEqual([]);
+  });
+
+  test('honours an unlock earned in an earlier session', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.reload();
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toBeEnabled();
+  });
+
+  test('a deep link cannot open a locked mode', async ({ page }) => {
+    await page.goto('/?mode=blindSpectrum');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    // Held at the title rather than dropped into a mode not yet earned.
+    await expect(page.locator('.panel--title')).toBeVisible();
+  });
+});
+
+test.describe('challenges', () => {
+  test('rejects a code that is not one, without starting a run', async ({ page }) => {
+    await page.goto('/');
+    await page.getByRole('button', { name: 'CHALLENGE' }).click();
+    await page.locator('.code').fill('nonsense');
+    await page.getByRole('button', { name: 'START' }).click();
+    await expect(page.locator('.panel--challenge')).toBeVisible();
+    await expect(page.locator('.panel--challenge .panel__hint')).toContainText('not a challenge');
+  });
+
+  test("starts today's challenge and names it on the game-over screen", async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'CHALLENGE' }).click();
+    await page.getByRole('button', { name: "TODAY'S CHALLENGE" }).click();
+    await expect(page.locator('.screens')).toBeHidden();
+
+    const daily = await page.locator('.code').inputValue();
+    expect(daily).toHaveLength(7);
+
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (game) game.status = 'gameOver';
+    });
+    await expect(page.locator('.panel--over .panel__detail')).toContainText(daily);
+  });
+
+  test('the same code gives the same game', async ({ page }) => {
+    const fingerprint = async (): Promise<string> => {
+      await page.goto('/?debug=1&challenge=A1B2C3D');
+      await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+      return page.evaluate(() => {
+        const game = window.__refraction?.game;
+        if (!game) return '';
+        return game.preview.map((entry) => `${entry.def.id}@${entry.lane}`).join('|');
+      });
+    };
+    const first = await fingerprint();
+    expect(first).not.toBe('');
+    expect(await fingerprint()).toBe(first);
+  });
+});
+
+test.describe('modes in play', () => {
+  test('Flatland deals only flat pieces', async ({ page }) => {
+    await page.goto('/?debug=1&mode=flatland&seed=flat');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const allPlanar = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) return false;
+      const shapes = [game.active?.offsets ?? [], ...game.preview.map((p) => p.cells)];
+      return shapes.every((cells) => new Set(cells.map((c) => c.z)).size === 1);
+    });
+    expect(allPlanar).toBe(true);
+  });
+
+  test('Blind Spectrum hides depth in the board and the preview alike', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.goto('/?debug=1&mode=blindSpectrum&seed=blind');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    expect(await page.evaluate(() => window.__refraction?.renderer.preferences.depthColour)).toBe(
+      false
+    );
+
+    // The preview must not leak what the board hides: a coloured next-piece
+    // would hand back the very lane this mode withholds.
+    const spreads = await page.evaluate(() => {
+      const cells = [...document.querySelectorAll('.slot__body .piece__cell--filled')];
+      return cells.map((cell) => {
+        const [r, g, b] = (getComputedStyle(cell).backgroundColor.match(/\d+/g) ?? []).map(Number);
+        return Math.max(r!, g!, b!) - Math.min(r!, g!, b!);
+      });
+    });
+    expect(spreads.length).toBeGreaterThan(0);
+    for (const spread of spreads) expect(spread).toBeLessThan(24);
+  });
+
+  test('Zen trims the stack instead of ending the run', async ({ page }) => {
+    await page.goto('/?debug=1&mode=zen&seed=zen');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let y = 0; y < 20; y += 1) {
+        for (let x = 1; x < 8; x += 1) {
+          for (let z = 0; z < 8; z += 1) game.board.fill({ x, y, z });
+        }
+      }
+    });
+    await page.keyboard.press('Space');
+    await page.waitForTimeout(600);
+
+    await expect(page.locator('.panel--over')).toBeHidden();
+    expect(await page.evaluate(() => window.__refraction?.game.status)).not.toBe('gameOver');
   });
 });

@@ -155,6 +155,22 @@ export class Board {
     return this.highestFilledY() >= BOARD_HEIGHT;
   }
 
+  /**
+   * Delete the highest occupied row outright, without collapsing anything.
+   *
+   * Used only by modes with no failure state: when the stack would top out,
+   * the tallest row is taken off instead of ending the run. Nothing slides,
+   * so the structure the player built underneath survives exactly as it was.
+   *
+   * Returns false when the board was already empty.
+   */
+  removeHighestRow(): boolean {
+    const y = this.highestFilledY();
+    if (y < 0) return false;
+    this.cells.fill(0, y * BOARD_DEPTH * BOARD_WIDTH, (y + 1) * BOARD_DEPTH * BOARD_WIDTH);
+    return true;
+  }
+
   countFilled(): number {
     let total = 0;
     for (const cell of this.cells) total += cell;

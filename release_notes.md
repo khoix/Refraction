@@ -7,12 +7,175 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M9 — Modes and Meta
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Everything around the core loop. The game now has a front door.
+
+### First, a correction to how this was built
+
+This milestone was originally written against `be385b5` — three milestones
+stale — because the branch was never fetched before work started. It would have
+reverted M6's `main.ts` wiring, M7's inverted turn direction, and M8's HUD, and
+its end-to-end suite still asserted the pre-M7 turn mapping. That commit was
+discarded and the work redone on top of `cc4b663`. Fetching `main` before a
+milestone is now the standing practice.
+
+### Shipped
+
+- **Title, mode select, pause, game over, settings, challenge entry** — plain
+  DOM over the live board, which stays visible behind every screen.
+- **Six modes**, each pure configuration over the stage table rather than a code
+  path of its own. The engine keeps one implementation, so a mode cannot
+  introduce a rule by accident.
+- **Versioned `localStorage` persistence** — settings, per-mode bests, lifetime
+  stats, a session log, last mode played. Parsing lives in `src/core/save.ts`
+  and knows nothing about browsers; `localStorage` is isolated in
+  `src/ui/storage.ts`.
+- **Settings**: sound, volume, reduced motion, screen shake, bloom, ghost piece.
+  Reachable from the title and from pause, applied live, saved immediately.
+- **Seeded challenges** — a seven-character code naming a mode and a seed, plus
+  a daily challenge derived from the UTC date with no server involved.
+- **`?mode=` and `?challenge=`** open a run directly. Both still respect the
+  unlock; a URL is not a reason to spend it.
+
+### Pause is an engine state, because the plan said it had to be
+
+The milestone carried an explicit engine note: `GameStatus` had no `paused`
+state, so pause is a core state-machine change "made without breaking
+`(seed, input log)` determinism".
+
+`GameStatus` gains `paused`. Every input path already refused to act outside
+`falling` and `awaitingTurn`, so one status change closes all of them at once —
+and the renderer can _see_ that the game is stopped rather than inferring it
+from the host.
+
+Determinism is asserted rather than argued: one scripted thirty-piece run is
+played with a pause between every action — twenty ticks of simulated time
+passing while paused — and one without, and the two are compared cell by cell.
+They are identical. A pause mid-turn or mid-cascade resumes into the same state
+with its timers untouched.
+
+### Ascent and Endless were one mode described twice
+
+The spec called Ascent "primary progression" and Endless "score attack,
+continuously increasing speed and complexity", which as written are the same
+game. They are now separated by what they do with **content** rather than speed:
+Ascent is the authored arc and reveals the game on schedule; Endless starts past
+the reveal with everything available, pins the stage table, and accelerates
+without end.
+
+That split produced a finding. Endless first pinned stage 4 — "where the game is
+fully itself" — and a test caught that stage 4 only reaches tier 3. A pinned
+stage never advances, so tier 4 would have been withheld _forever_, in the one
+mode that promises everything unlocked. Endless now pins **stage 6** for its
+content and scales gravity to ×0.54 for its speed, opening at roughly stage 4's
+pace. Content and pace needed separate knobs, and this is the case that proved
+it.
+
+### Mode-specific scoring
+
+Modes are not equally dangerous, and a scoreboard that ignored that would rank a
+Zen session above a real run. Zen cannot be lost, so it pays ×0.25; Blind
+Spectrum asks the hardest thing the game has, so it pays ×1.5; Prism doubles the
+clears the turn itself made eligible and nothing else does.
+
+### Zen needed an answer the spec did not give
+
+"No failure state" leaves open what happens at the top. Zen now **trims the top
+row**: when a piece cannot spawn, the highest occupied row is deleted outright
+and the piece retried, repeating until it fits. Nothing collapses and nothing
+below moves, so the structure survives and the rescue reads as local rather than
+as a board wipe. A `rescue` event fires so the HUD can say `OVERFLOW CLEARED`.
+
+The condition rescued _for_ is "the next piece fits", not "the stack is below the
+buffer". Writing it the second way passed the top-out test and would still have
+ended the run one piece later.
+
+### The save file is the one input that cannot be trusted
+
+`migrate` never throws and always returns something playable. Every field is
+recovered independently, so a corrupt settings block cannot take the scores with
+it. Three decisions inside that are worth naming:
+
+- **Records are read by iterating the known modes, never the file's own keys.**
+  A save naming a mode that no longer exists loses that entry rather than
+  resurrecting it.
+- **`stats.bestStage` is reconciled against the per-mode records**, taking the
+  higher of the two. Unlocks hang off that number, and a player who has already
+  earned Blind Spectrum must not have it taken back by a damaged stats block.
+- **A damaged session entry is dropped, not repaired.** The log is decoration,
+  not a record of achievement; repairing an entry would put a run on the board
+  that never happened.
+
+### An optimisation that had to be backed out
+
+Rendering was briefly suspended behind menus — the engine is frozen there, so
+the scene looked identical frame to frame. Two of M6's tests caught it: the
+environment is _supposed_ to keep moving when the board is still, and a frozen
+room behind the title screen is a dead room. The optimisation was reverted. The
+engine still freezes; the rendering does not.
+
+Also removed: the HUD's game-over overlay from M6, now that a screen owns that
+moment and can offer the mode list and the session log. M6's regression test —
+which parses the advertised restart key out of the copy so the two can never
+diverge — moved onto the new panel and still passes.
+
+### Tested
+
+**296 unit tests, 51 end-to-end tests.**
+
+- `pause.test.ts` (10) — freezes gravity, refuses every input, restores a turn
+  and a prompt mid-flight, cannot escape game over, and the determinism
+  comparison above.
+- `save.test.ts` (44) — twenty-one shapes of corrupt save, each asserted to
+  produce a fully playable result, plus the session log's cap, ordering, and
+  refusal to repair a damaged entry.
+- `modes.test.ts` (30) — no two modes have identical rules; acceleration is one
+  curve or the other, never both; `maxTier` is a ceiling not a floor; Zen cannot
+  end and the run still ends in a mode that can; the score scales reach a real
+  clear rather than only the table.
+- `challenge.test.ts` (15) — codes round-trip, survive being retyped with the
+  wrong case and stray dashes, never contain a character that can be misread,
+  and two runs from one code produce the same twelve pieces and the same score.
+
+At browser level: title-to-playing, the lock on the expert mode, pause freezing
+the board and swallowing keystrokes, settings surviving a reload _and_ reaching
+the renderer, a corrupt save booting cleanly, a deep link refusing a locked mode,
+a challenge code rejected without starting a run, the same code giving the same
+game twice, and Flatland, Blind Spectrum and Zen each behaving differently.
+
+### Decisions worth revisiting
+
+- **Endless's ×0.54 opening and 1.5%-per-line compounding are tuned with one
+  data point.** The late curve is the suspect half: gentle early, severe by line
+  100, and unmeasured against a real player.
+- **The score scales are asserted for direction, not magnitude.** ×0.25 and ×1.5
+  say Zen is cheap and Blind Spectrum is dear; whether those are the right
+  numbers needs scores on a board.
+- **Blind Spectrum unlocks at stage 5 in any mode**, which is reachable in Zen
+  without much pressure. Possibly too cheap.
+- **Challenges have no verification.** A code names a run, but nothing stops a
+  player editing their own save. That is fine for a local game and would not be
+  for a shared leaderboard.
+- **No key remapping.** Listed under this milestone's settings menu, but it
+  belongs with the input work in M11 and moved there.
+
+### Next
+
+**M10 — Reading the Board.** Peek, the rotating 3D next-piece preview, first-run
+onboarding, and the ghost/contact clarity pass over M6's silhouettes and M7's
+lane focus.
+
+---
+
 ## M8: Spectacle and the HUD
 
 The second playtest of M6 asked for a louder room and a HUD that looks like a
 HUD. M7 fixed the three things the game was saying wrongly; this milestone
 is the presentation that was waiting on that. The colour rule in DESIGN §2.2
-is restated so it forbids a second *rules* language, not decorative hue in
+is restated so it forbids a second _rules_ language, not decorative hue in
 the room behind the board.
 
 ### Shipped
@@ -93,7 +256,7 @@ Board, Accessibility, Performance) are now M9–M12.
 **197 unit tests, 30 end-to-end tests.**
 
 The projection ring, yaw deltas, game-over turn destinations, refraction
-clears (now reached by choosing *left* to get the left face), and the audio
+clears (now reached by choosing _left_ to get the left face), and the audio
 sweep pairing all follow the new meaning. A new e2e pins the preview's
 spacing and another pins that the prompt's labelled faces match the keys
 that deliver them.
@@ -122,7 +285,7 @@ outrank menus. The old M6–M9 are now M7–M10, and this M6 answers the playtes
   shell with a brighter core. The X-ray manipulates opacity, luminance and
   animation, never hue, so the cube's depth colour survives; intervening cubes
   stay visibly present through the translucency, which is what makes it read
-  as seeing *through* the board rather than as geometry pasted on top. The
+  as seeing _through_ the board rather than as geometry pasted on top. The
   trace lives in the engine (`firstContactCells`), derived from the piece's
   position, so it follows every move and rotation for free, and its rules are
   pinned by unit tests. Hierarchy, strongest to weakest: active piece → ghost →
@@ -132,7 +295,7 @@ outrank menus. The old M6–M9 are now M7–M10, and this M6 answers the playtes
   ripple outward on clears. It pulses when a piece locks, brightens and
   accelerates as the Shift meter fills, surges through a turn, and answers a
   Refraction Clear or a Prism with a bigger (still colourless) response. It is
-  strictly a backdrop *by construction*: every element renders before the board
+  strictly a backdrop _by construction_: every element renders before the board
   with no depth writes, so a board pixel always wins and nothing environmental
   can ever sit between the player and a cube. White and grey light only —
   DESIGN §2.4 writes the rule down.
@@ -148,7 +311,7 @@ outrank menus. The old M6–M9 are now M7–M10, and this M6 answers the playtes
   clusters, repeats and leaves gaps the way real randomness does, and a lane
   absent past `LANE_STARVATION_GAP` deals has its weight climb steeply until it
   is dealt. Balance is a floor, not a levelling force. The tests now pin the
-  *texture*: repeats must occur, 8-deal windows must not keep sweeping all
+  _texture_: repeats must occur, 8-deal windows must not keep sweeping all
   eight lanes, and no lane may starve past the floor — so a future "fix" that
   quietly reintroduces a levelling force will fail the suite.
 - **Tier 4 finally does something.** Stages 6–7 declared `maxTier: 4` while the
@@ -160,7 +323,7 @@ outrank menus. The old M6–M9 are now M7–M10, and this M6 answers the playtes
   the default: the screws at tier 1 so depth arrives with the first bag, a
   tricube as a rescue piece, the tripod at tier 2, and three purpose-built
   non-planar pentacubes at tier 3. First measurement, from the greedy agent:
-  the experimental vocabulary clears *more* lines than the standard one (61 and
+  the experimental vocabulary clears _more_ lines than the standard one (61 and
   51 across two 200-piece seeded runs, where the standard catalogue's benchmark
   run manages 47) — the tricube's rescue value apparently outweighs the
   pentacubes' awkwardness. Graduation into the standard catalogue waits on
@@ -189,7 +352,7 @@ The bloom chain made headless software GL fall over: three end-to-end tests
 timed out or missed their sampling windows because every frame was paying for
 a full-resolution post-process that, below threshold, produces exactly the
 same image as a plain render. The fix was not test-shaped but honest: the
-composer now runs only while a pixel that *can* bloom exists — a lit clear
+composer now runs only while a pixel that _can_ bloom exists — a lit clear
 line, the whiteout, a lock flash, debris in flight — and ordinary play renders
 without it. The suite went green again, and integrated GPUs get the same win.
 

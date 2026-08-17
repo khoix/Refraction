@@ -13,6 +13,12 @@ import type { PieceId } from '@core/pieces';
 import { depthColorHex, laneToDepthParameter } from '@core/spectrum';
 import type { Cell, Face } from '@core/types';
 
+/**
+ * Preview fill when depth colour is off, matching the board's neutral.
+ * Kept in step with `BLIND_FILL` in `src/render/voxels.ts`.
+ */
+const BLIND_FILL_HEX = '#9ea3ad';
+
 const FACE_LABEL: Record<Face, string> = {
   front: 'FRONT',
   left: 'LEFT',
@@ -35,7 +41,11 @@ function element<K extends keyof HTMLElementTagNameMap>(
 const PREVIEW_SPAN = 4;
 const PREVIEW_CELL = '0.85rem';
 
-function renderPiecePreview(cells: readonly Cell[], lane: number): HTMLElement {
+function renderPiecePreview(
+  cells: readonly Cell[],
+  lane: number,
+  depthColour: boolean
+): HTMLElement {
   const shape = normalize([...cells]);
   const size = extent(shape);
   const grid = element('div', 'piece');
@@ -63,7 +73,9 @@ function renderPiecePreview(cells: readonly Cell[], lane: number): HTMLElement {
       const depth = nearest.get(`${x - originX},${y - originY}`);
       if (depth !== undefined) {
         const t = laneToDepthParameter(Math.min(lane + depth, DEPTH_LANES - 1), DEPTH_LANES);
-        cube.style.background = depthColorHex(t);
+        // In Blind Spectrum the preview must not leak what the board hides:
+        // a coloured next-piece would hand back the lane the mode withholds.
+        cube.style.background = depthColour ? depthColorHex(t) : BLIND_FILL_HEX;
         cube.classList.add('piece__cell--filled');
       }
       grid.append(cube);
@@ -89,12 +101,12 @@ export class Hud {
   private readonly prompt = element('div', 'prompt');
   private readonly promptLeft = element('span', 'prompt__face', 'LEFT');
   private readonly promptRight = element('span', 'prompt__face', 'RIGHT');
-  private readonly overlay = element('div', 'overlay');
 
   readonly root = element('div', 'hud');
 
   private bannerTimer = 0;
   private stageBannerTimer = 0;
+  private depthColour = true;
 
   constructor() {
     const stats = element('div', 'hud__stats hud__panel');
@@ -133,7 +145,6 @@ export class Hud {
     );
     this.prompt.append(pill);
     this.prompt.hidden = true;
-    this.overlay.hidden = true;
     this.banner.hidden = true;
 
     this.root.append(
@@ -145,8 +156,7 @@ export class Hud {
       this.mute,
       this.stageBanner,
       this.banner,
-      this.prompt,
-      this.overlay
+      this.prompt
     );
   }
 
@@ -162,6 +172,11 @@ export class Hud {
     const popup = element('span', 'popup', `+${amount.toLocaleString('en-US')}`);
     this.popups.append(popup);
     popup.addEventListener('animationend', () => popup.remove());
+  }
+
+  /** Off in Blind Spectrum, so the previews match the board. */
+  setDepthColour(enabled: boolean): void {
+    this.depthColour = enabled;
   }
 
   setMuted(muted: boolean): void {
@@ -230,17 +245,9 @@ export class Hud {
       this.promptLeft.textContent = FACE_LABEL[facePreview(game.face, 'left')];
       this.promptRight.textContent = FACE_LABEL[facePreview(game.face, 'right')];
     }
-    this.overlay.hidden = game.status !== 'gameOver';
-    if (game.status === 'gameOver' && this.overlay.childElementCount === 0) {
-      this.overlay.append(
-        element('h2', 'overlay__title', 'GAME OVER'),
-        element('p', 'overlay__score', `${game.score.toLocaleString('en-US')} points`),
-        element('p', 'overlay__hint', 'Press Enter to play again')
-      );
-    } else if (game.status !== 'gameOver' && this.overlay.childElementCount > 0) {
-      // Rebuilt on the next game over, so a restarted run shows its own score.
-      this.overlay.replaceChildren();
-    }
+    // Game over is a screen now, not a HUD overlay -- see `src/ui/screens.ts`.
+    // Two panels announcing the same thing was one too many, and only the
+    // screen can offer the mode list and the session log.
 
     if (this.bannerTimer > 0) {
       this.bannerTimer -= deltaMs;
@@ -267,12 +274,12 @@ export class Hud {
   private renderSlots(game: Game): void {
     const next = game.preview[0];
     this.nextSlot.replaceChildren(
-      next ? renderPiecePreview(next.cells, next.lane) : element('div', 'piece')
+      next ? renderPiecePreview(next.cells, next.lane, this.depthColour) : element('div', 'piece')
     );
 
     const held = game.held;
     this.holdSlot.replaceChildren(
-      held ? renderPiecePreview(pieceCellsFor(held), 0) : element('div', 'piece')
+      held ? renderPiecePreview(pieceCellsFor(held), 0, this.depthColour) : element('div', 'piece')
     );
   }
 }
