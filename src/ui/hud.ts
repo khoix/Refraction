@@ -19,6 +19,9 @@ import type { Cell, Face } from '@core/types';
  */
 const BLIND_FILL_HEX = '#9ea3ad';
 
+/** Gap kept between the Shift meter and the bottom of the window. */
+const SHIFT_EDGE_MARGIN = 8;
+
 const FACE_LABEL: Record<Face, string> = {
   front: 'FRONT',
   left: 'LEFT',
@@ -215,11 +218,24 @@ export class Hud {
    * in viewport CSS pixels; the HUD subtracts its own origin because it is
    * width-capped and centred over a full-bleed canvas.
    */
+  /**
+   * Sit the Shift meter under the board's on-screen silhouette.
+   *
+   * The camera reserves room below the board for exactly this, but the clamp
+   * is not optional: at an extreme aspect ratio the width constraint takes over
+   * the fit and the reserved space goes with it. A meter the player cannot see
+   * is worse than one a few pixels out of place, so it is kept inside the
+   * window whatever the camera does.
+   */
   layoutWell(rect: { left: number; top: number; width: number; height: number }): void {
     const origin = this.root.getBoundingClientRect();
+    const own = this.shift.getBoundingClientRect().height;
+    const desired = rect.top + rect.height + 10 - origin.top;
+    const limit = origin.height - own - SHIFT_EDGE_MARGIN;
+
     this.shift.style.left = `${rect.left - origin.left}px`;
     this.shift.style.width = `${rect.width}px`;
-    this.shift.style.top = `${rect.top + rect.height + 10 - origin.top}px`;
+    this.shift.style.top = `${Math.max(0, Math.min(desired, limit))}px`;
   }
 
   update(game: Game, deltaMs: number): void {

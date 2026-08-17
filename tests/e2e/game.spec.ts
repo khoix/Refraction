@@ -29,10 +29,11 @@ async function distinctCanvasColours(page: Page): Promise<number> {
 }
 
 /**
- * Distinct colours inside the play column. The room is now a disco, so a
- * whole-canvas sample cannot tell a flat board from a dimensional one — the
- * background dominates. The opaque panel keeps the well's pixels about the
- * board.
+ * Distinct colours inside the play column.
+ *
+ * A whole-canvas sample cannot tell a flat board from a dimensional one: the
+ * room fills most of the frame, so its dust and shafts dominate the count. The
+ * play column is where the board's own colours live.
  */
 async function distinctWellColours(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -170,7 +171,7 @@ test.describe('rendering', () => {
     // The central visual rule: the board reads as 2D until it rotates. Flat
     // tiles are unshaded, so they yield few distinct colours; lit cubes with
     // visible tops and sides yield many more. Sample the well, not the whole
-    // canvas — the disco behind the column would drown the signal.
+    // canvas — the room behind the column would drown the signal.
     // Stretch the turn so the dimensional peak cannot be missed under
     // parallel load: a 750ms window is shorter than a stalled frame.
     await page.goto('/?debug=1&mode=ascent&seed=flatness&turnMs=4000');
@@ -1001,5 +1002,57 @@ test.describe('the room', () => {
       if (Math.abs((before[i] as number) - (after[i] as number)) > 1) changed += 1;
     }
     expect(changed).toBeGreaterThan(20);
+  });
+});
+
+test.describe('the Shift meter stays on screen', () => {
+  /** How far the meter's box falls outside the viewport, in pixels. */
+  async function overflowBelow(page: Page): Promise<number> {
+    return page.evaluate(() => {
+      const shift = document.querySelector('.hud__shift');
+      if (!shift) return Number.NaN;
+      const rect = shift.getBoundingClientRect();
+      return rect.bottom - window.innerHeight;
+    });
+  }
+
+  const viewports = [
+    { name: 'a normal window', width: 1440, height: 900 },
+    { name: 'a laptop', width: 1280, height: 720 },
+    { name: 'a short window', width: 1280, height: 560 },
+    { name: 'a phone', width: 390, height: 844 },
+    { name: 'landscape on a phone', width: 844, height: 390 },
+  ];
+
+  for (const viewport of viewports) {
+    test(`is fully visible on ${viewport.name}`, async ({ page }) => {
+      await page.setViewportSize({ width: viewport.width, height: viewport.height });
+      await page.goto('/?debug=1&mode=ascent&seed=shift');
+      await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+      await page.waitForTimeout(200);
+
+      await expect(page.locator('.hud__shift')).toBeVisible();
+      // The camera reserves room below the board and the layout clamps to the
+      // window, so the meter cannot fall off the bottom at any aspect.
+      expect(await overflowBelow(page)).toBeLessThanOrEqual(0);
+      await expect(page.locator('.meter__pip')).toHaveCount(5);
+    });
+  }
+
+  test('sits below the board, not over it', async ({ page }) => {
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.goto('/?debug=1&mode=ascent&seed=under');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    const gap = await page.evaluate(() => {
+      const shift = document.querySelector('.hud__shift');
+      const renderer = window.__refraction?.renderer;
+      if (!shift || !renderer) return Number.NaN;
+      const well = renderer.wellScreenRect();
+      return shift.getBoundingClientRect().top - (well.top + well.height);
+    });
+    // Clear of the board's silhouette rather than clamped on top of it.
+    expect(gap).toBeGreaterThanOrEqual(0);
   });
 });
