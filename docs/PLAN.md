@@ -313,19 +313,21 @@ with the input work in M11, and moved there.
 - First-run onboarding that teaches by design rather than by tutorial text:
   position is absolute, colour is relative, rotation changes viewpoint, opposite
   faces mirror, hidden geometry can be inferred before it is revealed.
-- **Roll the X-ray back to the rule it was meant to implement** _(play notes)_.
+- ✅ **Rolled the X-ray back to the rule it was meant to implement**
+  _(play notes)_.
   The intended behaviour was never a whole-board effect: the lanes **under** the
   falling piece and the lanes **in front of** those are x-ray transparent, so the
   top layer — the one carrying the ghost — reads straight through. Only the lanes
   **behind** that are muted and darkened. What shipped instead veils the near
   cubes and darkens the far ones across the board, which is why everything reads
   muted. Replaces M6's first-contact shell and M7's lane-focus veil as tuned.
-- **Un-bury the ghost** _(play notes)_. It is not missing: `ghostCells()` returns
+- ✅ **Un-buried the ghost** _(play notes)_. It was not missing: `ghostCells()` returns
   its cells and `showGhost` is on. The lane-focus veil draws at `renderOrder: 1`
   over the ghost's default order, so a 0.3-opacity ghost is washed out by a
   0.28-opacity veil painted on top of it. Fixing the item above should restore
   it; this is a separate line because "the ghost is legible on a crowded board"
-  is the acceptance test, not a side effect.
+  is the acceptance test, not a side effect. Done: it draws after the x-ray
+  passes now, at 0.44 rather than 0.3.
 - **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
   after the rollback, and check behaviour on highly occluded boards.
 

@@ -34,7 +34,7 @@ import {
   toSceneY,
   toSceneZ,
 } from './scene';
-import { VoxelLayer } from './voxels';
+import { EdgeLayer, VoxelLayer } from './voxels';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
 export const TURN_DURATION_MS = 750;
@@ -103,6 +103,27 @@ export interface WellScreenRect {
   readonly height: number;
 }
 
+/**
+ * Outline budget for the x-ray. The near band is at most the board minus the
+ * piece's own lane, and in practice a fraction of that.
+ */
+const MAX_EDGE_CELLS = 8 * 18 * 7;
+
+/**
+ * How far the lanes behind the piece recede.
+ *
+ * Tuned by measurement rather than by eye. A normal cube renders around
+ * luminance 58 on its brightest channel; this lands the far band around a
+ * third of that -- plainly darker, still legible, still carrying its hue.
+ *
+ * Two wrong answers were measured on the way. At 0.82 the band collapsed to
+ * luminance 2, which is deleted rather than receded. And the original 0.55 was
+ * never what made the board look washed out: that was the near band's flat 0.28
+ * veil, which is now an x-ray. Fixing the near band is what let this one stay
+ * close to where it started.
+ */
+const FAR_DIM = 0.58;
+
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
@@ -151,16 +172,40 @@ export class GameRenderer {
    * the focal lane is fully opaque; farther cubes keep their hue but darken
    * toward the void. Off while not falling -- a still board is just a board.
    */
+  /**
+   * Cubes in front of the falling piece, drawn as an x-ray rather than a fade.
+   *
+   * Two passes: a fill so faint it is barely a tint, and a wireframe that keeps
+   * the cube's shape legible. That combination is what "see through it" means.
+   * One translucent solid cannot do it -- at any opacity, however much of the
+   * cube you can see is exactly how much of the board behind it you cannot, so
+   * turning it down to reveal the board turns the cube off, and turning it up to
+   * show the cube greys out everything underneath. That is the muting.
+   */
   private readonly lockedNear = new VoxelLayer({
-    opacity: 0.28,
+    opacity: 0.05,
     ghost: true,
     depthWrite: false,
     renderOrder: 1,
   });
+  private readonly lockedNearEdges = new EdgeLayer(MAX_EDGE_CELLS, 0.15);
   private readonly lockedFocal = new VoxelLayer();
   private readonly lockedFar = new VoxelLayer();
   private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
-  private readonly ghost = new VoxelLayer({ opacity: 0.3, ghost: true, maxInstances: 8 });
+  /**
+   * The landing footprint.
+   *
+   * Draws *after* the x-ray passes (renderOrder 3 against their 1). It used to
+   * sit at the default 0, which put a 0.28 veil on top of a 0.3 ghost and
+   * washed it out -- the ghost was never missing, just painted over. It is the
+   * single most useful mark on the board, so it goes last and it goes brighter.
+   */
+  private readonly ghost = new VoxelLayer({
+    opacity: 0.44,
+    ghost: true,
+    renderOrder: 3,
+    maxInstances: 8,
+  });
   /**
    * Lines that are complete and about to be removed, drawn additively over the
    * board. During a turn these are the lines the rotation is *revealing* -- they
@@ -278,6 +323,7 @@ export class GameRenderer {
       this.environment.group,
       this.columnPanel,
       this.lockedNear.mesh,
+      this.lockedNearEdges.lines,
       this.lockedFocal.mesh,
       this.lockedFar.mesh,
       this.active.mesh,
@@ -336,6 +382,7 @@ export class GameRenderer {
   setPreferences(patch: Partial<RenderPreferences>): void {
     this.prefs = { ...this.prefs, ...patch };
     for (const layer of this.voxelLayers) layer.setDepthColour(this.prefs.depthColour);
+    this.lockedNearEdges.setDepthColour(this.prefs.depthColour);
   }
 
   get preferences(): RenderPreferences {
@@ -520,8 +567,12 @@ export class GameRenderer {
 
     const lanes = partitionByLane(game);
     this.lockedNear.update(lanes.near, yaw, separation, whiteout);
+    this.lockedNearEdges.update(lanes.near, yaw, separation);
     this.lockedFocal.update(lanes.focal, yaw, separation, whiteout);
-    this.lockedFar.update(lanes.far, yaw, separation, whiteout, 0.55);
+    // Behind the piece: dark and receding, not merely desaturated. At 0.55 these
+    // still read as ordinary cubes at a slightly lower level, which is what made
+    // the board look uniformly muted rather than depth-sorted.
+    this.lockedFar.update(lanes.far, yaw, separation, whiteout, FAR_DIM);
 
     this.glowElapsed += deltaMs;
     // Lines being removed swell slightly as they go, so a clear dissolves
@@ -574,6 +625,7 @@ export class GameRenderer {
 
   dispose(): void {
     this.lockedNear.dispose();
+    this.lockedNearEdges.dispose();
     this.lockedFocal.dispose();
     this.lockedFar.dispose();
     this.active.dispose();

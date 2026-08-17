@@ -7,6 +7,94 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Play response: the x-ray, and the ghost that was never gone
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Four notes came back from play. Two were rendering and turned out to be one root
+cause; they are fixed here. The other two are input and are scheduled into M11.
+
+### The ghost was being painted over, not removed
+
+`ghostCells()` was returning its cells and `showGhost` was on the whole time. The
+lane-focus veil drew at `renderOrder: 1` with opacity 0.28, above the ghost's
+default order at 0.3 — a veil on top of a ghost, both translucent, and the ghost
+lost. It now draws after the x-ray passes and at 0.44.
+
+### X-ray is not a fade
+
+The near band was a uniformly translucent cube, and that construction cannot do
+what was being asked of it. Whatever fraction of a translucent cube you can see
+is exactly the fraction of the board behind it that you cannot: turn it down to
+reveal the board and the cube vanishes, turn it up to show the cube and
+everything under it greys out. There is no setting where both read. That is the
+"everything looks muted" report, and no amount of tuning the one number would
+have fixed it.
+
+Splitting fill from structure escapes the trade. The fill drops to almost
+nothing so the board behind comes through at full strength, and a new
+`EdgeLayer` draws the cube's twelve edges in its own lane colour — so an x-rayed
+cube still says how deep it is, which is the one thing this game may never stop
+saying.
+
+The edges need real line primitives. The first attempt used `wireframe: true` on
+a box, which draws every _triangle_ edge: a diagonal across all six faces, and a
+wall of cubes reading as a mesh of X's. `EdgeLayer` rebuilds twelve clean edges
+per cube per frame instead — a few hundred cubes into preallocated buffers, so
+it is a memcpy rather than an allocation.
+
+### Tuned by measurement
+
+Eyeballing this went wrong twice, so the bands were measured instead: one cube
+per lane, each in its own column so nothing occludes anything.
+
+| Band                 | Mean     | Peak      |
+| -------------------- | -------- | --------- |
+| Focal (landing lane) | 30.6     | 52.5      |
+| In front (x-ray)     | 9.5–12.1 | 41.9–49.7 |
+| Behind               | 2.8–7.5  | 3.9–10.3  |
+
+The near band's **low mean with a high peak** is the x-ray signature: mostly
+empty, crisply edged. The far band has neither — a dark mass with no structure.
+And the focal band's peak stays above everything, so the landing surface is the
+brightest thing on the board.
+
+Two wrong answers were measured on the way to the far band's 0.58. At 0.82 it
+collapsed to luminance 2, which is deleted rather than receded. And the original
+0.55 was never what made the board look washed out — that was the near veil. The
+far dim barely had to move; fixing the near band is what let it stay put.
+
+### A test that was measuring the wrong thing
+
+The room's "sits under the board" assertion started failing, because with lane
+focus dimming most of the board during play, the board's brightest pixel now
+sits _below_ the room's. Both numbers were correct; the comparison was not. It
+now measures a settled board — every cube at full strength, which is the
+comparison actually worth making — and uses the 99.5th percentile rather than
+the maximum, since bloom throws a halo a few pixels past the well and one stray
+pixel is not the room out-shining the board.
+
+### Tested
+
+**296 unit tests, 62 end-to-end tests.**
+
+Two new browser tests pin the bands: the focal lane is the brightest surface,
+the near band's mean stays under 60% of it while its peak stays above the focal
+mean and below the focal peak, the far band is dimmer than the near band with no
+bright edges, and it never reaches zero. A second test settles the board and
+asserts the far band returns to more than double its dimmed brightness — the
+bands belong to the falling piece, not to the board.
+
+### Still open
+
+- **The far band is dark but not "faded".** It reads as dimmed rather than
+  translucent. Transparency there risks depth-sorting artifacts between far
+  cubes, so it was left alone pending a look at whether it is worth the cost.
+- The two input notes — a key map in settings, arrow-key menu navigation — are
+  scheduled into M11 rather than done here.
+
+---
+
 ## M9 — Modes and Meta
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

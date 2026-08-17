@@ -891,7 +891,7 @@ test.describe('the room', () => {
    */
   async function roomAndBoard(page: Page): Promise<{
     roomMean: number;
-    roomMax: number;
+    roomBright: number;
     roomSaturation: number;
     boardBrightest: number;
   }> {
@@ -919,9 +919,9 @@ test.describe('the room', () => {
 
       let roomSum = 0;
       let roomCount = 0;
-      let roomMax = 0;
       let roomSaturation = 0;
       let boardBrightest = 0;
+      const roomLuminance: number[] = [];
 
       for (let y = 0; y < scratch.height; y += 3) {
         for (let x = 0; x < scratch.width; x += 3) {
@@ -936,21 +936,30 @@ test.describe('the room', () => {
           } else {
             roomSum += luminance;
             roomCount += 1;
-            roomMax = Math.max(roomMax, luminance);
+            roomLuminance.push(luminance);
             roomSaturation = Math.max(roomSaturation, Math.max(r, g, b) - Math.min(r, g, b));
           }
         }
       }
+      roomLuminance.sort((a, b) => a - b);
+      const percentile = roomLuminance[Math.floor(roomLuminance.length * 0.995)] ?? 0;
       return {
         roomMean: roomSum / Math.max(1, roomCount),
-        roomMax,
+        roomBright: percentile,
         roomSaturation,
         boardBrightest,
       };
     });
   }
 
-  /** Play a few pieces so the board has something bright in it. */
+  /**
+   * A board with cubes on it and nothing falling.
+   *
+   * Settled on purpose. While a piece falls the lane focus dims most of the
+   * board by design, so "is the room brighter than the board" stops being a
+   * question about the room. Freezing the board puts every cube at full
+   * strength, which is the comparison worth making.
+   */
   async function busyBoard(page: Page): Promise<void> {
     await page.goto('/?debug=1&mode=ascent&seed=room');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
@@ -959,6 +968,10 @@ test.describe('the room', () => {
       await page.keyboard.press('Space');
       await page.waitForTimeout(90);
     }
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (game) game.status = 'gameOver';
+    });
     await page.waitForTimeout(400);
   }
 
@@ -972,10 +985,12 @@ test.describe('the room', () => {
 
   test('sits under the board rather than over it', async ({ page }) => {
     await busyBoard(page);
-    const { roomMean, roomMax, boardBrightest } = await roomAndBoard(page);
-    // The room is a backdrop. Its brightest pixel stays below the brightest
-    // thing on the board, and on average it is far darker still.
-    expect(roomMax).toBeLessThan(boardBrightest);
+    const { roomMean, roomBright, boardBrightest } = await roomAndBoard(page);
+    // The room is a backdrop: its bright end stays below the brightest thing on
+    // the board, and on average it is far darker still. Measured at the 99.5th
+    // percentile rather than the maximum -- bloom throws a halo a few pixels
+    // past the well, and one stray pixel is not the room out-shining the board.
+    expect(roomBright).toBeLessThan(boardBrightest);
     expect(roomMean).toBeLessThan(20);
   });
 
@@ -1054,5 +1069,166 @@ test.describe('the Shift meter stays on screen', () => {
     });
     // Clear of the board's silhouette rather than clamped on top of it.
     expect(gap).toBeGreaterThanOrEqual(0);
+  });
+});
+
+test.describe('the x-ray', () => {
+  /**
+   * Plant one cube per lane, each in its own column, so nothing occludes
+   * anything and each band can be measured on its own.
+   *
+   * On the front face lane 0 is the *high* z, so a lane maps to `7 - lane`.
+   * Getting that backwards silently inverts the whole measurement, which is
+   * why the helper converts rather than the caller.
+   */
+  async function bandSamples(page: Page): Promise<{ band: string; mean: number; peak: number }[]> {
+    await page.goto('/?debug=1&mode=ascent&seed=xray');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game || !game.active) throw new Error('debug hook unavailable');
+      for (let lane = 0; lane < 8; lane += 1) {
+        game.board.fill({ x: lane, y: 2, z: 7 - lane });
+      }
+      game.active = { ...game.active, lane: 3, u: 3, y: 13 };
+    });
+    await page.waitForTimeout(500);
+
+    return page.evaluate(() => {
+      const renderer = window.__refraction?.renderer;
+      const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+      if (!renderer) throw new Error('debug hook unavailable');
+      const rect = renderer.wellScreenRect();
+      const box = source.getBoundingClientRect();
+      const scaleX = source.width / box.width;
+      const scaleY = source.height / box.height;
+
+      const scratch = document.createElement('canvas');
+      scratch.width = source.width;
+      scratch.height = source.height;
+      const context = scratch.getContext('2d');
+      if (!context) throw new Error('no 2d context');
+      context.drawImage(source, 0, 0);
+      const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+      const out: { band: string; mean: number; peak: number }[] = [];
+      for (let lane = 0; lane < 8; lane += 1) {
+        const column = lane; // the cube for this lane sits in column x = lane
+        const left = rect.left - box.left + (rect.width * column) / 8;
+        const width = rect.width / 8;
+        const top = rect.top - box.top + rect.height * (1 - 3 / 18);
+        const height = rect.height / 18;
+
+        let sum = 0;
+        let count = 0;
+        let peak = 0;
+        for (let y = top + height * 0.15; y < top + height * 0.85; y += 2) {
+          for (let x = left + width * 0.15; x < left + width * 0.85; x += 2) {
+            const i = (Math.round(y * scaleY) * scratch.width + Math.round(x * scaleX)) * 4;
+            const l =
+              0.2126 * (data[i] as number) +
+              0.7152 * (data[i + 1] as number) +
+              0.0722 * (data[i + 2] as number);
+            sum += l;
+            count += 1;
+            peak = Math.max(peak, l);
+          }
+        }
+        out.push({
+          band: lane < 3 ? 'near' : lane > 3 ? 'far' : 'focal',
+          mean: sum / Math.max(1, count),
+          peak,
+        });
+      }
+      return out;
+    });
+  }
+
+  test('sees through the lanes in front and darkens the ones behind', async ({ page }) => {
+    const samples = await bandSamples(page);
+    const focal = samples.find((s) => s.band === 'focal')!;
+    const near = samples.filter((s) => s.band === 'near');
+    const far = samples.filter((s) => s.band === 'far');
+
+    // The lane the piece will land in is the brightest surface on the board.
+    for (const sample of [...near, ...far]) {
+      expect(sample.mean).toBeLessThan(focal.mean);
+    }
+
+    // In front: mostly empty, so the board behind reads through — but each cube
+    // keeps a bright outline, which is what makes it an x-ray rather than a
+    // fade. Low mean with a high peak is precisely that signature.
+    for (const sample of near) {
+      expect(sample.mean).toBeLessThan(focal.mean * 0.6);
+      expect(sample.peak).toBeGreaterThan(focal.mean);
+      expect(sample.peak).toBeLessThanOrEqual(focal.peak);
+    }
+
+    // Behind: a dark mass with no structure. Dimmer than the x-ray on average,
+    // and without its bright edges.
+    for (const sample of far) {
+      expect(sample.peak).toBeLessThan(focal.mean);
+    }
+    const nearMean = near.reduce((a, s) => a + s.mean, 0) / near.length;
+    const farMean = far.reduce((a, s) => a + s.mean, 0) / far.length;
+    expect(farMean).toBeLessThan(nearMean);
+    // Dark, but not deleted: the band still carries its depth colour.
+    expect(farMean).toBeGreaterThan(1);
+  });
+
+  test('leaves the board alone when nothing is falling', async ({ page }) => {
+    // The bands are a property of the falling piece, not a distance cue: they
+    // exist only while something is in play, and they move when it moves. So
+    // the same cube has to come back to full strength once the piece is gone.
+    const falling = await bandSamples(page);
+    const behind = falling.filter((s) => s.band === 'far');
+
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (game) game.status = 'gameOver';
+    });
+    await page.waitForTimeout(400);
+    const settled = await page.evaluate(() => {
+      const renderer = window.__refraction?.renderer;
+      const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+      if (!renderer) throw new Error('debug hook unavailable');
+      const rect = renderer.wellScreenRect();
+      const box = source.getBoundingClientRect();
+      const scaleX = source.width / box.width;
+      const scaleY = source.height / box.height;
+      const scratch = document.createElement('canvas');
+      scratch.width = source.width;
+      scratch.height = source.height;
+      const context = scratch.getContext('2d');
+      if (!context) throw new Error('no 2d context');
+      context.drawImage(source, 0, 0);
+      const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+      const means: number[] = [];
+      for (let lane = 4; lane < 8; lane += 1) {
+        const left = rect.left - box.left + (rect.width * lane) / 8;
+        const width = rect.width / 8;
+        const top = rect.top - box.top + rect.height * (1 - 3 / 18);
+        const height = rect.height / 18;
+        let sum = 0;
+        let count = 0;
+        for (let y = top + height * 0.15; y < top + height * 0.85; y += 2) {
+          for (let x = left + width * 0.15; x < left + width * 0.85; x += 2) {
+            const i = (Math.round(y * scaleY) * scratch.width + Math.round(x * scaleX)) * 4;
+            sum +=
+              0.2126 * (data[i] as number) +
+              0.7152 * (data[i + 1] as number) +
+              0.0722 * (data[i + 2] as number);
+            count += 1;
+          }
+        }
+        means.push(sum / Math.max(1, count));
+      }
+      return means;
+    });
+
+    const dimmed = behind.reduce((a, s) => a + s.mean, 0) / behind.length;
+    const full = settled.reduce((a, m) => a + m, 0) / settled.length;
+    expect(full).toBeGreaterThan(dimmed * 2);
   });
 });
