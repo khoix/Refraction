@@ -247,6 +247,55 @@ entirely** — it was both the photosensitivity risk and the cheapest-looking
 element, and nothing replaced it. A space made of light does not need to flash
 to feel alive.
 
+### 2.5 The pipeline may not rewrite the palette
+
+Every rule above assumes the colour that reaches the screen is the colour the
+ramp chose. That assumption held in the palette module and failed everywhere
+after it. Three separate stages of the render pipeline were each rescaling the
+spectrum, and together they put a settled cube at roughly **a fifth of its
+palette value** — dark, muddy, and low-contrast, while the next-piece preview
+next to it, which is DOM and paints `depthColorHex` directly, stayed vivid. That
+disagreement between the two is what finally exposed it; nothing in the suite
+had noticed, because every test compared parts of the board against each other
+and they were all wrong by the same factor.
+
+The three causes, in order of size:
+
+| Cause                                                                     | Effect on a cube            |
+| ------------------------------------------------------------------------- | --------------------------- |
+| The play-column backdrop composited **over** the board rather than behind | ×0.38                       |
+| Ambient light at 1.18 where Three's Lambert BRDF needs π to return albedo | ×0.376                      |
+| ACES Filmic tone mapping compressing what was left                        | hue shift, channel clipping |
+
+The panel was the worst of them and the least visible. A translucent material
+goes into the renderer's _transparent_ queue, which draws after every opaque
+object no matter what `renderOrder` says — `renderOrder` only sorts within a
+queue. With its depth test disabled as well, a plane positioned safely behind
+the board was painted across the finished playfield as a 62% wash of near-black.
+It is the same panel §2.2 already called a tell; it turns out it was not merely
+conceptually wrong, it was doing the damage directly.
+
+So, as a standing constraint:
+
+- **A settled cube renders at exactly its `depthColor` value.** Flat ambient is
+  set to π precisely so that a surface returns its albedo, and the levels in
+  `setLightingFlatness` are written as fractions of albedo times that constant
+  rather than as bare intensities.
+- **No tone mapping.** A filmic curve exists to fit a scene lit in physical
+  units into a display. This scene is authored in display values from the start.
+  ACES was reinterpreting the ramp — clipping red's blue channel and violet's
+  green one, which are exactly the distinctions the ramp is made of. The bloom
+  chain is the only thing that goes past 1, and clipping to white is what a
+  whiteout is supposed to do.
+- **Nothing may sit in front of the board except the passes that are meant to.**
+- **A turn changes how the light falls, not how much of it there is.** Flat and
+  dimensional are balanced to the same peak, so the board does not appear to dim
+  and brighten as it rotates while the player is reading colour off it.
+
+Guarded by two end-to-end tests that sample the canvas and compare it against
+`depthColor` directly, and against the DOM preview's chroma. Each of the three
+causes above was re-introduced in turn to confirm the tests fail on it.
+
 ## 3. Lines
 
 A **line** is 8 cells sharing a `y` and a `lane`, spanning the current face's

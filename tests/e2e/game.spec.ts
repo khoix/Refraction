@@ -1232,3 +1232,176 @@ test.describe('the x-ray', () => {
     expect(full).toBeGreaterThan(dimmed * 2);
   });
 });
+
+/**
+ * The one thing the renderer may never get wrong.
+ *
+ * "Position is absolute. Colour is relative" only means anything if the colour
+ * that reaches the screen is the colour the spectrum ramp chose. Every stop is
+ * authored in OKLCH at a specific lightness and chroma; anything in the render
+ * pipeline that rescales, compresses or re-tints them is rewriting the game's
+ * only depth cue.
+ *
+ * This is a fidelity test, not a "looks about right" test, and it exists
+ * because three separate things were quietly rewriting the ramp at once and the
+ * entire suite passed anyway. A backdrop panel was being composited over the
+ * finished board instead of behind it, washing the whole playfield to a third
+ * of its colour. The ambient light was set to 1.18 where Three's Lambert BRDF
+ * needs pi to reproduce an albedo. And ACES tone mapping was compressing what
+ * was left, clipping red's blue channel and violet's green one. Together they
+ * put every cube at roughly a fifth of its palette value: the board came out
+ * dark and muddy while the DOM piece preview, which uses the palette directly,
+ * was vivid. That gap is the bug, and this test is that comparison.
+ */
+test.describe('the board renders the palette it was given', () => {
+  test('a settled cube is exactly its depth colour', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=fidelity');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const samples = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      const renderer = window.__refraction?.renderer;
+      if (!game || !renderer) throw new Error('debug hook unavailable');
+
+      // One cube per lane, on a diagonal so no cube hides another, and no
+      // active piece so the lane focus is off and every cube is at full
+      // strength. Front face, where lane = 7 - z.
+      for (let lane = 0; lane < 8; lane += 1) game.board.fill({ x: lane, y: 0, z: 7 - lane });
+      game.active = null;
+      return new Promise<{ lane: number; drawn: number[] }[]>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+            const rect = renderer.wellScreenRect();
+            const box = source.getBoundingClientRect();
+            const scaleX = source.width / box.width;
+            const scaleY = source.height / box.height;
+            const scratch = document.createElement('canvas');
+            scratch.width = source.width;
+            scratch.height = source.height;
+            const context = scratch.getContext('2d');
+            if (!context) throw new Error('no 2d context');
+            context.drawImage(source, 0, 0);
+
+            // The well rect is padded by 0.6 cells above and below the board,
+            // so a row's centre is not simply a fraction of eighteen.
+            const PAD = 0.6;
+            const rows = 18 + PAD * 2;
+            const rowCentre = (y: number): number => (PAD + (18 - y - 0.5)) / rows;
+
+            const out: { lane: number; drawn: number[] }[] = [];
+            for (let lane = 0; lane < 8; lane += 1) {
+              // The cube for this lane sits in column x = lane, bottom row.
+              const cx = rect.left - box.left + (rect.width * (lane + 0.5)) / 8;
+              const cy = rect.top - box.top + rect.height * rowCentre(0);
+              const patch = context.getImageData(
+                Math.round(cx * scaleX) - 2,
+                Math.round(cy * scaleY) - 2,
+                5,
+                5
+              ).data;
+              let r = 0;
+              let g = 0;
+              let b = 0;
+              let n = 0;
+              for (let i = 0; i < patch.length; i += 4) {
+                r += patch[i] as number;
+                g += patch[i + 1] as number;
+                b += patch[i + 2] as number;
+                n += 1;
+              }
+              out.push({ lane, drawn: [Math.round(r / n), Math.round(g / n), Math.round(b / n)] });
+            }
+            resolve(out);
+          })
+        );
+      });
+    });
+
+    // The same ramp the game uses, read straight from the core module -- the
+    // test must not carry its own copy of the palette or it stops testing the
+    // thing that matters.
+    const { depthColor } = await import('../../src/core/spectrum');
+
+    for (const { lane, drawn } of samples) {
+      const want = depthColor(lane / 7);
+      const expected = [want.r, want.g, want.b].map((v) => Math.round(v * 255));
+      for (let c = 0; c < 3; c += 1) {
+        // A few levels of slack for the rounded cube's shading at the sampled
+        // patch, and nothing like enough to hide a pipeline that rescales.
+        expect(
+          Math.abs((drawn[c] as number) - (expected[c] as number)),
+          `lane ${lane} channel ${'rgb'[c]}: drawn ${drawn.join(',')} vs palette ${expected.join(',')}`
+        ).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  test('the board is as vivid as the piece preview beside it', async ({ page }) => {
+    // The NEXT preview is DOM, painted with depthColorHex directly, so it is
+    // immune to anything the WebGL pipeline does. When the two disagree it is
+    // always the board that is wrong, which is exactly how this was found.
+    await page.goto('/?debug=1&mode=ascent&seed=fidelity');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const { board, preview } = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      const renderer = window.__refraction?.renderer;
+      if (!game || !renderer) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 7 });
+      game.active = null;
+
+      const chroma = (r: number, g: number, b: number): number =>
+        Math.max(r, g, b) - Math.min(r, g, b);
+
+      return new Promise<{ board: number; preview: number }>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+            const rect = renderer.wellScreenRect();
+            const box = source.getBoundingClientRect();
+            const scratch = document.createElement('canvas');
+            scratch.width = source.width;
+            scratch.height = source.height;
+            const context = scratch.getContext('2d');
+            if (!context) throw new Error('no 2d context');
+            context.drawImage(source, 0, 0);
+            const PAD = 0.6;
+            const rowCentre = (PAD + 17.5) / (18 + PAD * 2);
+            // Centre of column 3, not the centre of the well -- the well's
+            // midline runs down the seam between two columns.
+            const cx = (rect.left - box.left + (rect.width * 3.5) / 8) * (source.width / box.width);
+            const cy =
+              (rect.top - box.top + rect.height * rowCentre) * (source.height / box.height);
+            const patch = context.getImageData(Math.round(cx) - 2, Math.round(cy) - 2, 5, 5).data;
+            const px = [0, 1, 2].map((c) => {
+              let sum = 0;
+              for (let i = c; i < patch.length; i += 4) sum += patch[i] as number;
+              return Math.round(sum / (patch.length / 4));
+            });
+
+            // The preview cells carry their colour as an inline style.
+            const cell = document.querySelector('.piece__cell--filled') as HTMLElement | null;
+            const style = cell ? getComputedStyle(cell).backgroundColor : 'rgb(0,0,0)';
+            const [pr, pg, pb] = (style.match(/\d+/g) ?? ['0', '0', '0']).map(Number) as [
+              number,
+              number,
+              number,
+            ];
+
+            resolve({
+              board: chroma(px[0] as number, px[1] as number, px[2] as number),
+              preview: chroma(pr, pg, pb),
+            });
+          })
+        );
+      });
+    });
+
+    // Both are a fully saturated spectrum colour, so both should span a wide
+    // range between their channels. Before the fix the board managed a fifth of
+    // the preview's chroma.
+    expect(preview).toBeGreaterThan(80);
+    expect(board).toBeGreaterThan(preview * 0.75);
+  });
+});

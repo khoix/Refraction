@@ -7,6 +7,129 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## The board gets its colour back
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "Can I see a preview of gameplay? The previews you've shown so far look like
+> they removed all the colour."
+
+They had. It was not a testing artifact and it was not the x-ray — a real
+played-out board, captured mid-run, came out dark and muddy while the NEXT
+preview beside it was vivid red. That gap is the whole diagnosis: the preview is
+DOM and paints `depthColorHex` directly, so it cannot be wrong. Everything
+between the palette and the canvas could be, and three separate stages of it
+were.
+
+### What was happening
+
+A settled cube was reaching the screen at roughly **a fifth of its palette
+value**.
+
+| Cause                                                                     | Effect                      |
+| ------------------------------------------------------------------------- | --------------------------- |
+| The play-column backdrop composited **over** the board rather than behind | ×0.38                       |
+| Ambient light at 1.18 where the Lambert BRDF needs π to return albedo     | ×0.376                      |
+| ACES Filmic tone mapping compressing what survived                        | hue shift, channel clipping |
+
+**The panel.** A translucent material goes into the renderer's _transparent_
+queue, which draws after every opaque object regardless of `renderOrder` —
+`renderOrder` only sorts within a queue. With `depthTest: false` on top of that,
+a plane positioned safely behind the board was being painted across the finished
+playfield as a 62% wash of near-black. `docs/DESIGN.md` §2.2 had already called
+this panel "the tell" for a room that was competing with the board; it turned
+out to be doing the damage directly. It keeps its depth test now, which is the
+job it was always meant to do.
+
+**The ambient light.** Three's physical shading divides irradiance by π, so an
+ambient light of intensity 1 renders a surface at under a third of the colour it
+was authored in. Flat lighting was at 1.18. The levels in `setLightingFlatness`
+are now written as fractions of albedo multiplied by a `UNIT_ALBEDO = Math.PI`
+constant, so the arithmetic is visible instead of buried in a magic number.
+
+**ACES.** A filmic curve exists to fit a scene lit in physical units into a
+display. This scene is authored in display values from the start: every cube is
+a point on an OKLCH ramp chosen to land at an exact place on screen. ACES was
+reinterpreting it — clipping red's blue channel to `0x14` and violet's green to
+`0x00`, which are precisely the distinctions the ramp is made of. Removed.
+`NeutralToneMapping` was measured as the alternative and also fails: it
+compresses anything with a peak above 0.76, which is most of the ramp.
+
+`metalness` went to 0 in the same pass. With no environment map there was
+nothing for it to reflect, so all it did was subtract 8% from every cube's
+diffuse colour.
+
+### The result
+
+A settled board, sampled cube by cube, now reads `#eb493f #fc810b #fdbf08
+#abda56 #24cbcb #5183e6 #744aca #9521a6` — bit-for-bit identical to
+`depthColorHex` for each lane. Mean luminance across a played board went from
+**32.5 to 123.0**.
+
+### Retuning what had been tuned against the wash
+
+Everything measured during the x-ray work was measured through a 0.38 filter, so
+three numbers moved:
+
+| Setting     | Was  | Now  | Why                                                      |
+| ----------- | ---- | ---- | -------------------------------------------------------- |
+| X-ray fill  | 0.05 | 0.12 | Unlit, so it gained nothing from the lighting correction |
+| X-ray edges | 0.15 | 0.70 | Same — its peak had to stay above the focal band's mean  |
+| `FAR_DIM`   | 0.58 | 0.74 | At 0.58 the far band out-shone the x-ray in front of it  |
+
+The far band's old 0.58 was really 0.16 of the palette once the wash is
+accounted for, which is why "darker and faded" was the note. It lands at 18% of
+the focal band now — dark mass, no structure, hue intact.
+
+| Band                 | Mean  | Peak  |
+| -------------------- | ----- | ----- |
+| Focal (landing lane) | 112.8 | 198.5 |
+| In front (x-ray)     | 25.5  | 133.6 |
+| Behind               | 19.8  | 29.4  |
+
+### Why nothing caught it
+
+Every existing test compared the board against itself — bands against bands,
+board against room. All of them were wrong by the same factor, so all of them
+passed. Two new end-to-end tests compare the board against something outside the
+pipeline instead:
+
+- **A settled cube is exactly its depth colour** — samples one cube per lane and
+  asserts each channel is within 6 of `depthColor`, imported from the core
+  module so the test cannot carry a stale copy of the palette.
+- **The board is as vivid as the preview beside it** — compares the canvas
+  against the DOM preview's chroma, which is the comparison that found this.
+
+Each of the three causes was re-introduced in turn to confirm the tests fail on
+it. The panel and the ambient level each fail both tests; ACES fails the
+exactness test.
+
+### Tested
+
+**296 unit tests, 64 end-to-end tests.** Typecheck and lint clean.
+
+`scripts/play-capture.mjs` is new and stays in the repo: it plays 34 pieces with
+varied movement and captures three frames — settled, mid-fall with the piece in
+a middle lane so all three bands are on screen, and mid-fall with the piece in
+the back lane, where every settled cube is in front of it and the whole board
+x-rays at once. The existing `scripts/capture.mjs` composes deliberate
+set-pieces, which is exactly why it never showed this: a hand-built board is
+usually one lane deep, and one lane is one hue.
+
+### Still open
+
+- **The room is slightly brighter in absolute terms**, since removing ACES lifts
+  small values. It is far quieter _relative_ to the board than before — the
+  board-to-room contrast went from 3.6× to 10.7× — and its guard tests still
+  pass, so it was left alone rather than re-tuned on top of a change it did not
+  cause.
+- The far band still reads as dimmed rather than translucent. Unchanged from the
+  previous entry: transparency there risks depth-sorting artifacts.
+- The two input notes — a key map in settings, arrow-key menu navigation — remain
+  scheduled for M11.
+
+---
+
 ## Play response: the x-ray, and the ghost that was never gone
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

@@ -85,9 +85,13 @@ export class VoxelLayer {
             opacity: options.opacity ?? 0.3,
             depthWrite: false,
           })
-        : new THREE.MeshStandardMaterial({
+        : // Metalness stays at zero. With no environment map there is nothing
+          // for a metal to reflect, so the only thing a non-zero value did here
+          // was subtract that fraction from the diffuse albedo -- a cube's depth
+          // colour, quietly reduced for no visible return.
+          new THREE.MeshStandardMaterial({
             roughness: 0.34,
-            metalness: 0.08,
+            metalness: 0,
             transparent,
             opacity: options.opacity ?? 1,
             emissiveIntensity: options.emissive ?? 0.22,

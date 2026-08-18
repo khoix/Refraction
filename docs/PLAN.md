@@ -328,6 +328,21 @@ with the input work in M11, and moved there.
   it; this is a separate line because "the ghost is legible on a crowded board"
   is the acceptance test, not a side effect. Done: it draws after the x-ray
   passes now, at 0.44 rather than 0.3.
+- ✅ **Gave the board its colour back** _(play notes: "all the colours seem
+  muted")_. Not the x-ray after all, and not a tuning question. Three stages of
+  the render pipeline were each rescaling the spectrum — a backdrop panel
+  composited over the board instead of behind it, ambient light at a third of
+  the value that reproduces an albedo, and ACES tone mapping compressing the
+  remainder — and together they put every settled cube at about a fifth of its
+  palette value. Fixed at all three, and a settled cube now matches
+  `depthColor` exactly. See DESIGN §2.5.
+- ✅ **Made colour fidelity a tested invariant.** The bug survived a 60-test
+  end-to-end suite because every test compared the board against itself. Two
+  new tests compare it against the palette and against the DOM preview instead;
+  each of the three causes was re-introduced to confirm they fail on it.
+- ✅ **Retuned the three bands against a full-strength board.** The x-ray's
+  opacities and `FAR_DIM` were all measured under the wash, so the far band came
+  out brighter than the x-ray in front of it once the wash was gone.
 - **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
   after the rollback, and check behaviour on highly occluded boards.
 

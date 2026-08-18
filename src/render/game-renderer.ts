@@ -112,17 +112,17 @@ const MAX_EDGE_CELLS = 8 * 18 * 7;
 /**
  * How far the lanes behind the piece recede.
  *
- * Tuned by measurement rather than by eye. A normal cube renders around
- * luminance 58 on its brightest channel; this lands the far band around a
- * third of that -- plainly darker, still legible, still carrying its hue.
+ * Tuned by measurement rather than by eye, against a board that now renders at
+ * exactly its palette values. The focal band means luminance 113; this lands the
+ * far band near 20, with no peak above 30 -- a dark mass with no structure,
+ * still plainly carrying its hue.
  *
- * Two wrong answers were measured on the way. At 0.82 the band collapsed to
- * luminance 2, which is deleted rather than receded. And the original 0.55 was
- * never what made the board look washed out: that was the near band's flat 0.28
- * veil, which is now an x-ray. Fixing the near band is what let this one stay
- * close to where it started.
+ * The earlier 0.58 was measured while a backdrop panel was washing the whole
+ * playfield down to a third, so a band at "0.42 strength" was really at 0.16 of
+ * the palette. With the wash gone the same number left the far lanes brighter
+ * than the x-ray in front of them, which inverts the whole point of the bands.
  */
-const FAR_DIM = 0.58;
+const FAR_DIM = 0.74;
 
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -181,14 +181,19 @@ export class GameRenderer {
    * cube you can see is exactly how much of the board behind it you cannot, so
    * turning it down to reveal the board turns the cube off, and turning it up to
    * show the cube greys out everything underneath. That is the muting.
+   *
+   * Both passes are unlit, so neither gained anything when the board's lighting
+   * was corrected to reproduce the palette exactly. Their opacities are up by
+   * about that same factor to keep the three bands where they were relative to
+   * each other: a near mean well under the focal band, a peak above it.
    */
   private readonly lockedNear = new VoxelLayer({
-    opacity: 0.05,
+    opacity: 0.12,
     ghost: true,
     depthWrite: false,
     renderOrder: 1,
   });
-  private readonly lockedNearEdges = new EdgeLayer(MAX_EDGE_CELLS, 0.15);
+  private readonly lockedNearEdges = new EdgeLayer(MAX_EDGE_CELLS, 0.7);
   private readonly lockedFocal = new VoxelLayer();
   private readonly lockedFar = new VoxelLayer();
   private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
@@ -294,8 +299,16 @@ export class GameRenderer {
       preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // No tone mapping. A filmic curve is for a scene lit in physical units that
+    // has to be squeezed into a display; this scene is authored in display
+    // values from the start -- every cube's colour is a point on the spectrum
+    // ramp, chosen in OKLCH to land at an exact place on screen. ACES was
+    // rewriting them: it compresses midtones and clips channels, which on the
+    // saturated end of the ramp cost red its blue channel and violet its green
+    // one. The ramp is the game's only depth cue and nothing may reinterpret it.
+    // The bloom chain is the one thing that exceeds 1, and clipping to white is
+    // exactly what a whiteout is supposed to do.
+    this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     const bundle = createScene();
