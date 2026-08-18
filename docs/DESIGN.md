@@ -588,14 +588,15 @@ at least two of:
   the surface the piece is aimed at are drawn see-through rather than solid.
 
   **The region is the channel, not the board.** It is the columns the falling
-  piece spans, from the row it will land on upward — nothing wider, nothing
-  lower. Inside it:
+  piece spans, from the first settled cube beneath it upward — nothing wider,
+  nothing lower. Inside it:
 
-  | Where the cube is                               | Drawn as   |
-  | ----------------------------------------------- | ---------- |
-  | At or in front of the piece's depth             | **X-ray**  |
-  | Behind the piece's depth                        | **Muted**  |
-  | Anywhere else — another column, below the ghost | **Normal** |
+  | Where the cube is                                 | Drawn as   |
+  | ------------------------------------------------- | ---------- |
+  | At or in front of the piece's depth               | **X-ray**  |
+  | Behind the piece's depth                          | **Muted**  |
+  | The surface the piece will rest on                | **Normal** |
+  | Anywhere else — another column, below the surface | **Normal** |
 
   There is no fourth "focal" state. The piece's own lanes are x-rayed along with
   the ones in front of them, because a cube above the ghost hides the landing row
@@ -610,10 +611,20 @@ at least two of:
     muted all of it — which is what "everything looks muted" was, and no amount of
     tuning the opacities would have fixed it. Restricting the region to the
     channel is the fix; the opacities were never the problem.
-  - **On a level board the x-ray does nothing, correctly.** The ghost sits on top
-    of the stack, so on flat ground there is nothing above it to see through. The
-    effect only has work to do when the stack is uneven — when cubes in some other
-    lane stand higher than the row the piece is aiming for.
+  - **On a level board the x-ray does nothing, correctly.** The piece comes to
+    rest on top of the stack, so on flat ground there is nothing above it to see
+    through. The effect only has work to do when the stack is uneven — when cubes
+    in some other lane stand higher than the row the piece is aiming for.
+  - **It reaches the first real voxel, not the row the piece stops at.** Those are
+    the same row only when the piece lands flush. A piece whose underside does not
+    match the stack rests on its highest point and leaves a gap under everything
+    else: a flat four-wide bar on a staircase lands at one height in all four
+    columns while the surface below sits four, six and seven rows lower. That gap
+    is the single most useful thing to be able to see when a piece is about to
+    land badly, and stopping the channel at the landing row hid all of it.
+  - **The surface cube itself stays solid.** It is the backstop the channel stops
+    against, and it carries the landing mark — an x-rayed cube cannot hold a
+    mark.
 
   The channel is measured per column rather than as one bounding box. An S or an
   L lands at different heights in different columns and may occupy different lanes
@@ -636,10 +647,21 @@ at least two of:
   one means 52 with a peak of 169 — half the light, and structure where the solid
   cube has none.
 
+  **The outline is of the region, not of each cube in it.** Twelve edges per cube
+  turns a block of them into a grid of boxes: busy, and competing with the
+  landing marks for exactly the attention those need. The cells are projected to
+  screen cells and only the edges bordering an unoccupied neighbour are drawn, so
+  interior seams disappear and the region reads as one shape — with any holes in
+  it outlined too, which is right: a hole is a place where there is nothing to
+  see through. It is drawn flat on the plane just in front of the board, since
+  orthographically a screen-space boundary is exactly what a silhouette is, and
+  nothing on the board may hide the border of the region the player is being
+  asked to look into.
+
   The outline needs real line primitives. `wireframe` on a box draws every
   triangle edge, which puts a diagonal across all six faces and turns a wall of
-  cubes into a mesh of X's, so `EdgeLayer` rebuilds twelve clean edges per cube
-  each frame instead of instancing triangles.
+  cubes into a mesh of X's, so `EdgeLayer` builds clean lines each frame instead
+  of instancing triangles.
 
   The region belongs to the _piece_, moves when the piece moves, and vanishes at
   lock — it cannot be read as an absolute distance cue the way size falloff or
@@ -653,11 +675,34 @@ at least two of:
   so the marker reads through it; and the muted band is dark but never deleted —
   it still carries its hue.
 
-- **Ghost piece** — rendered at the true landing depth, in that lane's colour,
-  and drawn _after_ the x-ray passes. It once sat at the default render order,
-  which put the near band's veil on top of it and washed it out entirely — the
-  ghost was never missing, only painted over. It is the most useful mark on the
-  board, so it goes last and it goes brighter.
+- **Two landing marks, not one.** Where the piece will come to _rest_, and what
+  it will come to rest _on_. They are the same cell only when the piece lands
+  flush; on a stepped board they are rows apart, and the distance between them is
+  the gap the player is about to create.
+
+  | Mark            | What it is                                                   |
+  | --------------- | ------------------------------------------------------------ |
+  | Landing outline | the piece's own cells at their landing position              |
+  | Surface mark    | a smaller, near-white square on the face of the cube beneath |
+
+  Both are built so that **neither depends on the x-ray to be legible.** That was
+  the failure: the outline was a translucent cube at 0.44, which over the well's
+  near-black background lands around luminance 47 — a dark smudge — and it was at
+  its faintest on an open board, where the x-ray correctly does nothing and there
+  was nothing to lend it contrast. It carries its own outline now, drawn above
+  every see-through pass.
+
+  The surface mark had never been visible at all, for two compounding reasons.
+  Its layer asked for `emissive: 0.7` on a material whose emissive colour was
+  black, so the intensity multiplied into nothing; and its geometry was a smaller
+  cube sharing a centre with the cube it marked, which is simply inside it. It is
+  pushed out onto the near face now, and lifted nearly to white rather than
+  halfway — on an already-bright lane, green at luminance 198 or yellow at 190, a
+  half lift moves it about 12% and the mark disappears on exactly the colours it
+  most needs to survive. Near-white is also the more consistent choice: the cube
+  it sits on already states the depth, so the mark is chrome, and chrome here is
+  achromatic.
+
 - **Peek** _(future, M10)_ — hold to tilt the camera 8° for parallax. Changes no
   game state. Limited or disabled at Stage 6+ and in Blind Spectrum.
 - **Preview** _(2D today; rotating 3D render is M10)_ — the incoming piece, in

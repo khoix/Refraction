@@ -351,14 +351,13 @@ with the input work in M11, and moved there.
   other cube on the board — a different column, or below the ghost — is normal.
   There is no separate focal band. See DESIGN §9.
 
-### The landing marks — M10a _(play notes)_
+### The landing marks — M10a ✅ _(play notes)_
 
-Filed as one group. The four notes turned out to share a vocabulary problem that
-had been quietly costing passes at this: **"the ghost voxel" means the first
-settled cube beneath the piece — the surface it will come to rest above — not
-the projected piece position.** Those are the same cell only when the piece
-lands flush. They are not the same cell whenever it does not, and a piece that
-does not fit its footprint stops with a gap underneath.
+Four notes, sharing a vocabulary problem that had been costing passes: **"the
+ghost voxel" means the first settled cube beneath the piece — the surface it
+comes to rest above — not the projected piece position.** Those are the same cell
+only when the piece lands flush, and a piece that does not fit its footprint
+stops with a gap underneath.
 
 Measured, with a flat four-wide bar dropped onto a staircase:
 
@@ -369,48 +368,33 @@ Measured, with a flat four-wide bar dropped onto a staircase:
 | 3      | y = 9          | y = 2              | 6 rows |
 | 4      | y = 9          | y = 1              | 7 rows |
 
-- **The channel's floor is the wrong row.** It is currently the landing row —
-  y = 9 in every column above — so rows 1 to 8 under columns 2, 3 and 4 sit
-  outside the channel and are drawn solid. That is precisely the region the
-  player needs to see into: the gap they are about to create. The floor must be
-  the first actual voxel beneath the piece, taken per column, so the channel
-  reaches all the way down to real geometry. `firstContactCells()` already
-  computes exactly this and is already called each frame for the contact layer.
-  One detail to settle while building: whether that surface voxel is itself
-  x-rayed or is the solid backstop the channel stops against. It carries the
-  landing mark below, which argues for solid.
-- **The landing mark is the contact layer, and it has never been visible.** The
-  note describes "a smaller solid square on the face of the ghost voxel" — a
-  target painted on the surface cube, which is what `contact` draws at 0.72
-  scale on the first-contact cells. It is invisible for a specific reason:
-  `VoxelLayer` sets `emissiveIntensity: options.emissive` alongside
-  `emissive: 0x000000`, so an intensity is being multiplied into black. The
-  contact highlight's 0.7, the active piece's 0.35 and the x-ray's 0.22 have all
-  been silently zero since they were written, which leaves `contact` drawing a
-  slightly smaller cube in exactly the colour of the cube underneath it.
-  Invisible by construction, and the reason the landing surface has no emphasis
-  at all.
-- **The translucent landing outline is a separate mark from that one**, and the
-  notes do not ask for it to go. It shows where the piece's own cells will sit;
-  the contact square shows what they will sit on. Both are wanted on a board with
-  gaps, where they are rows apart. Keep both, and make the hierarchy between them
-  explicit rather than accidental.
-- **The marks must not depend on the x-ray.** Called out directly: "those should
-  be wholly separate." Today the translucent outline is only reliably legible
-  when something in front of it happens to be x-rayed — so on an open board,
-  where the x-ray correctly does nothing, it is at its least visible, reading as
-  a dark smudge around luminance 47. That is backwards. Acceptance is that both
-  marks read the same whether the channel is empty or eight cubes deep.
-- **Outline the x-ray region, not every cube in it.** `EdgeLayer` draws all
-  twelve edges of every x-rayed cube, so a block of them reads as a grid of
-  boxes — busy, and competing for exactly the attention the marks above need.
-  Only the **outer circumference of the x-rayed area** should carry a border,
-  which means deriving the region's silhouette rather than emitting per-cube
-  edges: a boundary walk over the channel's occupied cells, drawn once.
+- ✅ **The channel reaches the first real voxel.** Its floor was the landing row,
+  so rows 1 to 8 under three of those columns sat outside it and drew solid —
+  precisely the gap the player needs to see into. Taken per column from
+  `firstContactCells()`, which was already being computed every frame.
+- ✅ **The surface cube stays solid.** It is the backstop the channel stops
+  against, and it carries the landing mark; an x-rayed cube cannot hold a mark.
+- ✅ **The surface mark exists at last.** Two compounding reasons it never did:
+  `VoxelLayer` set `emissiveIntensity: options.emissive` alongside
+  `emissive: 0x000000`, multiplying every layer's intensity into black, and the
+  mark's geometry was a smaller cube sharing a centre with the cube it marked —
+  which is simply inside it. It is pushed onto the near face now and lifted
+  nearly to white. Half was measured first and is not enough: on green at
+  luminance 198 or yellow at 190, a half lift moves it 12% and the mark vanishes
+  on exactly the colours it most needs to survive.
+- ✅ **Neither mark depends on the x-ray.** The landing outline was a 0.44
+  translucent cube reading around luminance 47 over the well's background, and it
+  was faintest on an open board — where the x-ray correctly does nothing and
+  there was nothing to lend it contrast. It carries its own outline now, above
+  every see-through pass.
+- ✅ **The x-rayed region is outlined once, not per cube.** `EdgeLayer` derives
+  the region's screen-space silhouette and draws only the edges bordering an
+  unoccupied neighbour.
 
-**Exit criteria for the group:** on an open board and a crowded one alike, a
-player can point at both where the piece will come to rest and what it will rest
-on, without waiting for it to fall — and can see how big the gap between them is.
+**Exit criteria, met:** on an open board and a crowded one alike, a player can
+see both where the piece will come to rest and what it will rest on, and how big
+the gap between them is. Five end-to-end tests, each confirmed to fail when its
+behaviour is reverted.
 
 - **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
   once the above lands, and check behaviour on highly occluded boards.

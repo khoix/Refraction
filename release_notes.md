@@ -7,6 +7,110 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M10a — The landing marks
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "Right now, x-ray terminates where the piece would land. The x-ray effect
+> should terminate at the ghost voxel… The ghost indicator still isn't present.
+> Used to look like a smaller solid square on the face of the ghost voxel… Only
+> the outer circumference of the x-ray voxel area should have a border highlight,
+> not each individual voxel."
+
+Four notes that turned out to share a vocabulary problem, and it had been costing
+passes at this. **"The ghost voxel" means the first settled cube beneath the
+piece — the surface it comes to rest above — not the projected piece position.**
+They are the same cell only when the piece lands flush, and a piece that does not
+fit its footprint stops with a gap underneath. Measured, with a flat four-wide bar
+dropped onto a staircase:
+
+| Column | Piece lands at | First actual voxel | Gap    |
+| ------ | -------------- | ------------------ | ------ |
+| 1      | y = 9          | y = 8              | 0 rows |
+| 2      | y = 9          | y = 4              | 4 rows |
+| 3      | y = 9          | y = 2              | 6 rows |
+| 4      | y = 9          | y = 1              | 7 rows |
+
+### The channel was stopping four to seven rows short
+
+Its floor was the landing row — y = 9 in every column above — so the gap under
+three of those four columns sat outside the channel and drew solid. That is the
+one thing a player most needs to see when a piece is about to land badly. The
+floor now comes per column from `firstContactCells()`, which was already being
+computed each frame for the contact layer.
+
+The surface cube itself stays solid: it is the backstop the channel stops
+against, and an x-rayed cube cannot carry a mark.
+
+### There are two landing marks, and neither had ever worked
+
+Not one mark reported twice. On a stepped board they are rows apart, and the
+distance between them **is** the gap.
+
+| Mark            | What it is                                                   |
+| --------------- | ------------------------------------------------------------ |
+| Landing outline | the piece's own cells at their landing position              |
+| Surface mark    | a smaller, near-white square on the face of the cube beneath |
+
+**The surface mark had never been visible at all**, for two compounding reasons.
+`VoxelLayer` set `emissiveIntensity: options.emissive` alongside
+`emissive: 0x000000` — an intensity multiplied into black — so the contact
+layer's 0.7 and the active piece's 0.35 had been silently zero since they were
+written. And even with that fixed the geometry was buried: the mark was a smaller
+cube sharing a centre with the cube it marked, which is simply inside it. It is
+pushed out onto the near face now.
+
+Lifting it halfway to white was measured first and is not enough. On an already
+bright lane — green at luminance 198, yellow at 190 — a half lift moves it about
+12%, so the mark disappears on exactly the colours it most needs to survive.
+Near-white gives a quarter or more on every stop of the ramp, and it is the more
+consistent choice anyway: the cube it sits on already states the depth, so the
+mark is chrome, and chrome in this game is achromatic.
+
+**The landing outline was legible only by accident.** A 0.44 translucent cube
+over the well's near-black background lands around luminance 47, and it was at
+its faintest on an open board — where the x-ray correctly does nothing and there
+was nothing to lend it contrast. Exactly backwards, and exactly what "those
+should be wholly separate" was about. It carries its own outline now, drawn above
+every see-through pass.
+
+### One outline for the region, not one per cube
+
+Twelve edges per cube turns a block of them into a grid of boxes: busy, and
+competing for exactly the attention the marks need. `EdgeLayer` now projects the
+cells to screen cells and emits only the edges bordering an unoccupied
+neighbour, so interior seams disappear and the region reads as one shape — holes
+in it outlined too, which is right, since a hole is a place where there is
+nothing to see through. Drawn flat on the plane just in front of the board:
+orthographically a screen-space boundary is exactly what a silhouette is, and
+nothing on the board should hide the border of the region the player is being
+asked to look into.
+
+### Tested
+
+**296 unit tests, 73 end-to-end tests.** Typecheck and lint clean.
+
+Five new end-to-end tests, each confirmed to fail when its behaviour is reverted:
+the channel reaches the first real voxel rather than the landing row; the surface
+cube stays solid and takes a mark; the landing outline reads with nothing in
+front of it; and the x-rayed region is outlined once rather than per cube.
+
+Two measurement traps worth recording, because both produced a wrong reading
+first. The staircase makes the x-rayed region's own shape stepped — each column's
+floor is its own surface — so a cell that looks interior can sit against a column
+whose floor is higher. And every column's floor row holds the backstop cube,
+which is solid and carries a mark, so a probe there measures the mark rather than
+the x-ray.
+
+One existing assertion was replaced rather than retuned. "Leaves the board alone
+when nothing is falling" compared brightness between the two states against a
+factor of two, and sat within a percent of it — it would have failed on any
+change of a few luminance levels. It now asserts that the settled cube is a flat
+solid face, peak against mean, which is both the actual claim and not on a knife
+edge.
+
+---
+
 ## The x-ray becomes a channel, not a mode the board is in
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
