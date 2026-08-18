@@ -353,53 +353,64 @@ with the input work in M11, and moved there.
 
 ### The landing marks — M10a _(play notes)_
 
-Filed as one group because they share a root cause: **the two marks that say
-where the piece will land are both drawn and both invisible**, for two different
-reasons. "The indicator isn't present" and "the ghost isn't present" are the same
-report, and neither is the x-ray's doing — that was the first guess and it is
-wrong, which is worth recording because it sent the last pass at this in the
-wrong direction.
+Filed as one group. The four notes turned out to share a vocabulary problem that
+had been quietly costing passes at this: **"the ghost voxel" means the first
+settled cube beneath the piece — the surface it will come to rest above — not
+the projected piece position.** Those are the same cell only when the piece
+lands flush. They are not the same cell whenever it does not, and a piece that
+does not fit its footprint stops with a gap underneath.
 
-- **The ghost reads as a dead block, not a marker.** It renders — four instances
-  at 0.44 opacity, confirmed in a probe — but 0.44 of a lane colour over the
-  well's near-black background lands around luminance 47. On an open board it is
-  a dark maroon smudge one row above the stack. The note says it "used to look
-  like a smaller solid square on the face of the ghost voxel", which is a
-  different construction: **solid and inset**, a target painted on the surface,
-  rather than a translucent cube. Rebuild it that way.
-- **`VoxelLayer`'s `emissive` option has never done anything.** The material sets
-  `emissiveIntensity: options.emissive` alongside `emissive: 0x000000` — an
-  intensity multiplied into black. So the contact highlight (0.7), the active
-  piece's lift (0.35) and the x-ray's (0.22) have all been silently zero since
-  they were written. The contact layer therefore draws a slightly smaller cube in
-  exactly the colour of the cube underneath it, which is invisible by
-  construction. This is why the landing surface has no emphasis at all.
-- **The marks must not depend on the x-ray.** Called out explicitly in the note:
-  "those should be wholly separate." Today the ghost is only reliably legible
-  when something in front of it happens to be x-rayed; on an open board, where
-  the x-ray correctly does nothing, the ghost is at its least visible. That is
-  backwards. Acceptance is that the ghost and the contact mark read the same
-  whether the channel is empty or eight cubes deep.
+Measured, with a flat four-wide bar dropped onto a staircase:
+
+| Column | Piece lands at | First actual voxel | Gap    |
+| ------ | -------------- | ------------------ | ------ |
+| 1      | y = 9          | y = 8              | 0 rows |
+| 2      | y = 9          | y = 4              | 4 rows |
+| 3      | y = 9          | y = 2              | 6 rows |
+| 4      | y = 9          | y = 1              | 7 rows |
+
+- **The channel's floor is the wrong row.** It is currently the landing row —
+  y = 9 in every column above — so rows 1 to 8 under columns 2, 3 and 4 sit
+  outside the channel and are drawn solid. That is precisely the region the
+  player needs to see into: the gap they are about to create. The floor must be
+  the first actual voxel beneath the piece, taken per column, so the channel
+  reaches all the way down to real geometry. `firstContactCells()` already
+  computes exactly this and is already called each frame for the contact layer.
+  One detail to settle while building: whether that surface voxel is itself
+  x-rayed or is the solid backstop the channel stops against. It carries the
+  landing mark below, which argues for solid.
+- **The landing mark is the contact layer, and it has never been visible.** The
+  note describes "a smaller solid square on the face of the ghost voxel" — a
+  target painted on the surface cube, which is what `contact` draws at 0.72
+  scale on the first-contact cells. It is invisible for a specific reason:
+  `VoxelLayer` sets `emissiveIntensity: options.emissive` alongside
+  `emissive: 0x000000`, so an intensity is being multiplied into black. The
+  contact highlight's 0.7, the active piece's 0.35 and the x-ray's 0.22 have all
+  been silently zero since they were written, which leaves `contact` drawing a
+  slightly smaller cube in exactly the colour of the cube underneath it.
+  Invisible by construction, and the reason the landing surface has no emphasis
+  at all.
+- **The translucent landing outline is a separate mark from that one**, and the
+  notes do not ask for it to go. It shows where the piece's own cells will sit;
+  the contact square shows what they will sit on. Both are wanted on a board with
+  gaps, where they are rows apart. Keep both, and make the hierarchy between them
+  explicit rather than accidental.
+- **The marks must not depend on the x-ray.** Called out directly: "those should
+  be wholly separate." Today the translucent outline is only reliably legible
+  when something in front of it happens to be x-rayed — so on an open board,
+  where the x-ray correctly does nothing, it is at its least visible, reading as
+  a dark smudge around luminance 47. That is backwards. Acceptance is that both
+  marks read the same whether the channel is empty or eight cubes deep.
 - **Outline the x-ray region, not every cube in it.** `EdgeLayer` draws all
   twelve edges of every x-rayed cube, so a block of them reads as a grid of
-  boxes — visually busy, and it competes with the marks above for exactly the
-  attention they need. Only the **outer circumference of the x-rayed area**
-  should carry a border. That means deriving the region's silhouette rather than
-  emitting per-cube edges: a screen-space boundary walk over the channel's
-  occupied cells, drawn once.
-- **Where the x-ray terminates** _(needs clarification before building)_. The
-  note says it "terminates where the piece would land" and "should terminate at
-  the ghost voxel". Those are the same cell in the current implementation — the
-  channel floor is the ghost's row, inclusive — so the two halves of the sentence
-  do not yet distinguish a change. The likely reading is that with the ghost
-  invisible, the two are indistinguishable on screen and the item resolves itself
-  once the marks above are fixed; the alternative is that the channel should stop
-  one row _above_ the ghost so its cell renders clean. Resolve before touching
-  the partition, and note that the second reading contradicts the earlier
-  instruction that voxels in front of a ghosted voxel are x-rayed.
+  boxes — busy, and competing for exactly the attention the marks above need.
+  Only the **outer circumference of the x-rayed area** should carry a border,
+  which means deriving the region's silhouette rather than emitting per-cube
+  edges: a boundary walk over the channel's occupied cells, drawn once.
 
-**Exit criteria for the group:** on an open board and on a crowded one alike, a
-player can point at where the piece will land without waiting for it to fall.
+**Exit criteria for the group:** on an open board and a crowded one alike, a
+player can point at both where the piece will come to rest and what it will rest
+on, without waiting for it to fall — and can see how big the gap between them is.
 
 - **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
   once the above lands, and check behaviour on highly occluded boards.
