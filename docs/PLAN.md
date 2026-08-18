@@ -313,12 +313,53 @@ with the input work in M11, and moved there.
 - First-run onboarding that teaches by design rather than by tutorial text:
   position is absolute, colour is relative, rotation changes viewpoint, opposite
   faces mirror, hidden geometry can be inferred before it is revealed.
-- **Ghost and contact clarity pass** — re-tune the M6 silhouettes and M7 lane
-  focus after extended playtesting: opacity, emphasis, hierarchy, and behaviour
-  on highly occluded boards.
+- ✅ **Rolled the X-ray back to the rule it was meant to implement**
+  _(play notes)_.
+  The intended behaviour was never a whole-board effect: the lanes **under** the
+  falling piece and the lanes **in front of** those are x-ray transparent, so the
+  top layer — the one carrying the ghost — reads straight through. Only the lanes
+  **behind** that are muted and darkened. What shipped instead veils the near
+  cubes and darkens the far ones across the board, which is why everything reads
+  muted. Replaces M6's first-contact shell and M7's lane-focus veil as tuned.
+- ✅ **Un-buried the ghost** _(play notes)_. It was not missing: `ghostCells()` returns
+  its cells and `showGhost` is on. The lane-focus veil draws at `renderOrder: 1`
+  over the ghost's default order, so a 0.3-opacity ghost is washed out by a
+  0.28-opacity veil painted on top of it. Fixing the item above should restore
+  it; this is a separate line because "the ghost is legible on a crowded board"
+  is the acceptance test, not a side effect. Done: it draws after the x-ray
+  passes now, at 0.44 rather than 0.3.
+- ✅ **Gave the board its colour back** _(play notes: "all the colours seem
+  muted")_. Not the x-ray after all, and not a tuning question. Three stages of
+  the render pipeline were each rescaling the spectrum — a backdrop panel
+  composited over the board instead of behind it, ambient light at a third of
+  the value that reproduces an albedo, and ACES tone mapping compressing the
+  remainder — and together they put every settled cube at about a fifth of its
+  palette value. Fixed at all three, and a settled cube now matches
+  `depthColor` exactly. See DESIGN §2.5.
+- ✅ **Made colour fidelity a tested invariant.** The bug survived a 60-test
+  end-to-end suite because every test compared the board against itself. Two
+  new tests compare it against the palette and against the DOM preview instead;
+  each of the three causes was re-introduced to confirm they fail on it.
+- ✅ **Retuned the three bands against a full-strength board.** The x-ray's
+  opacities and the muted dim were all measured under the wash, so the muted band
+  came out brighter than the x-ray in front of it once the wash was gone.
+- ✅ **Scoped the x-ray to the drop channel** _(play notes, with illustration)_.
+  The rollback above fixed how the bands were drawn but kept classifying the
+  whole board by lane, so a piece dealt to a back lane still turned everything to
+  glass. The region is the columns the piece spans, from its landing row upward:
+  at or in front of the piece's depth is x-ray, behind it is muted, and every
+  other cube on the board — a different column, or below the ghost — is normal.
+  There is no separate focal band. See DESIGN §9.
+- **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
+  after the rollback, and check behaviour on highly occluded boards.
 
 **Exit criteria:** a new player reaches their first turn without instructions and
-understands what happened afterwards.
+understands what happened afterwards. The ghost is findable at a glance on a full
+board, and no cube is dimmed unless it sits behind the falling piece.
+
+**Sequencing:** the first two items lead this milestone. They are a live
+playability regression on `main` rather than a polish pass, and everything else
+here is built on top of a board the player can read.
 
 ---
 
@@ -329,6 +370,15 @@ understands what happened afterwards.
 - Banded, luminance, and colour-vision-safe depth ramps; lane numerals. Any
   alternative to ROYGBIV must preserve the core distinction: depth is relative
   to the current camera orientation.
+- **Key map in settings** _(play notes)_ — a visible reference for what every key
+  does. The game has never told the player its controls anywhere but the README,
+  and it now has enough of them (move, three rotation axes, depth nudge, hold,
+  hard drop, face choice, pause, mute, restart) that it has to. Precursor to the
+  remapping below, which needs somewhere to display the bindings anyway.
+- **Arrow keys move through menus** _(play notes)_ — focus travels the panels and
+  the mode grid with the same keys that move a piece, so the whole game is
+  reachable without a mouse. Implied by "completable by keyboard alone" below;
+  making it explicit because it is a real gap today, not a refinement.
 - Full key remapping; gamepad parity; touch controls with swipe and tap.
 - Responsive layout from 390 px to ultrawide; readable UI scaling.
 - Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake

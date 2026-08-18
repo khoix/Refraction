@@ -7,6 +7,305 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## The x-ray becomes a channel, not a mode the board is in
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "It's say you have a blue piece 4 voxel long, and it's turned sideways and
+> center at the top… All voxels in the 4 lanes beneath the piece, above the ghost
+> indicator, as well as any in front of those are x-ray voxels. Any behind are
+> muted."
+
+Sent with a hand-drawn illustration, and it named three things the previous pass
+had wrong.
+
+### The region was the whole board
+
+Every version until now classified **every cube on the board** by its lane alone:
+in front of the piece, in the piece's lane, or behind. That is why a piece dealt
+to a back lane turned the entire board to glass and one dealt to the front muted
+all of it — and it is the real reason "everything looks muted" survived a
+rollback, a retune, and a colour-pipeline fix. The opacities were never the
+problem. The region was.
+
+The region is the **drop channel**: the columns the piece spans, from the row it
+will land on upward, and nothing else.
+
+| Where the cube is                                   | Drawn as   |
+| --------------------------------------------------- | ---------- |
+| In the channel, at or in front of the piece's depth | **X-ray**  |
+| In the channel, behind the piece's depth            | **Muted**  |
+| Anywhere else — another column, below the ghost     | **Normal** |
+
+On a 4-wide piece that is 4 of 8 columns, above one row. The rest of the board —
+most of it, most of the time — is untouched.
+
+### There was no vertical cut at all
+
+"Above the ghost indicator" had no counterpart in the code. The buried stack
+below the landing row was being x-rayed along with everything else, despite
+having nothing to do with the shot being lined up. The channel now has a floor,
+read per column off the ghost.
+
+A consequence worth stating: **on a level board the x-ray does nothing, and that
+is correct.** The ghost sits on top of the stack, so on flat ground there is
+nothing above it to see through. The effect only has work to do when the stack is
+uneven. The first rewrite of the tests missed this and built a flat slab, which
+measured the one board where the right answer is "no change".
+
+### There is no focal band
+
+The legend in the illustration lists four things — normal, x-ray, ghost, muted —
+and a focal state is not among them. The piece's own lanes are x-rayed along with
+the ones in front of them, because a cube above the ghost hides the landing row
+whatever its depth. Normal is the default state, not a third band. The layers are
+renamed to match: `lockedXray`, `lockedPlain`, `lockedMuted`.
+
+A follow-up note — "any voxels in front of a ghosted or x-rayed voxel are also
+x-rayed" — is satisfied by construction, since the channel runs from the front
+lane through the piece's depth in one span. It is now pinned by its own test
+rather than left as an implication.
+
+### Tested
+
+**296 unit tests, 69 end-to-end tests.** Typecheck and lint clean.
+
+The old band tests were built on the lane split and could not be adapted, so the
+x-ray suite is rewritten around the channel instead:
+
+- a column the piece does not cover renders identically whether or not something
+  is falling;
+- the channel stops at the landing row, with the stack below it untouched;
+- an x-rayed cell reads as glass, not as a fade — mean 52 against an untouched
+  cube's 107, but a peak of 169 where the solid cube is a flat 107;
+- a cube level with the ghost in a nearer lane is x-rayed, so the marker reads
+  through it — measured with the marker suppressed and again with it drawn, since
+  the difference between those two _is_ how much of the ghost gets through;
+- what stands behind the landing surface is dark but not deleted.
+
+Both boundaries were confirmed by breaking them: shifting the channel floor by
+one row fails three tests, and dropping the column restriction fails the first.
+
+One measurement bug worth recording, because it very nearly produced a wrong
+conclusion. The band sampler averaged the middle 70% of a cell for both mean and
+peak — but a cube's outline runs around its **perimeter**, so an interior-only
+window measures fill and nothing else, and reads a perfectly good x-ray as a flat
+fade. Mean now comes from the interior and peak from the whole cell: fill from
+the middle, structure from the edge.
+
+---
+
+## The board gets its colour back
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "Can I see a preview of gameplay? The previews you've shown so far look like
+> they removed all the colour."
+
+They had. It was not a testing artifact and it was not the x-ray — a real
+played-out board, captured mid-run, came out dark and muddy while the NEXT
+preview beside it was vivid red. That gap is the whole diagnosis: the preview is
+DOM and paints `depthColorHex` directly, so it cannot be wrong. Everything
+between the palette and the canvas could be, and three separate stages of it
+were.
+
+### What was happening
+
+A settled cube was reaching the screen at roughly **a fifth of its palette
+value**.
+
+| Cause                                                                     | Effect                      |
+| ------------------------------------------------------------------------- | --------------------------- |
+| The play-column backdrop composited **over** the board rather than behind | ×0.38                       |
+| Ambient light at 1.18 where the Lambert BRDF needs π to return albedo     | ×0.376                      |
+| ACES Filmic tone mapping compressing what survived                        | hue shift, channel clipping |
+
+**The panel.** A translucent material goes into the renderer's _transparent_
+queue, which draws after every opaque object regardless of `renderOrder` —
+`renderOrder` only sorts within a queue. With `depthTest: false` on top of that,
+a plane positioned safely behind the board was being painted across the finished
+playfield as a 62% wash of near-black. `docs/DESIGN.md` §2.2 had already called
+this panel "the tell" for a room that was competing with the board; it turned
+out to be doing the damage directly. It keeps its depth test now, which is the
+job it was always meant to do.
+
+**The ambient light.** Three's physical shading divides irradiance by π, so an
+ambient light of intensity 1 renders a surface at under a third of the colour it
+was authored in. Flat lighting was at 1.18. The levels in `setLightingFlatness`
+are now written as fractions of albedo multiplied by a `UNIT_ALBEDO = Math.PI`
+constant, so the arithmetic is visible instead of buried in a magic number.
+
+**ACES.** A filmic curve exists to fit a scene lit in physical units into a
+display. This scene is authored in display values from the start: every cube is
+a point on an OKLCH ramp chosen to land at an exact place on screen. ACES was
+reinterpreting it — clipping red's blue channel to `0x14` and violet's green to
+`0x00`, which are precisely the distinctions the ramp is made of. Removed.
+`NeutralToneMapping` was measured as the alternative and also fails: it
+compresses anything with a peak above 0.76, which is most of the ramp.
+
+`metalness` went to 0 in the same pass. With no environment map there was
+nothing for it to reflect, so all it did was subtract 8% from every cube's
+diffuse colour.
+
+### The result
+
+A settled board, sampled cube by cube, now reads `#eb493f #fc810b #fdbf08
+#abda56 #24cbcb #5183e6 #744aca #9521a6` — bit-for-bit identical to
+`depthColorHex` for each lane. Mean luminance across a played board went from
+**32.5 to 123.0**.
+
+### Retuning what had been tuned against the wash
+
+Everything measured during the x-ray work was measured through a 0.38 filter, so
+three numbers moved:
+
+| Setting     | Was  | Now  | Why                                                      |
+| ----------- | ---- | ---- | -------------------------------------------------------- |
+| X-ray fill  | 0.05 | 0.12 | Unlit, so it gained nothing from the lighting correction |
+| X-ray edges | 0.15 | 0.70 | Same — its peak had to stay above the focal band's mean  |
+| `FAR_DIM`   | 0.58 | 0.74 | At 0.58 the far band out-shone the x-ray in front of it  |
+
+The far band's old 0.58 was really 0.16 of the palette once the wash is
+accounted for, which is why "darker and faded" was the note. It lands at 18% of
+the focal band now — dark mass, no structure, hue intact.
+
+| Band                 | Mean  | Peak  |
+| -------------------- | ----- | ----- |
+| Focal (landing lane) | 112.8 | 198.5 |
+| In front (x-ray)     | 25.5  | 133.6 |
+| Behind               | 19.8  | 29.4  |
+
+### Why nothing caught it
+
+Every existing test compared the board against itself — bands against bands,
+board against room. All of them were wrong by the same factor, so all of them
+passed. Two new end-to-end tests compare the board against something outside the
+pipeline instead:
+
+- **A settled cube is exactly its depth colour** — samples one cube per lane and
+  asserts each channel is within 6 of `depthColor`, imported from the core
+  module so the test cannot carry a stale copy of the palette.
+- **The board is as vivid as the preview beside it** — compares the canvas
+  against the DOM preview's chroma, which is the comparison that found this.
+
+Each of the three causes was re-introduced in turn to confirm the tests fail on
+it. The panel and the ambient level each fail both tests; ACES fails the
+exactness test.
+
+### Tested
+
+**296 unit tests, 64 end-to-end tests.** Typecheck and lint clean.
+
+`scripts/play-capture.mjs` is new and stays in the repo: it plays 34 pieces with
+varied movement and captures three frames — settled, mid-fall with the piece in
+a middle lane so all three bands are on screen, and mid-fall with the piece in
+the back lane, where every settled cube is in front of it and the whole board
+x-rays at once. The existing `scripts/capture.mjs` composes deliberate
+set-pieces, which is exactly why it never showed this: a hand-built board is
+usually one lane deep, and one lane is one hue.
+
+### Still open
+
+- **The room is slightly brighter in absolute terms**, since removing ACES lifts
+  small values. It is far quieter _relative_ to the board than before — the
+  board-to-room contrast went from 3.6× to 10.7× — and its guard tests still
+  pass, so it was left alone rather than re-tuned on top of a change it did not
+  cause.
+- The far band still reads as dimmed rather than translucent. Unchanged from the
+  previous entry: transparency there risks depth-sorting artifacts.
+- The two input notes — a key map in settings, arrow-key menu navigation — remain
+  scheduled for M11.
+
+---
+
+## Play response: the x-ray, and the ghost that was never gone
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Four notes came back from play. Two were rendering and turned out to be one root
+cause; they are fixed here. The other two are input and are scheduled into M11.
+
+### The ghost was being painted over, not removed
+
+`ghostCells()` was returning its cells and `showGhost` was on the whole time. The
+lane-focus veil drew at `renderOrder: 1` with opacity 0.28, above the ghost's
+default order at 0.3 — a veil on top of a ghost, both translucent, and the ghost
+lost. It now draws after the x-ray passes and at 0.44.
+
+### X-ray is not a fade
+
+The near band was a uniformly translucent cube, and that construction cannot do
+what was being asked of it. Whatever fraction of a translucent cube you can see
+is exactly the fraction of the board behind it that you cannot: turn it down to
+reveal the board and the cube vanishes, turn it up to show the cube and
+everything under it greys out. There is no setting where both read. That is the
+"everything looks muted" report, and no amount of tuning the one number would
+have fixed it.
+
+Splitting fill from structure escapes the trade. The fill drops to almost
+nothing so the board behind comes through at full strength, and a new
+`EdgeLayer` draws the cube's twelve edges in its own lane colour — so an x-rayed
+cube still says how deep it is, which is the one thing this game may never stop
+saying.
+
+The edges need real line primitives. The first attempt used `wireframe: true` on
+a box, which draws every _triangle_ edge: a diagonal across all six faces, and a
+wall of cubes reading as a mesh of X's. `EdgeLayer` rebuilds twelve clean edges
+per cube per frame instead — a few hundred cubes into preallocated buffers, so
+it is a memcpy rather than an allocation.
+
+### Tuned by measurement
+
+Eyeballing this went wrong twice, so the bands were measured instead: one cube
+per lane, each in its own column so nothing occludes anything.
+
+| Band                 | Mean     | Peak      |
+| -------------------- | -------- | --------- |
+| Focal (landing lane) | 30.6     | 52.5      |
+| In front (x-ray)     | 9.5–12.1 | 41.9–49.7 |
+| Behind               | 2.8–7.5  | 3.9–10.3  |
+
+The near band's **low mean with a high peak** is the x-ray signature: mostly
+empty, crisply edged. The far band has neither — a dark mass with no structure.
+And the focal band's peak stays above everything, so the landing surface is the
+brightest thing on the board.
+
+Two wrong answers were measured on the way to the far band's 0.58. At 0.82 it
+collapsed to luminance 2, which is deleted rather than receded. And the original
+0.55 was never what made the board look washed out — that was the near veil. The
+far dim barely had to move; fixing the near band is what let it stay put.
+
+### A test that was measuring the wrong thing
+
+The room's "sits under the board" assertion started failing, because with lane
+focus dimming most of the board during play, the board's brightest pixel now
+sits _below_ the room's. Both numbers were correct; the comparison was not. It
+now measures a settled board — every cube at full strength, which is the
+comparison actually worth making — and uses the 99.5th percentile rather than
+the maximum, since bloom throws a halo a few pixels past the well and one stray
+pixel is not the room out-shining the board.
+
+### Tested
+
+**296 unit tests, 62 end-to-end tests.**
+
+Two new browser tests pin the bands: the focal lane is the brightest surface,
+the near band's mean stays under 60% of it while its peak stays above the focal
+mean and below the focal peak, the far band is dimmer than the near band with no
+bright edges, and it never reaches zero. A second test settles the board and
+asserts the far band returns to more than double its dimmed brightness — the
+bands belong to the falling piece, not to the board.
+
+### Still open
+
+- **The far band is dark but not "faded".** It reads as dimmed rather than
+  translucent. Transparency there risks depth-sorting artifacts between far
+  cubes, so it was left alone pending a look at whether it is worth the cost.
+- The two input notes — a key map in settings, arrow-key menu navigation — are
+  scheduled into M11 rather than done here.
+
+---
+
 ## M9 — Modes and Meta
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

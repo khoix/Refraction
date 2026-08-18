@@ -82,10 +82,19 @@ export function projectedFootprintDepth(yawDegrees: number): number {
 }
 
 /**
- * A dark panel behind the well. Drawn after the environment and before the
- * cubes, so the disco never sits on a cube. Billboarded to the camera yaw
- * and sized to the projected footprint so it tracks the silhouette as the
- * board turns.
+ * A dark panel behind the well, so the room never sits on a cube. Billboarded
+ * to the camera yaw and sized to the projected footprint so it tracks the
+ * silhouette as the board turns.
+ *
+ * It must keep its depth test. A translucent material goes into the renderer's
+ * *transparent* queue, which is drawn after every opaque object regardless of
+ * renderOrder -- renderOrder only sorts within a queue. With the depth test off
+ * as well, this panel was therefore painted over the finished board rather than
+ * behind it: a 62% wash of near-black across the whole playfield, which cut
+ * every cube to a bit over a third of its colour. That is what "all the colour
+ * is gone" was. Depth-tested, it draws only where no cube claimed the pixel,
+ * which is the job it was meant to do. Depth writing stays off so the
+ * see-through passes behind it are unaffected.
  */
 export function createColumnPanel(): THREE.Mesh {
   const geometry = new THREE.PlaneGeometry(1, 1);
@@ -94,7 +103,6 @@ export function createColumnPanel(): THREE.Mesh {
     transparent: true,
     opacity: 0.95,
     depthWrite: false,
-    depthTest: false,
   });
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = -5;
@@ -285,21 +293,42 @@ export function orientLights(lights: SceneLights, yawDegrees: number): void {
 }
 
 /**
+ * Light intensity that reproduces an albedo exactly.
+ *
+ * Three's physical shading divides irradiance by pi (the Lambert BRDF), so an
+ * ambient light of intensity 1 renders a surface at 1/pi -- under a third -- of
+ * the colour it was authored in. Every level below is written as a fraction of
+ * albedo and multiplied by this, because in this game a cube's colour *is* the
+ * information: a settled board lit flat has to come out at the palette value the
+ * spectrum ramp chose, not at some arbitrary fraction of it.
+ */
+const UNIT_ALBEDO = Math.PI;
+
+/**
  * Blend the lighting between flat and dimensional.
  *
- * `flatness` of 1 is pure ambient: every face of every cube receives identical
- * light, so a cube seen dead-on is a flat coloured square with no shading to
- * betray its volume. At 0 the directional key and rim take over and the cubes
- * are unmistakably solid. This is the only thing that makes them look like
- * cubes -- there is no perspective doing any of the work.
+ * `flatness` of 1 is pure ambient at full strength: every face of every cube
+ * receives identical light, so a cube seen dead-on is a flat coloured square,
+ * exactly its depth colour, with no shading to betray its volume. At 0 the
+ * directional key and rim take over and the cubes are unmistakably solid. This
+ * is the only thing that makes them look like cubes -- there is no perspective
+ * doing any of the work.
+ *
+ * The two looks are balanced to the same peak, so a face turned toward the key
+ * is as bright as the same face was while settled. A turn changes how the light
+ * falls, not how much of it there is -- the board must not appear to dim and
+ * brighten as it rotates, because the player is reading colour off it
+ * throughout.
  */
 export function setLightingFlatness(lights: SceneLights, flatness: number): void {
   const flat = THREE.MathUtils.clamp(flatness, 0, 1);
   const dimensional = 1 - flat;
 
-  lights.fill.intensity = THREE.MathUtils.lerp(0.45, 1.18, flat);
-  lights.key.intensity = 1.7 * dimensional;
-  lights.rim.intensity = 0.85 * dimensional;
+  // Dimensional keeps a substantial ambient floor: a face turned away from the
+  // key still has to declare its depth, and a black face declares nothing.
+  lights.fill.intensity = THREE.MathUtils.lerp(0.3, 1, flat) * UNIT_ALBEDO;
+  lights.key.intensity = 0.7 * UNIT_ALBEDO * dimensional;
+  lights.rim.intensity = 0.36 * UNIT_ALBEDO * dimensional;
 }
 
 /** Keep the flat frame on the near edge of whichever face is being viewed. */

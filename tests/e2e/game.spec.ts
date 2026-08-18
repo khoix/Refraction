@@ -891,7 +891,7 @@ test.describe('the room', () => {
    */
   async function roomAndBoard(page: Page): Promise<{
     roomMean: number;
-    roomMax: number;
+    roomBright: number;
     roomSaturation: number;
     boardBrightest: number;
   }> {
@@ -919,9 +919,9 @@ test.describe('the room', () => {
 
       let roomSum = 0;
       let roomCount = 0;
-      let roomMax = 0;
       let roomSaturation = 0;
       let boardBrightest = 0;
+      const roomLuminance: number[] = [];
 
       for (let y = 0; y < scratch.height; y += 3) {
         for (let x = 0; x < scratch.width; x += 3) {
@@ -936,21 +936,30 @@ test.describe('the room', () => {
           } else {
             roomSum += luminance;
             roomCount += 1;
-            roomMax = Math.max(roomMax, luminance);
+            roomLuminance.push(luminance);
             roomSaturation = Math.max(roomSaturation, Math.max(r, g, b) - Math.min(r, g, b));
           }
         }
       }
+      roomLuminance.sort((a, b) => a - b);
+      const percentile = roomLuminance[Math.floor(roomLuminance.length * 0.995)] ?? 0;
       return {
         roomMean: roomSum / Math.max(1, roomCount),
-        roomMax,
+        roomBright: percentile,
         roomSaturation,
         boardBrightest,
       };
     });
   }
 
-  /** Play a few pieces so the board has something bright in it. */
+  /**
+   * A board with cubes on it and nothing falling.
+   *
+   * Settled on purpose. While a piece falls the lane focus dims most of the
+   * board by design, so "is the room brighter than the board" stops being a
+   * question about the room. Freezing the board puts every cube at full
+   * strength, which is the comparison worth making.
+   */
   async function busyBoard(page: Page): Promise<void> {
     await page.goto('/?debug=1&mode=ascent&seed=room');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
@@ -959,6 +968,10 @@ test.describe('the room', () => {
       await page.keyboard.press('Space');
       await page.waitForTimeout(90);
     }
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (game) game.status = 'gameOver';
+    });
     await page.waitForTimeout(400);
   }
 
@@ -972,10 +985,12 @@ test.describe('the room', () => {
 
   test('sits under the board rather than over it', async ({ page }) => {
     await busyBoard(page);
-    const { roomMean, roomMax, boardBrightest } = await roomAndBoard(page);
-    // The room is a backdrop. Its brightest pixel stays below the brightest
-    // thing on the board, and on average it is far darker still.
-    expect(roomMax).toBeLessThan(boardBrightest);
+    const { roomMean, roomBright, boardBrightest } = await roomAndBoard(page);
+    // The room is a backdrop: its bright end stays below the brightest thing on
+    // the board, and on average it is far darker still. Measured at the 99.5th
+    // percentile rather than the maximum -- bloom throws a halo a few pixels
+    // past the well, and one stray pixel is not the room out-shining the board.
+    expect(roomBright).toBeLessThan(boardBrightest);
     expect(roomMean).toBeLessThan(20);
   });
 
@@ -1054,5 +1069,459 @@ test.describe('the Shift meter stays on screen', () => {
     });
     // Clear of the board's silhouette rather than clamped on top of it.
     expect(gap).toBeGreaterThanOrEqual(0);
+  });
+});
+
+test.describe('the x-ray', () => {
+  /**
+   * The x-ray is a property of the falling piece's **drop channel**, not of the
+   * board: the columns the piece spans, from the row it will land on upward.
+   *
+   * Which means a flat board x-rays nothing at all, correctly — the ghost sits
+   * on top of the stack, so on level ground there is nothing above it to see
+   * through. The effect only has anything to do when the stack is *uneven*: when
+   * cubes in some other lane stand higher than the row the piece is aiming for
+   * and get between the player and it. So the fixture builds a wall in a chosen
+   * range of lanes and drops a single cube into a lane that has none.
+   *
+   * Building the wall in front of the piece isolates the x-ray; building it
+   * behind isolates the muting. Nothing else is in the way either time, so each
+   * measurement is of one band alone rather than of a stack of them.
+   */
+  const BASE_HEIGHT = 6;
+  const WALL_HEIGHT = 10;
+  /** Comfortably inside the wall and above the landing row. */
+  const PROBE_ROW = 8;
+
+  interface Fixture {
+    /** Inclusive lane range the wall occupies. Must exclude `pieceLane`. */
+    readonly wall: readonly [number, number];
+    readonly pieceLane: number;
+    readonly pieceColumn: number;
+    /** Height of the wall. Defaults to `WALL_HEIGHT`. */
+    readonly wallTop?: number;
+    /** Leave the piece off entirely, for the untouched-board baseline. */
+    readonly falling?: boolean;
+    /**
+     * Hide the ghost marker. The channel is still computed from the ghost's
+     * position either way -- this only stops it being drawn, so a cell can be
+     * measured for the settled cubes in it alone.
+     */
+    readonly hideGhost?: boolean;
+  }
+
+  interface CellSample {
+    readonly u: number;
+    readonly y: number;
+    readonly mean: number;
+    readonly peak: number;
+  }
+
+  async function sample(
+    page: Page,
+    fixture: Fixture,
+    cells: readonly { u: number; y: number }[]
+  ): Promise<CellSample[]> {
+    await page.goto('/?debug=1&mode=ascent&seed=xray');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.evaluate(
+      ({ fixture, base, wallTop }) => {
+        const game = window.__refraction?.game;
+        if (!game || !game.active) throw new Error('debug hook unavailable');
+
+        // Seven columns, not eight. A line is eight cells sharing a row and a
+        // lane, so a full-width slab would complete dozens of them at once, the
+        // engine would go to 'resolving', and there would be no falling piece to
+        // have a channel at all. One empty column keeps the board legal.
+        const [wallLo, wallHi] = fixture.wall;
+        for (let x = 0; x < 7; x += 1) {
+          for (let lane = 0; lane < 8; lane += 1) {
+            // Front face: lane maps to z = 7 - lane.
+            const z = 7 - lane;
+            const top = lane >= wallLo && lane <= wallHi ? wallTop : base;
+            for (let y = 0; y < top; y += 1) game.board.fill({ x, y, z });
+          }
+        }
+
+        if (fixture.hideGhost) window.__refraction?.renderer?.setPreferences({ showGhost: false });
+
+        if (fixture.falling === false) {
+          game.active = null;
+          return;
+        }
+        // A single cube, so the channel is exactly one column wide and sits in
+        // exactly the lane asked for.
+        game.active = {
+          ...game.active,
+          offsets: [{ x: 0, y: 0, z: 0 }],
+          u: fixture.pieceColumn,
+          lane: fixture.pieceLane,
+          y: 15,
+        };
+      },
+      { fixture, base: BASE_HEIGHT, wallTop: fixture.wallTop ?? WALL_HEIGHT }
+    );
+    await page.waitForTimeout(400);
+
+    return page.evaluate(
+      ({ cells }) => {
+        const renderer = window.__refraction?.renderer;
+        const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+        if (!renderer) throw new Error('debug hook unavailable');
+        const rect = renderer.wellScreenRect();
+        const box = source.getBoundingClientRect();
+        const scaleX = source.width / box.width;
+        const scaleY = source.height / box.height;
+
+        const scratch = document.createElement('canvas');
+        scratch.width = source.width;
+        scratch.height = source.height;
+        const context = scratch.getContext('2d');
+        if (!context) throw new Error('no 2d context');
+        context.drawImage(source, 0, 0);
+        const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+        // The well rect is padded by 0.6 cells above and below the board, so a
+        // row is not simply a fraction of eighteen.
+        const PAD = 0.6;
+        const rows = 18 + PAD * 2;
+
+        return cells.map(({ u, y }) => {
+          const left = rect.left - box.left + (rect.width * u) / 8;
+          const width = rect.width / 8;
+          const top = rect.top - box.top + (rect.height * (PAD + (18 - y - 1))) / rows;
+          const height = rect.height / rows;
+
+          const luminance = (px: number, py: number): number => {
+            const i = (Math.round(py * scaleY) * scratch.width + Math.round(px * scaleX)) * 4;
+            return (
+              0.2126 * (data[i] as number) +
+              0.7152 * (data[i + 1] as number) +
+              0.0722 * (data[i + 2] as number)
+            );
+          };
+
+          // Mean over the interior, peak over the whole cell. A cube's outline
+          // runs around its perimeter, so an interior-only window measures fill
+          // and nothing else -- which reads a perfectly good x-ray as a flat
+          // fade, since the fill alone is exactly that. The two windows are what
+          // separate the two: fill from the middle, structure from the edge.
+          let sum = 0;
+          let count = 0;
+          for (let py = top + height * 0.15; py < top + height * 0.85; py += 1) {
+            for (let px = left + width * 0.15; px < left + width * 0.85; px += 1) {
+              sum += luminance(px, py);
+              count += 1;
+            }
+          }
+          let peak = 0;
+          for (let py = top; py < top + height; py += 1) {
+            for (let px = left; px < left + width; px += 1) {
+              peak = Math.max(peak, luminance(px, py));
+            }
+          }
+          return { u, y, mean: sum / Math.max(1, count), peak };
+        });
+      },
+      { cells }
+    );
+  }
+
+  /** Wall in front of the piece: everything in the channel is x-rayed. */
+  const IN_FRONT: Fixture = { wall: [0, 2], pieceLane: 5, pieceColumn: 3 };
+  /** Wall behind the piece: everything in the channel is muted. */
+  const BEHIND: Fixture = { wall: [5, 7], pieceLane: 2, pieceColumn: 3 };
+
+  const at = (samples: CellSample[], u: number, y: number): CellSample =>
+    samples.find((s) => s.u === u && s.y === y) as CellSample;
+
+  test('only the columns under the piece are touched', async ({ page }) => {
+    // This is the failure that shipped: classifying the whole board by lane, so
+    // a piece dealt anywhere turned every column to glass or to shadow. A column
+    // the piece does not cover must render exactly as it would with nothing
+    // falling at all.
+    const probe = [
+      { u: 3, y: PROBE_ROW },
+      { u: 0, y: PROBE_ROW },
+      { u: 6, y: PROBE_ROW },
+    ];
+    const falling = await sample(page, IN_FRONT, probe);
+    const still = await sample(page, { ...IN_FRONT, falling: false }, probe);
+
+    expect(at(falling, 3, PROBE_ROW).mean).toBeLessThan(at(still, 3, PROBE_ROW).mean * 0.6);
+    for (const u of [0, 6]) {
+      expect(Math.abs(at(falling, u, PROBE_ROW).mean - at(still, u, PROBE_ROW).mean)).toBeLessThan(
+        4
+      );
+    }
+  });
+
+  test('the channel stops at the row the piece lands on', async ({ page }) => {
+    // Above the landing row the player is looking through the channel at the
+    // surface they are aiming for. Below it the stack is settled and has nothing
+    // to do with the shot being lined up, so it stays at full strength.
+    const below = BASE_HEIGHT - 3;
+    const probe = [
+      { u: 3, y: PROBE_ROW },
+      { u: 3, y: below },
+    ];
+    const falling = await sample(page, IN_FRONT, probe);
+    const still = await sample(page, { ...IN_FRONT, falling: false }, probe);
+
+    expect(at(falling, 3, PROBE_ROW).mean).toBeLessThan(at(still, 3, PROBE_ROW).mean * 0.6);
+    expect(Math.abs(at(falling, 3, below).mean - at(still, 3, below).mean)).toBeLessThan(4);
+  });
+
+  test('sees through the channel rather than fading it', async ({ page }) => {
+    // The x-ray signature is a low mean with a high peak: the fill is barely a
+    // tint, and each cube keeps a bright outline. A uniform fade has neither --
+    // it lowers both together, which is what "everything looks muted" was.
+    const probe = [{ u: 3, y: PROBE_ROW }];
+    const [channel] = await sample(page, IN_FRONT, probe);
+    const [plain] = await sample(page, { ...IN_FRONT, falling: false }, probe);
+
+    expect((channel as CellSample).mean).toBeLessThan((plain as CellSample).mean * 0.6);
+    expect((channel as CellSample).peak).toBeGreaterThan((plain as CellSample).mean);
+  });
+
+  test('darkens what stands behind the landing surface', async ({ page }) => {
+    // Behind is a dark mass with no structure: dimmer than the x-ray on average
+    // and without its bright edges. Dark, not deleted -- the cubes are still
+    // there and still carry their depth colour.
+    const probe = [{ u: 3, y: PROBE_ROW }];
+    const [muted] = await sample(page, BEHIND, probe);
+    const [plain] = await sample(page, { ...BEHIND, falling: false }, probe);
+    const [xrayed] = await sample(page, IN_FRONT, probe);
+
+    expect((muted as CellSample).mean).toBeLessThan((plain as CellSample).mean * 0.4);
+    expect((muted as CellSample).mean).toBeGreaterThan(1);
+    expect((muted as CellSample).peak).toBeLessThan((xrayed as CellSample).peak);
+  });
+
+  test('x-rays what stands directly in front of the ghost', async ({ page }) => {
+    // The landing row itself, not just the rows above it. A cube level with the
+    // ghost in a nearer lane hides the exact cell the piece is aimed at, so it
+    // is the single most important one to see through -- and it is the one an
+    // off-by-one in the channel's floor would leave solid.
+    //
+    // The wall is built one row taller than the rest of the board, so its top
+    // row sits at precisely the height the piece will land at.
+    const level: Fixture = {
+      wall: [0, 2],
+      wallTop: BASE_HEIGHT + 1,
+      pieceLane: 5,
+      pieceColumn: 3,
+    };
+    const probe = [{ u: 3, y: BASE_HEIGHT }];
+    // Measured with the ghost hidden, so this is the settled cubes alone rather
+    // than the settled cubes plus the marker showing through them.
+    const [channel] = await sample(page, { ...level, hideGhost: true }, probe);
+    const [plain] = await sample(page, { ...level, falling: false }, probe);
+
+    expect((channel as CellSample).mean).toBeLessThan((plain as CellSample).mean * 0.6);
+    expect((channel as CellSample).peak).toBeGreaterThan((channel as CellSample).mean * 1.5);
+  });
+
+  test('shows the ghost through the cubes standing in front of it', async ({ page }) => {
+    // The point of all of it. The marker sits behind a wall of settled cubes and
+    // still has to read, which it only can because those cubes went to glass.
+    // Comparing the same cell with the marker drawn and suppressed isolates it:
+    // the difference is exactly how much of the ghost is getting through.
+    const level: Fixture = {
+      wall: [0, 2],
+      wallTop: BASE_HEIGHT + 1,
+      pieceLane: 5,
+      pieceColumn: 3,
+    };
+    const probe = [{ u: 3, y: BASE_HEIGHT }];
+    const [withGhost] = await sample(page, level, probe);
+    const [withoutGhost] = await sample(page, { ...level, hideGhost: true }, probe);
+
+    expect((withGhost as CellSample).mean).toBeGreaterThan(
+      (withoutGhost as CellSample).mean * 1.25
+    );
+  });
+
+  test('leaves the board alone when nothing is falling', async ({ page }) => {
+    // The channel belongs to the falling piece, not to the board, so the same
+    // cube comes back to full strength once the piece is gone.
+    const probe = [{ u: 3, y: PROBE_ROW }];
+    const [falling] = await sample(page, IN_FRONT, probe);
+    const [settled] = await sample(page, { ...IN_FRONT, falling: false }, probe);
+    expect((settled as CellSample).mean).toBeGreaterThan((falling as CellSample).mean * 2);
+  });
+});
+
+/**
+ * The one thing the renderer may never get wrong.
+ *
+ * "Position is absolute. Colour is relative" only means anything if the colour
+ * that reaches the screen is the colour the spectrum ramp chose. Every stop is
+ * authored in OKLCH at a specific lightness and chroma; anything in the render
+ * pipeline that rescales, compresses or re-tints them is rewriting the game's
+ * only depth cue.
+ *
+ * This is a fidelity test, not a "looks about right" test, and it exists
+ * because three separate things were quietly rewriting the ramp at once and the
+ * entire suite passed anyway. A backdrop panel was being composited over the
+ * finished board instead of behind it, washing the whole playfield to a third
+ * of its colour. The ambient light was set to 1.18 where Three's Lambert BRDF
+ * needs pi to reproduce an albedo. And ACES tone mapping was compressing what
+ * was left, clipping red's blue channel and violet's green one. Together they
+ * put every cube at roughly a fifth of its palette value: the board came out
+ * dark and muddy while the DOM piece preview, which uses the palette directly,
+ * was vivid. That gap is the bug, and this test is that comparison.
+ */
+test.describe('the board renders the palette it was given', () => {
+  test('a settled cube is exactly its depth colour', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=fidelity');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const samples = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      const renderer = window.__refraction?.renderer;
+      if (!game || !renderer) throw new Error('debug hook unavailable');
+
+      // One cube per lane, on a diagonal so no cube hides another, and no
+      // active piece so the lane focus is off and every cube is at full
+      // strength. Front face, where lane = 7 - z.
+      for (let lane = 0; lane < 8; lane += 1) game.board.fill({ x: lane, y: 0, z: 7 - lane });
+      game.active = null;
+      return new Promise<{ lane: number; drawn: number[] }[]>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+            const rect = renderer.wellScreenRect();
+            const box = source.getBoundingClientRect();
+            const scaleX = source.width / box.width;
+            const scaleY = source.height / box.height;
+            const scratch = document.createElement('canvas');
+            scratch.width = source.width;
+            scratch.height = source.height;
+            const context = scratch.getContext('2d');
+            if (!context) throw new Error('no 2d context');
+            context.drawImage(source, 0, 0);
+
+            // The well rect is padded by 0.6 cells above and below the board,
+            // so a row's centre is not simply a fraction of eighteen.
+            const PAD = 0.6;
+            const rows = 18 + PAD * 2;
+            const rowCentre = (y: number): number => (PAD + (18 - y - 0.5)) / rows;
+
+            const out: { lane: number; drawn: number[] }[] = [];
+            for (let lane = 0; lane < 8; lane += 1) {
+              // The cube for this lane sits in column x = lane, bottom row.
+              const cx = rect.left - box.left + (rect.width * (lane + 0.5)) / 8;
+              const cy = rect.top - box.top + rect.height * rowCentre(0);
+              const patch = context.getImageData(
+                Math.round(cx * scaleX) - 2,
+                Math.round(cy * scaleY) - 2,
+                5,
+                5
+              ).data;
+              let r = 0;
+              let g = 0;
+              let b = 0;
+              let n = 0;
+              for (let i = 0; i < patch.length; i += 4) {
+                r += patch[i] as number;
+                g += patch[i + 1] as number;
+                b += patch[i + 2] as number;
+                n += 1;
+              }
+              out.push({ lane, drawn: [Math.round(r / n), Math.round(g / n), Math.round(b / n)] });
+            }
+            resolve(out);
+          })
+        );
+      });
+    });
+
+    // The same ramp the game uses, read straight from the core module -- the
+    // test must not carry its own copy of the palette or it stops testing the
+    // thing that matters.
+    const { depthColor } = await import('../../src/core/spectrum');
+
+    for (const { lane, drawn } of samples) {
+      const want = depthColor(lane / 7);
+      const expected = [want.r, want.g, want.b].map((v) => Math.round(v * 255));
+      for (let c = 0; c < 3; c += 1) {
+        // A few levels of slack for the rounded cube's shading at the sampled
+        // patch, and nothing like enough to hide a pipeline that rescales.
+        expect(
+          Math.abs((drawn[c] as number) - (expected[c] as number)),
+          `lane ${lane} channel ${'rgb'[c]}: drawn ${drawn.join(',')} vs palette ${expected.join(',')}`
+        ).toBeLessThanOrEqual(6);
+      }
+    }
+  });
+
+  test('the board is as vivid as the piece preview beside it', async ({ page }) => {
+    // The NEXT preview is DOM, painted with depthColorHex directly, so it is
+    // immune to anything the WebGL pipeline does. When the two disagree it is
+    // always the board that is wrong, which is exactly how this was found.
+    await page.goto('/?debug=1&mode=ascent&seed=fidelity');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const { board, preview } = await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      const renderer = window.__refraction?.renderer;
+      if (!game || !renderer) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 7 });
+      game.active = null;
+
+      const chroma = (r: number, g: number, b: number): number =>
+        Math.max(r, g, b) - Math.min(r, g, b);
+
+      return new Promise<{ board: number; preview: number }>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+            const rect = renderer.wellScreenRect();
+            const box = source.getBoundingClientRect();
+            const scratch = document.createElement('canvas');
+            scratch.width = source.width;
+            scratch.height = source.height;
+            const context = scratch.getContext('2d');
+            if (!context) throw new Error('no 2d context');
+            context.drawImage(source, 0, 0);
+            const PAD = 0.6;
+            const rowCentre = (PAD + 17.5) / (18 + PAD * 2);
+            // Centre of column 3, not the centre of the well -- the well's
+            // midline runs down the seam between two columns.
+            const cx = (rect.left - box.left + (rect.width * 3.5) / 8) * (source.width / box.width);
+            const cy =
+              (rect.top - box.top + rect.height * rowCentre) * (source.height / box.height);
+            const patch = context.getImageData(Math.round(cx) - 2, Math.round(cy) - 2, 5, 5).data;
+            const px = [0, 1, 2].map((c) => {
+              let sum = 0;
+              for (let i = c; i < patch.length; i += 4) sum += patch[i] as number;
+              return Math.round(sum / (patch.length / 4));
+            });
+
+            // The preview cells carry their colour as an inline style.
+            const cell = document.querySelector('.piece__cell--filled') as HTMLElement | null;
+            const style = cell ? getComputedStyle(cell).backgroundColor : 'rgb(0,0,0)';
+            const [pr, pg, pb] = (style.match(/\d+/g) ?? ['0', '0', '0']).map(Number) as [
+              number,
+              number,
+              number,
+            ];
+
+            resolve({
+              board: chroma(px[0] as number, px[1] as number, px[2] as number),
+              preview: chroma(pr, pg, pb),
+            });
+          })
+        );
+      });
+    });
+
+    // Both are a fully saturated spectrum colour, so both should span a wide
+    // range between their channels. Before the fix the board managed a fifth of
+    // the preview's chroma.
+    expect(preview).toBeGreaterThan(80);
+    expect(board).toBeGreaterThan(preview * 0.75);
   });
 });

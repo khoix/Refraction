@@ -247,6 +247,55 @@ entirely** — it was both the photosensitivity risk and the cheapest-looking
 element, and nothing replaced it. A space made of light does not need to flash
 to feel alive.
 
+### 2.5 The pipeline may not rewrite the palette
+
+Every rule above assumes the colour that reaches the screen is the colour the
+ramp chose. That assumption held in the palette module and failed everywhere
+after it. Three separate stages of the render pipeline were each rescaling the
+spectrum, and together they put a settled cube at roughly **a fifth of its
+palette value** — dark, muddy, and low-contrast, while the next-piece preview
+next to it, which is DOM and paints `depthColorHex` directly, stayed vivid. That
+disagreement between the two is what finally exposed it; nothing in the suite
+had noticed, because every test compared parts of the board against each other
+and they were all wrong by the same factor.
+
+The three causes, in order of size:
+
+| Cause                                                                     | Effect on a cube            |
+| ------------------------------------------------------------------------- | --------------------------- |
+| The play-column backdrop composited **over** the board rather than behind | ×0.38                       |
+| Ambient light at 1.18 where Three's Lambert BRDF needs π to return albedo | ×0.376                      |
+| ACES Filmic tone mapping compressing what was left                        | hue shift, channel clipping |
+
+The panel was the worst of them and the least visible. A translucent material
+goes into the renderer's _transparent_ queue, which draws after every opaque
+object no matter what `renderOrder` says — `renderOrder` only sorts within a
+queue. With its depth test disabled as well, a plane positioned safely behind
+the board was painted across the finished playfield as a 62% wash of near-black.
+It is the same panel §2.2 already called a tell; it turns out it was not merely
+conceptually wrong, it was doing the damage directly.
+
+So, as a standing constraint:
+
+- **A settled cube renders at exactly its `depthColor` value.** Flat ambient is
+  set to π precisely so that a surface returns its albedo, and the levels in
+  `setLightingFlatness` are written as fractions of albedo times that constant
+  rather than as bare intensities.
+- **No tone mapping.** A filmic curve exists to fit a scene lit in physical
+  units into a display. This scene is authored in display values from the start.
+  ACES was reinterpreting the ramp — clipping red's blue channel and violet's
+  green one, which are exactly the distinctions the ramp is made of. The bloom
+  chain is the only thing that goes past 1, and clipping to white is what a
+  whiteout is supposed to do.
+- **Nothing may sit in front of the board except the passes that are meant to.**
+- **A turn changes how the light falls, not how much of it there is.** Flat and
+  dimensional are balanced to the same peak, so the board does not appear to dim
+  and brighten as it rotates while the player is reading colour off it.
+
+Guarded by two end-to-end tests that sample the canvas and compare it against
+`depthColor` directly, and against the DOM preview's chroma. Each of the three
+causes above was re-introduced in turn to confirm the tests fail on it.
+
 ## 3. Lines
 
 A **line** is 8 cells sharing a `y` and a `lane`, spanning the current face's
@@ -535,23 +584,87 @@ at least two of:
   colours — a rendering override only, with normal occlusion between settled
   cubes untouched. The active silhouette is solid and the ghost's fainter and
   inset, so the two stay distinct even when both show through the stack.
-- **Lane focus.** The falling piece's occupied lanes are a focal plane. Settled
-  cubes nearer than that plane go transparent, so you see through them to the
-  piece and its landing surface; cubes in the focal lanes stay fully opaque,
-  with a restrained inner highlight on the cells `firstContactCells()` names
-  as the ones the piece will actually touch; cubes farther than the piece
-  darken toward the void, keeping their hue. The gradient is relative to the
-  _piece_, moves when the piece moves, and vanishes at lock — it cannot be
-  read as an absolute distance cue the way size falloff or haze would. Gated
-  to `falling`; off during a turn, when lanes are being remapped.
-- **Ghost piece** — rendered at the true landing depth, in that lane's colour.
+- **The x-ray, over the drop channel.** Cubes standing between the player and
+  the surface the piece is aimed at are drawn see-through rather than solid.
+
+  **The region is the channel, not the board.** It is the columns the falling
+  piece spans, from the row it will land on upward — nothing wider, nothing
+  lower. Inside it:
+
+  | Where the cube is                               | Drawn as   |
+  | ----------------------------------------------- | ---------- |
+  | At or in front of the piece's depth             | **X-ray**  |
+  | Behind the piece's depth                        | **Muted**  |
+  | Anywhere else — another column, below the ghost | **Normal** |
+
+  There is no fourth "focal" state. The piece's own lanes are x-rayed along with
+  the ones in front of them, because a cube above the ghost hides the landing row
+  whatever its depth. Normal is the default and the great majority of the board
+  is in it at any moment.
+
+  Two consequences worth stating, because both were got wrong first:
+
+  - **A cube only changes if it is in the way.** The first implementation
+    classified every cube on the board by its lane alone. A piece dealt to a back
+    lane therefore turned the entire board to glass and one dealt to the front
+    muted all of it — which is what "everything looks muted" was, and no amount of
+    tuning the opacities would have fixed it. Restricting the region to the
+    channel is the fix; the opacities were never the problem.
+  - **On a level board the x-ray does nothing, correctly.** The ghost sits on top
+    of the stack, so on flat ground there is nothing above it to see through. The
+    effect only has work to do when the stack is uneven — when cubes in some other
+    lane stand higher than the row the piece is aiming for.
+
+  The channel is measured per column rather than as one bounding box. An S or an
+  L lands at different heights in different columns and may occupy different lanes
+  in each, so the region follows the piece rather than a box drawn round it. Both
+  ends are read off the ghost, which already carries the columns, the lanes and
+  the landing row.
+
+  **X-ray is not a fade, and the difference is the whole point.** A uniformly
+  translucent cube trades one for the other: whatever fraction of it you can
+  see is exactly the fraction of the board behind it that you cannot. Turn it
+  down far enough to reveal the board and the cube disappears; turn it up far
+  enough to see the cube and everything underneath greys out. There is no
+  setting at which both read.
+
+  Splitting fill from structure escapes that. The fill goes to almost nothing so
+  the board behind comes through at full strength, and the outline carries the
+  cube's shape _and_ its lane colour, so an x-rayed cube still says how deep it
+  is. The signature is a **low mean with a high peak**: mostly empty, crisply
+  edged. Against an untouched cube measuring a flat 107 in and out, an x-rayed
+  one means 52 with a peak of 169 — half the light, and structure where the solid
+  cube has none.
+
+  The outline needs real line primitives. `wireframe` on a box draws every
+  triangle edge, which puts a diagonal across all six faces and turns a wall of
+  cubes into a mesh of X's, so `EdgeLayer` rebuilds twelve clean edges per cube
+  each frame instead of instancing triangles.
+
+  The region belongs to the _piece_, moves when the piece moves, and vanishes at
+  lock — it cannot be read as an absolute distance cue the way size falloff or
+  haze would. Gated to `falling`; off during a turn, when lanes are being
+  remapped.
+
+  Levels are tuned by measurement, not by eye, and asserted end-to-end: a column
+  the piece does not cover renders identically whether or not something is
+  falling; the channel stops at the landing row, with the buried stack below it
+  untouched; a cube level with the ghost in a nearer lane is x-rayed, not solid,
+  so the marker reads through it; and the muted band is dark but never deleted —
+  it still carries its hue.
+
+- **Ghost piece** — rendered at the true landing depth, in that lane's colour,
+  and drawn _after_ the x-ray passes. It once sat at the default render order,
+  which put the near band's veil on top of it and washed it out entirely — the
+  ghost was never missing, only painted over. It is the most useful mark on the
+  board, so it goes last and it goes brighter.
 - **Peek** _(future, M10)_ — hold to tilt the camera 8° for parallax. Changes no
   game state. Limited or disabled at Stage 6+ and in Blind Spectrum.
 - **Preview** _(2D today; rotating 3D render is M10)_ — the incoming piece, in
   the depth colours it will arrive wearing.
 
 The visual hierarchy when these overlap, strongest to weakest: **active piece →
-landing ghost → focal-lane board → faded far board → transparent near board.**
+landing ghost → untouched board → x-rayed channel → muted band behind it.**
 
 ## 10. Accessibility **[GAP — critical]**
 

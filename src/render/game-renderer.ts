@@ -34,7 +34,7 @@ import {
   toSceneY,
   toSceneZ,
 } from './scene';
-import { VoxelLayer } from './voxels';
+import { EdgeLayer, VoxelLayer } from './voxels';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
 export const TURN_DURATION_MS = 750;
@@ -103,6 +103,28 @@ export interface WellScreenRect {
   readonly height: number;
 }
 
+/**
+ * Outline budget for the x-ray. The channel is at most the piece's widest
+ * footprint across the full depth and height of the well, and in practice a
+ * small fraction of that.
+ */
+const MAX_EDGE_CELLS = 8 * 18 * 8;
+
+/**
+ * How far the cubes behind the landing surface recede.
+ *
+ * Tuned by measurement rather than by eye, against a board that renders at
+ * exactly its palette values. An untouched cube means luminance 113; this lands
+ * the muted band near 20, with no peak above 30 -- a dark mass with no
+ * structure, still plainly carrying its hue.
+ *
+ * The earlier 0.58 was measured while a backdrop panel was washing the whole
+ * playfield down to a third, so a band at "0.42 strength" was really at 0.16 of
+ * the palette. With the wash gone the same number left these brighter than the
+ * x-ray in front of them, which inverts the point of the two bands.
+ */
+const MUTED_DIM = 0.74;
+
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
@@ -114,30 +136,88 @@ function highlightCells(game: Game): Cell[] {
 }
 
 /**
- * Split the settled board into nearer / focal / farther relative to the
- * falling piece's occupied lanes. The piece's lanes are a focal plane, not a
- * distance cue: the split exists only while a piece is falling, and it moves
- * when the piece moves.
+ * The falling piece's drop channel, per screen column.
+ *
+ * The channel is what the player is trying to see into: the columns the piece
+ * covers, from the row it will land on upward. Both ends are read off the ghost,
+ * which is the piece projected to its landing position and therefore already
+ * carries the columns, the lanes and the floor.
+ *
+ * Per column rather than as one bounding box, because a piece is not always a
+ * flat bar. An S or an L lands at different heights in different columns and may
+ * occupy different lanes in each, and the channel should follow the piece rather
+ * than a box drawn around it.
  */
-function partitionByLane(game: Game): { near: Cell[]; focal: Cell[]; far: Cell[] } {
+interface DropChannel {
+  /** Lowest row the channel covers here: the row the piece lands on. */
+  readonly floor: number;
+  /** Deepest lane the piece occupies here. Everything up to it is x-rayed. */
+  readonly back: number;
+}
+
+function dropChannel(game: Game): Map<number, DropChannel> | null {
+  if (game.status !== 'falling' || !game.active) return null;
+  const ghost = game.ghostCells();
+  if (ghost.length === 0) return null;
+
+  const channel = new Map<number, DropChannel>();
+  for (const cell of ghost) {
+    const { u, y, lane } = toView(game.face, cell);
+    const found = channel.get(u);
+    channel.set(u, {
+      floor: found ? Math.min(found.floor, y) : y,
+      back: found ? Math.max(found.back, lane) : lane,
+    });
+  }
+  return channel;
+}
+
+/**
+ * Sort the settled board into the three states a cube can be drawn in.
+ *
+ * **This is not a depth split.** An earlier version classified every cube on the
+ * board by its lane alone, which meant a piece dealt to a back lane turned the
+ * entire board to glass, and one dealt to the front muted all of it. That is
+ * what "everything looks muted" was.
+ *
+ * The effect belongs to the drop channel, not to the board:
+ *
+ * | Where the cube is                                  | Drawn as |
+ * | -------------------------------------------------- | -------- |
+ * | In the channel, at or in front of the piece's depth | x-ray    |
+ * | In the channel, behind the piece's depth            | muted    |
+ * | Anywhere else -- other columns, below the ghost      | normal   |
+ *
+ * So a cube only changes if it is standing between the player and the landing
+ * surface, or directly behind that surface. Everything else on the board keeps
+ * its full depth colour, which is most of it most of the time.
+ *
+ * The piece's own lanes are x-rayed along with the ones in front. There is no
+ * separate focal band: a cube above the ghost blocks the view of the landing row
+ * whatever its depth, so the whole front-to-piece run is glass.
+ */
+interface BoardBands {
+  readonly xray: Cell[];
+  readonly plain: Cell[];
+  readonly muted: Cell[];
+}
+
+function partitionBoard(game: Game): BoardBands {
   const filled = game.board.filledCells();
-  if (game.status !== 'falling' || !game.active) {
-    return { near: [], focal: filled, far: [] };
-  }
-  const pieceLanes = game.activeCells().map((cell) => toView(game.face, cell).lane);
-  if (pieceLanes.length === 0) return { near: [], focal: filled, far: [] };
-  const lo = Math.min(...pieceLanes);
-  const hi = Math.max(...pieceLanes);
-  const near: Cell[] = [];
-  const focal: Cell[] = [];
-  const far: Cell[] = [];
+  const channel = dropChannel(game);
+  if (!channel) return { xray: [], plain: filled, muted: [] };
+
+  const xray: Cell[] = [];
+  const plain: Cell[] = [];
+  const muted: Cell[] = [];
   for (const cell of filled) {
-    const lane = toView(game.face, cell).lane;
-    if (lane < lo) near.push(cell);
-    else if (lane > hi) far.push(cell);
-    else focal.push(cell);
+    const { u, y, lane } = toView(game.face, cell);
+    const column = channel.get(u);
+    if (!column || y < column.floor) plain.push(cell);
+    else if (lane <= column.back) xray.push(cell);
+    else muted.push(cell);
   }
-  return { near, focal, far };
+  return { xray, plain, muted };
 }
 
 export class GameRenderer {
@@ -146,21 +226,46 @@ export class GameRenderer {
   private readonly camera: THREE.OrthographicCamera;
 
   /**
-   * The settled board, split by depth relative to the falling piece. Nearer
-   * cubes are a transparent veil (depthWrite off, so the piece shows through);
-   * the focal lane is fully opaque; farther cubes keep their hue but darken
-   * toward the void. Off while not falling -- a still board is just a board.
+   * Cubes standing in the drop channel, drawn as an x-ray rather than a fade.
+   *
+   * Two passes: a fill so faint it is barely a tint, and a wireframe that keeps
+   * the cube's shape legible. That combination is what "see through it" means.
+   * One translucent solid cannot do it -- at any opacity, however much of the
+   * cube you can see is exactly how much of the board behind it you cannot, so
+   * turning it down to reveal the board turns the cube off, and turning it up to
+   * show the cube greys out everything underneath. That is the muting.
+   *
+   * Both passes are unlit, so neither gained anything when the board's lighting
+   * was corrected to reproduce the palette exactly. Their opacities carry that
+   * factor instead, so an x-rayed cube keeps a low mean with a bright edge
+   * against a board now drawn at full palette strength.
    */
-  private readonly lockedNear = new VoxelLayer({
-    opacity: 0.28,
+  private readonly lockedXray = new VoxelLayer({
+    opacity: 0.12,
     ghost: true,
     depthWrite: false,
     renderOrder: 1,
   });
-  private readonly lockedFocal = new VoxelLayer();
-  private readonly lockedFar = new VoxelLayer();
+  private readonly lockedXrayEdges = new EdgeLayer(MAX_EDGE_CELLS, 0.7);
+  /** Everything the channel does not touch, which is most of the board. */
+  private readonly lockedPlain = new VoxelLayer();
+  /** In the channel but behind the piece: dark, still carrying its hue. */
+  private readonly lockedMuted = new VoxelLayer();
   private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
-  private readonly ghost = new VoxelLayer({ opacity: 0.3, ghost: true, maxInstances: 8 });
+  /**
+   * The landing footprint.
+   *
+   * Draws *after* the x-ray passes (renderOrder 3 against their 1). It used to
+   * sit at the default 0, which put a 0.28 veil on top of a 0.3 ghost and
+   * washed it out -- the ghost was never missing, just painted over. It is the
+   * single most useful mark on the board, so it goes last and it goes brighter.
+   */
+  private readonly ghost = new VoxelLayer({
+    opacity: 0.44,
+    ghost: true,
+    renderOrder: 3,
+    maxInstances: 8,
+  });
   /**
    * Lines that are complete and about to be removed, drawn additively over the
    * board. During a turn these are the lines the rotation is *revealing* -- they
@@ -249,8 +354,16 @@ export class GameRenderer {
       preserveDrawingBuffer: options.preserveDrawingBuffer ?? false,
     });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.05;
+    // No tone mapping. A filmic curve is for a scene lit in physical units that
+    // has to be squeezed into a display; this scene is authored in display
+    // values from the start -- every cube's colour is a point on the spectrum
+    // ramp, chosen in OKLCH to land at an exact place on screen. ACES was
+    // rewriting them: it compresses midtones and clips channels, which on the
+    // saturated end of the ramp cost red its blue channel and violet its green
+    // one. The ramp is the game's only depth cue and nothing may reinterpret it.
+    // The bloom chain is the one thing that exceeds 1, and clipping to white is
+    // exactly what a whiteout is supposed to do.
+    this.renderer.toneMapping = THREE.NoToneMapping;
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
 
     const bundle = createScene();
@@ -262,9 +375,9 @@ export class GameRenderer {
     this.environment = new Environment(this.reducedMotion);
     this.columnPanel = createColumnPanel();
     this.voxelLayers = [
-      this.lockedNear,
-      this.lockedFocal,
-      this.lockedFar,
+      this.lockedXray,
+      this.lockedPlain,
+      this.lockedMuted,
       this.active,
       this.ghost,
       this.glow,
@@ -277,9 +390,10 @@ export class GameRenderer {
     this.scene.add(
       this.environment.group,
       this.columnPanel,
-      this.lockedNear.mesh,
-      this.lockedFocal.mesh,
-      this.lockedFar.mesh,
+      this.lockedXray.mesh,
+      this.lockedXrayEdges.lines,
+      this.lockedPlain.mesh,
+      this.lockedMuted.mesh,
       this.active.mesh,
       this.ghost.mesh,
       this.glow.mesh,
@@ -336,6 +450,7 @@ export class GameRenderer {
   setPreferences(patch: Partial<RenderPreferences>): void {
     this.prefs = { ...this.prefs, ...patch };
     for (const layer of this.voxelLayers) layer.setDepthColour(this.prefs.depthColour);
+    this.lockedXrayEdges.setDepthColour(this.prefs.depthColour);
   }
 
   get preferences(): RenderPreferences {
@@ -518,10 +633,12 @@ export class GameRenderer {
     // The panel dips during Prism so the whiteout can still wash the column.
     orientColumnPanel(this.columnPanel, yaw, 0.62 * (1 - whiteout * 0.7));
 
-    const lanes = partitionByLane(game);
-    this.lockedNear.update(lanes.near, yaw, separation, whiteout);
-    this.lockedFocal.update(lanes.focal, yaw, separation, whiteout);
-    this.lockedFar.update(lanes.far, yaw, separation, whiteout, 0.55);
+    const bands = partitionBoard(game);
+    this.lockedXray.update(bands.xray, yaw, separation, whiteout);
+    this.lockedXrayEdges.update(bands.xray, yaw, separation);
+    this.lockedPlain.update(bands.plain, yaw, separation, whiteout);
+    // Behind the landing surface: dark and receding, not merely desaturated.
+    this.lockedMuted.update(bands.muted, yaw, separation, whiteout, MUTED_DIM);
 
     this.glowElapsed += deltaMs;
     // Lines being removed swell slightly as they go, so a clear dissolves
@@ -573,9 +690,10 @@ export class GameRenderer {
   }
 
   dispose(): void {
-    this.lockedNear.dispose();
-    this.lockedFocal.dispose();
-    this.lockedFar.dispose();
+    this.lockedXray.dispose();
+    this.lockedXrayEdges.dispose();
+    this.lockedPlain.dispose();
+    this.lockedMuted.dispose();
     this.active.dispose();
     this.ghost.dispose();
     this.glow.dispose();

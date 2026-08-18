@@ -85,9 +85,13 @@ export class VoxelLayer {
             opacity: options.opacity ?? 0.3,
             depthWrite: false,
           })
-        : new THREE.MeshStandardMaterial({
+        : // Metalness stays at zero. With no environment map there is nothing
+          // for a metal to reflect, so the only thing a non-zero value did here
+          // was subtract that fraction from the diffuse albedo -- a cube's depth
+          // colour, quietly reduced for no visible return.
+          new THREE.MeshStandardMaterial({
             roughness: 0.34,
-            metalness: 0.08,
+            metalness: 0,
             transparent,
             opacity: options.opacity ?? 1,
             emissiveIntensity: options.emissive ?? 0.22,
@@ -174,5 +178,114 @@ export class VoxelLayer {
   dispose(): void {
     this.mesh.geometry.dispose();
     (this.mesh.material as THREE.Material).dispose();
+  }
+}
+
+/**
+ * Cube outlines, for the x-ray.
+ *
+ * The twelve edges of each cube and nothing else. Paired with a near-invisible
+ * fill, this is what lets a cube be *seen through* rather than *faded*: the
+ * shape stays legible while the board behind it comes through at full strength.
+ * A translucent solid cannot do both -- whatever fraction of the cube you can
+ * see is exactly the fraction of the board you cannot.
+ *
+ * Not an `InstancedMesh`: instancing draws triangles, and `wireframe` on a box
+ * draws every triangle edge, which puts a diagonal across all six faces and
+ * turns a wall of cubes into a mesh of X's. Twelve clean edges need line
+ * primitives, so the geometry is rebuilt each frame instead. It is a few
+ * hundred cubes at most and the buffers are preallocated, so the cost is a
+ * memcpy, not an allocation.
+ *
+ * Edges carry their lane's spectrum colour: an x-rayed cube still says how deep
+ * it is, which is the one thing the game may never stop saying.
+ */
+export class EdgeLayer {
+  readonly lines: THREE.LineSegments;
+
+  private readonly positions: Float32Array;
+  private readonly colors: Float32Array;
+  private readonly geometry: THREE.BufferGeometry;
+  private readonly material: THREE.LineBasicMaterial;
+  private depthColour = true;
+
+  /** The twelve edges of a unit cube, as pairs of corner indices. */
+  private static readonly EDGES: readonly (readonly [number, number])[] = [
+    [0, 1],
+    [1, 3],
+    [3, 2],
+    [2, 0],
+    [4, 5],
+    [5, 7],
+    [7, 6],
+    [6, 4],
+    [0, 4],
+    [1, 5],
+    [2, 6],
+    [3, 7],
+  ];
+
+  constructor(maxCells = MAX_INSTANCES, opacity = 0.3) {
+    const vertices = maxCells * EdgeLayer.EDGES.length * 2;
+    this.positions = new Float32Array(vertices * 3);
+    this.colors = new Float32Array(vertices * 3);
+
+    this.geometry = new THREE.BufferGeometry();
+    this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
+    this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+
+    this.material = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity,
+      depthWrite: false,
+    });
+
+    this.lines = new THREE.LineSegments(this.geometry, this.material);
+    this.lines.frustumCulled = false;
+    this.geometry.setDrawRange(0, 0);
+  }
+
+  setDepthColour(enabled: boolean): void {
+    this.depthColour = enabled;
+  }
+
+  setOpacity(opacity: number): void {
+    this.material.opacity = THREE.MathUtils.clamp(opacity, 0, 1);
+  }
+
+  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1): void {
+    const half = (CUBE_GAP * scaleBias) / 2;
+    let v = 0;
+
+    for (const cell of cells) {
+      const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
+      const { r, g, b } = this.depthColour ? depthColor(depth) : BLIND_FILL;
+      const cx = toSceneX(cell.x);
+      const cy = toSceneY(cell.y);
+      const cz = toSceneZ(cell.z);
+
+      for (const [a, z] of EdgeLayer.EDGES) {
+        for (const corner of [a, z]) {
+          if (v * 3 + 2 >= this.positions.length) break;
+          this.positions[v * 3] = cx + (corner & 1 ? half : -half);
+          this.positions[v * 3 + 1] = cy + (corner & 2 ? half : -half);
+          this.positions[v * 3 + 2] = cz + (corner & 4 ? half : -half);
+          this.colors[v * 3] = r;
+          this.colors[v * 3 + 1] = g;
+          this.colors[v * 3 + 2] = b;
+          v += 1;
+        }
+      }
+    }
+
+    this.geometry.setDrawRange(0, v);
+    this.geometry.getAttribute('position').needsUpdate = true;
+    this.geometry.getAttribute('color').needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.geometry.dispose();
+    this.material.dispose();
   }
 }
