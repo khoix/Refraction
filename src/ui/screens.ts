@@ -14,6 +14,14 @@ import type { ModeConfig, ModeId } from '@core/modes';
 import { dailyChallenge, parseChallenge } from '@core/challenge';
 import type { Challenge } from '@core/challenge';
 import type { SaveData, Settings } from '@core/save';
+import {
+  BINDINGS,
+  BINDING_GROUPS,
+  TOUCH_ACTIONS,
+  TOUCH_TURN_NOTE,
+  TURN_PROMPT_NOTE,
+  keyLabel,
+} from '../keymap';
 
 export type ScreenName =
   'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
@@ -70,6 +78,129 @@ function toggleRow(
   return { root, sync: () => (input.checked = get()) };
 }
 
+/**
+ * Group focusables into visual rows and step one place in a direction.
+ *
+ * Rows come from the laid-out geometry, not the markup: a grid that is one
+ * column on a phone and three on a laptop is the same DOM either way, and only
+ * the rectangles know which it currently is.
+ */
+function nextInDirection(
+  items: readonly HTMLElement[],
+  index: number,
+  key: 'ArrowUp' | 'ArrowDown' | 'ArrowLeft' | 'ArrowRight'
+): HTMLElement | null {
+  if (key === 'ArrowLeft' || key === 'ArrowRight') {
+    const step = key === 'ArrowRight' ? 1 : -1;
+    return items[(index + step + items.length) % items.length] ?? null;
+  }
+
+  const boxes = items.map((node) => node.getBoundingClientRect());
+  const rows: number[][] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    const top = (boxes[i] as DOMRect).top;
+    // Half a row's height of tolerance, so a taller control on the same line
+    // does not read as a row of its own.
+    const row = rows.find((candidate) => {
+      const first = boxes[candidate[0] as number] as DOMRect;
+      return Math.abs(first.top - top) < Math.max(8, first.height * 0.5);
+    });
+    if (row) row.push(i);
+    else rows.push([i]);
+  }
+
+  const currentRow = rows.findIndex((row) => row.includes(index));
+  if (currentRow === -1) return null;
+  const step = key === 'ArrowDown' ? 1 : -1;
+  const targetRow = rows[(currentRow + step + rows.length) % rows.length];
+  if (!targetRow) return null;
+
+  // Keep the horizontal position across the move, which is what makes a grid
+  // feel like a grid rather than like a list that happens to wrap.
+  const from = (boxes[index] as DOMRect).left;
+  let best = targetRow[0] as number;
+  for (const candidate of targetRow) {
+    const here = Math.abs((boxes[candidate] as DOMRect).left - from);
+    const bestSoFar = Math.abs((boxes[best] as DOMRect).left - from);
+    if (here < bestSoFar) best = candidate;
+  }
+  return items[best] ?? null;
+}
+
+/**
+ * The same panel for touch.
+ *
+ * Built from `TOUCH_ACTIONS` for the same reason the key map is built from
+ * `BINDINGS`: a panel that carries its own copy of the controls is right on the
+ * day it is written and wrong by the next change. Which of the two is shown is
+ * decided in CSS by input method, not here -- a narrow window on a laptop still
+ * has a keyboard, and a tablet with one attached reports a fine pointer.
+ */
+function buildTouchMap(): HTMLElement {
+  const list = element('div', 'keymap keymap--touch');
+  list.append(element('h3', 'keymap__title', 'CONTROLS'));
+
+  for (const group of BINDING_GROUPS) {
+    const rows = TOUCH_ACTIONS.filter((action) => action.group === group);
+    if (rows.length === 0) continue;
+    const section = element('section', 'keymap__section');
+    section.append(element('h4', 'keymap__group', group.toUpperCase()));
+    for (const action of rows) {
+      const row = element('div', 'keymap__row');
+      row.dataset['gesture'] = action.label;
+      const keys = element('span', 'keymap__keys');
+      keys.append(element('span', 'gesture', action.gesture));
+      row.append(keys, element('span', 'keymap__label', action.label));
+      if (action.note) row.append(element('span', 'keymap__note', action.note));
+      section.append(row);
+    }
+    list.append(section);
+  }
+
+  list.append(element('p', 'keymap__foot', TOUCH_TURN_NOTE));
+  return list;
+}
+
+/**
+ * The key map.
+ *
+ * Built from `BINDINGS`, so it cannot describe a key the engine does not answer
+ * to. The game had never told the player its controls anywhere but the README,
+ * and it has enough of them now -- move, three rotation axes, a depth nudge,
+ * hold, hard drop, face choice, pause, mute, restart -- that it has to.
+ */
+function buildKeyMap(): HTMLElement {
+  const list = element('div', 'keymap');
+  list.append(element('h3', 'keymap__title', 'CONTROLS'));
+
+  // A group is one block, so the two-column flow moves it whole. Left to break
+  // where it liked, the column split landed mid-group and stranded "Pitch back"
+  // at the top of the second column with no heading over it.
+  for (const group of BINDING_GROUPS) {
+    const rows = BINDINGS.filter((binding) => binding.group === group);
+    if (rows.length === 0) continue;
+    const section = element('section', 'keymap__section');
+    section.append(element('h4', 'keymap__group', group.toUpperCase()));
+    for (const binding of rows) {
+      const row = element('div', 'keymap__row');
+      row.dataset['action'] = binding.action;
+
+      const keys = element('span', 'keymap__keys');
+      for (const code of binding.codes) {
+        keys.append(element('kbd', 'key', keyLabel(code)));
+      }
+      const label = element('span', 'keymap__label', binding.label);
+      row.append(keys, label);
+      if (binding.note) row.append(element('span', 'keymap__note', binding.note));
+      section.append(row);
+    }
+    list.append(section);
+  }
+
+  list.append(element('p', 'keymap__foot', TURN_PROMPT_NOTE));
+  return list;
+}
+
 export class Screens {
   readonly root = element('div', 'screens');
 
@@ -103,6 +234,7 @@ export class Screens {
     this.panels.set('settings', this.buildSettings());
     this.panels.set('challenge', this.buildChallenge());
     for (const panel of this.panels.values()) this.root.append(panel);
+    this.root.addEventListener('keydown', (event) => this.handleArrow(event));
     this.show('title');
   }
 
@@ -329,13 +461,70 @@ export class Screens {
     const actions = element('div', 'panel__actions');
     actions.append(button('BACK', 'button', () => this.handlers.onQuit()));
 
-    return this.panel('settings', element('h2', 'panel__title', 'SETTINGS'), fields, actions);
+    return this.panel(
+      'settings',
+      element('h2', 'panel__title', 'SETTINGS'),
+      fields,
+      buildKeyMap(),
+      buildTouchMap(),
+      actions
+    );
   }
 
   // ------------------------------------------------------------------- state
 
   get screen(): ScreenName {
     return this.current;
+  }
+
+  /**
+   * Move focus with the arrow keys.
+   *
+   * The same keys that move a piece move through the menu, so the whole game is
+   * reachable without a mouse -- and, more to the point, without the player
+   * having to work out that this part of it wants Tab instead.
+   *
+   * Focusables are grouped into rows by where they actually land on screen
+   * rather than by their order in the markup, because the mode grid is a grid:
+   * one column on a narrow window and several on a wide one, from the same DOM.
+   * Left and right walk the row and spill into the next; up and down change row
+   * and keep the nearest horizontal position.
+   *
+   * Two controls keep their arrows. A text field needs them for the caret, and a
+   * slider needs left and right for its value -- taking those would make the
+   * volume control unusable by the very keyboard this is meant to serve.
+   */
+  private handleArrow(event: KeyboardEvent): void {
+    const key = event.key;
+    if (key !== 'ArrowUp' && key !== 'ArrowDown' && key !== 'ArrowLeft' && key !== 'ArrowRight') {
+      return;
+    }
+    const panel = this.panels.get(this.current);
+    if (!panel || panel.hidden) return;
+
+    const active = document.activeElement;
+    if (active instanceof HTMLInputElement) {
+      if (active.type === 'text') return;
+      if (active.type === 'range' && (key === 'ArrowLeft' || key === 'ArrowRight')) return;
+    }
+
+    const items = [...panel.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]')].filter(
+      (node) => !(node as HTMLButtonElement).disabled && node.offsetParent !== null
+    );
+    if (items.length === 0) return;
+
+    const index = active instanceof HTMLElement ? items.indexOf(active) : -1;
+    if (index === -1) {
+      items[0]?.focus();
+      event.preventDefault();
+      return;
+    }
+
+    const next = nextInDirection(items, index, key);
+    if (next) {
+      next.focus();
+      event.preventDefault();
+    }
   }
 
   show(name: ScreenName): void {

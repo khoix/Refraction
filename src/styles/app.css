@@ -428,6 +428,14 @@ body {
   inset: 0;
   display: grid;
   place-items: center;
+  /*
+   * `safe` is what makes a panel taller than the window reachable. Centring an
+   * overflowing grid item pushes its top edge above the container, and scroll
+   * cannot go negative -- so the first setting simply could not be reached once
+   * the key map made this panel long. `safe` falls back to start alignment at
+   * exactly the point centring would start hiding something.
+   */
+  place-items: safe center;
   padding: 2rem 1.25rem;
   background: rgb(5 6 10 / 0.86);
   backdrop-filter: blur(2px);
@@ -725,5 +733,198 @@ body {
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/* --------------------------------------------------------------- the key map */
+
+/*
+ * A reference, not a control surface: it is read once and then remembered, so it
+ * is set quietly and stays out of the way of the settings above it.
+ */
+.keymap {
+  width: 100%;
+  margin-top: 0.4rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--surface-line);
+  text-align: left;
+  /*
+   * Multi-column rather than a grid of rows. Sixteen bindings in one column made
+   * the key map taller than the settings it was added to, which pushed the
+   * actual controls off the top of the window. Columns halve the height and keep
+   * each group's heading with its own rows, which a row grid cannot do.
+   */
+  columns: 2;
+  column-gap: 2.2rem;
+}
+
+.keymap__section {
+  break-inside: avoid;
+  margin-bottom: 0.9rem;
+}
+
+.keymap__title {
+  column-span: all;
+}
+
+.keymap__title,
+.keymap__group {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+}
+
+.keymap__group {
+  margin-top: 0.7rem;
+  font-size: 0.62rem;
+  opacity: 0.75;
+}
+
+.keymap__group:first-of-type {
+  margin-top: 0.2rem;
+}
+
+/*
+ * Keys first, then what they do. The keys column is fixed so every label starts
+ * at the same place and the list can be scanned down rather than read across.
+ */
+.keymap__row {
+  display: grid;
+  grid-template-columns: 5.4rem 1fr auto;
+  align-items: center;
+  gap: 0.6rem;
+  font-size: 0.8rem;
+}
+
+.keymap__keys {
+  display: flex;
+  gap: 0.25rem;
+}
+
+.key {
+  min-width: 1.5rem;
+  padding: 0.1rem 0.32rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 0.28rem;
+  background: rgb(10 12 20 / 0.9);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  text-align: center;
+}
+
+.keymap__label {
+  color: var(--text-primary);
+}
+
+.keymap__note,
+.keymap__foot {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+}
+
+.keymap__foot {
+  margin: 0.8rem 0 0;
+  line-height: 1.5;
+}
+
+@media (max-width: 46rem) {
+  .keymap {
+    columns: 1;
+  }
+}
+
+/*
+ * A phone has no keyboard, so it has no use for a key map. Hidden by input
+ * method rather than by width: a narrow window on a laptop still has a keyboard,
+ * and a tablet with one attached reports a fine pointer. `(hover: none) and
+ * (pointer: coarse)` is the pair that actually means "touch is the only way in".
+ *
+ * The mobile controls take this slot in M12. They are not listed yet because
+ * they do not exist yet, and a panel that documents gestures the game does not
+ * answer to is worse than one that says nothing.
+ */
+/*
+ * Only one of the two is ever shown, and touch is the exception rather than the
+ * default. This has to come *before* the media block: both selectors are a
+ * single class, so at equal specificity the later rule wins, and declaring the
+ * default afterwards silently overrode the query -- the touch panel stayed
+ * hidden on a phone and the failure looked exactly like broken emulation.
+ */
+.keymap--touch {
+  display: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .keymap {
+    display: none;
+  }
+
+  .keymap--touch {
+    display: block;
+  }
+}
+
+/* A gesture is a phrase, not a keycap, so it is set as text rather than boxed. */
+.keymap--touch .keymap__row {
+  grid-template-columns: 8.6rem 1fr auto;
+}
+
+.gesture {
+  color: var(--text-primary);
+  font-size: 0.76rem;
+}
+
+@media (max-width: 34rem) {
+  /* Narrower key column, but still three across: measured at 390px the note
+     fits on the line, and wrapping it under the label read as broken layout
+     rather than as a note. */
+  .keymap__row {
+    grid-template-columns: 4.4rem 1fr auto;
+    gap: 0.45rem;
+  }
+
+  .keymap__note {
+    font-size: 0.64rem;
+  }
+}
+
+/* ------------------------------------------------------------ touch hygiene */
+
+/*
+ * A game is not a page. Individually these are trivial; collectively they are
+ * the difference between something that feels built for the device and
+ * something that scrolls away, zooms, or selects the HUD when a thumb rests on
+ * it for half a second.
+ *
+ * `touch-action: none` on the playfield is the load-bearing one: without it the
+ * browser claims vertical drags for scrolling and the soft drop never fires,
+ * because the gesture is gone before the game sees the second sample.
+ */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.stage,
+.hud {
+  touch-action: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* A long press on a label should hold the piece's attention, not the text's. */
+  .hud,
+  .keymap,
+  .panel__title,
+  .mode {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* The grey flash on tap belongs to links, not to a game surface. */
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
 }

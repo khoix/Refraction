@@ -25,6 +25,8 @@ import type { Challenge } from '@core/challenge';
 import { isPersonalBest, recordRun, withSettings } from '@core/save';
 import type { SaveData, Settings } from '@core/save';
 import { loadSave, persistSave, storageAvailable } from '@ui/storage';
+import { BINDINGS, keyLabel } from './keymap';
+import { TouchController } from './touch/controller';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
 const STEP_MS = 1000 / 60;
@@ -51,6 +53,12 @@ interface DebugHandle {
   play: (mode: ModeId, seed?: string) => void;
   save: () => SaveData;
   screen: () => ScreenName;
+  /**
+   * The binding table, flattened for assertions. The end-to-end suite checks the
+   * rendered key map against this rather than against a copy of the bindings
+   * written out in the test, which would drift the moment one changed.
+   */
+  bindings: { action: string; label: string; keys: string[] }[];
 }
 
 declare global {
@@ -250,6 +258,11 @@ function boot(root: HTMLElement): void {
       },
       save: () => save,
       screen: () => screens.screen,
+      bindings: BINDINGS.map((binding) => ({
+        action: binding.action,
+        label: binding.label,
+        keys: binding.codes.map(keyLabel),
+      })),
     };
     window.__refraction = handle;
   }
@@ -268,6 +281,9 @@ function boot(root: HTMLElement): void {
       } else if (screens.screen === 'settings') {
         screens.show(settingsReturn);
       }
+      // A gesture half-made when the menu opened must not land on the board
+      // when it closes.
+      touch.cancel();
     },
     onRestart: () => {
       if (screens.screen === 'over') startRun(mode.id, challenge);
@@ -281,6 +297,16 @@ function boot(root: HTMLElement): void {
     // press is what brings the sound up.
     onInteract: () => audio.resume(),
     onToggleMute: () => commit(withSettings(save, { muted: !save.settings.muted })),
+  });
+
+  // Touch and pen only. A mouse keeps the keyboard game: dragging a piece with
+  // a cursor is worse than pressing an arrow key, and a laptop with a
+  // touchscreen should not change behaviour based on which input was used last.
+  const touch = new TouchController(root, () => game, {
+    accepts: playing,
+    onInteract: () => audio.resume(),
+    onTurn: (direction: TurnDirection) => game.chooseTurn(direction),
+    wellRect: () => renderer.wellScreenRect(),
   });
 
   window.addEventListener('resize', () => renderer.resize());

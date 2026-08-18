@@ -13,6 +13,7 @@ declare global {
       play: (mode: ModeId, seed?: string) => void;
       save: () => SaveData;
       screen: () => ScreenName;
+      bindings: { action: string; label: string; keys: string[] }[];
     };
   }
 }

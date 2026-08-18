@@ -654,6 +654,9 @@ test.describe('screens', () => {
   });
 
   test('does not let menu keystrokes reach the piece', async ({ page }) => {
+    // Also the guard on arrow-key menu navigation: the board is live behind
+    // every panel, so a keystroke that moved focus must not also have moved the
+    // piece.
     await page.goto('/?debug=1&mode=ascent&seed=gated');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.keyboard.press('Escape');
@@ -1704,11 +1707,16 @@ test.describe('the landing marks', () => {
     expect((marked as CellSample).mean).toBeGreaterThan((plain as CellSample).mean * 1.15);
   });
 
-  test('the landing outline reads with nothing in front of it', async ({ page }) => {
+  test('the landing mark reads with nothing in front of it', async ({ page }) => {
     // A mark may not depend on the x-ray to be legible. On an open board the
-    // x-ray correctly does nothing, which used to be exactly where the landing
-    // outline was faintest — a 0.44 cube over a near-black background, reading
-    // around luminance 47. It carries its own edge now.
+    // x-ray correctly does nothing, which is exactly where the landing mark was
+    // faintest — a 0.44 cube over a near-black background, reading around
+    // luminance 47.
+    //
+    // It had an outline for a while, which fixed that and created a worse
+    // problem: an outlined mark inside an outlined x-ray region is two borders
+    // a few pixels apart saying different things. The legibility comes from the
+    // fill now, raised and lifted toward white.
     //
     // Row 9 is where the bar comes to rest, and with no wall there is nothing
     // else in that cell at all: whatever is measured there is the mark.
@@ -1750,5 +1758,338 @@ test.describe('the landing marks', () => {
     const border = at(falling, 4, 5);
     expect(interior.peak).toBeLessThan(interior.mean * 1.4);
     expect(border.peak).toBeGreaterThan(border.mean * 2);
+  });
+});
+
+/**
+ * The controls, told to the player.
+ *
+ * The game had never said what its keys do anywhere but the README, and it has
+ * enough of them now — move, three rotation axes, a depth nudge, hold, hard
+ * drop, face choice, pause, mute, restart — that it has to.
+ *
+ * The panel is built from the same table the input controller reads, so these
+ * check the rendering against that table rather than against a list written out
+ * here. A key map with its own copy of the bindings is right on the day it is
+ * written and wrong by the next change, with nothing to catch it.
+ */
+test.describe('the key map', () => {
+  // Both panels are in the DOM; CSS decides which one the device sees. Every
+  // locator here has to say which, or it matches the touch rows as well and
+  // counts them as keyboard bindings.
+  const KEYBOARD_MAP = '.keymap:not(.keymap--touch)';
+
+  async function openSettings(page: Page): Promise<void> {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator(KEYBOARD_MAP)).toBeVisible();
+  }
+
+  test('shows a row for every binding, with the keys that work', async ({ page }) => {
+    await openSettings(page);
+
+    const table = await page.evaluate(() => window.__refraction?.bindings ?? []);
+    expect(table.length).toBeGreaterThan(10);
+
+    for (const binding of table) {
+      const row = page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="${binding.action}"]`);
+      await expect(row).toBeVisible();
+      await expect(row.locator('.keymap__label')).toHaveText(binding.label);
+      await expect(row.locator('.key')).toHaveText(binding.keys);
+    }
+    // Nothing rendered that the table does not carry.
+    await expect(page.locator(`${KEYBOARD_MAP} .keymap__row`)).toHaveCount(table.length);
+  });
+
+  test('names the one key that means two things', async ({ page }) => {
+    // Left and Right move the piece, and answer the turn prompt while the Shift
+    // meter is full. A key map that lists only the first is telling a half
+    // truth about the game's most important input.
+    await openSettings(page);
+    await expect(page.locator(`${KEYBOARD_MAP} .keymap__foot`)).toContainText('Shift meter');
+  });
+
+  test('the depth nudge is listed in both directions', async ({ page }) => {
+    // The bug the table found: only one direction had ever been bound, so half
+    // of a Stage 4 mechanic was unreachable.
+    await openSettings(page);
+    await expect(
+      page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="nudgeDeeper"]`)
+    ).toBeVisible();
+    await expect(
+      page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="nudgeNearer"]`)
+    ).toBeVisible();
+  });
+});
+
+/**
+ * Getting around without a mouse.
+ *
+ * The same keys that move a piece move through the menu — which is the point:
+ * the player should not have to work out that this part of the game wants Tab
+ * instead.
+ */
+test.describe('arrow keys move through the menus', () => {
+  const focused = (page: Page): Promise<string> =>
+    page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el) return '';
+      return (el.querySelector('.mode__name')?.textContent ?? el.textContent ?? '').trim();
+    });
+
+  test('walks the mode grid as a grid, not as a list', async ({ page }) => {
+    // Left and right walk the row; up and down change row and keep the column.
+    // A grid that is one column on a phone and three on a laptop is the same
+    // markup either way, so the rows come from the laid-out geometry.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+
+    const top = (): Promise<number> =>
+      page.evaluate(() => Math.round(document.activeElement?.getBoundingClientRect().top ?? -1));
+
+    const firstName = await focused(page);
+    const firstRow = await top();
+
+    await page.keyboard.press('ArrowRight');
+    expect(await focused(page)).not.toBe(firstName);
+    expect(await top()).toBe(firstRow);
+
+    await page.keyboard.press('ArrowDown');
+    const lowerRow = await top();
+    expect(lowerRow).toBeGreaterThan(firstRow);
+
+    await page.keyboard.press('ArrowUp');
+    expect(await top()).toBeLessThan(lowerRow);
+
+    // Deliberately not asserting that down-then-up returns to the same card.
+    // It does not always, and should not: a locked mode is not focusable, so
+    // the rows can hold different numbers of cards, and moving between two rows
+    // of different occupancy keeps the nearest column rather than an exact one.
+  });
+
+  test('moves down the settings rows and reaches the button at the end', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 12; i += 1) {
+      seen.add(await page.evaluate(() => document.activeElement?.className ?? ''));
+      await page.keyboard.press('ArrowDown');
+    }
+    // It travels the checkboxes and the slider, and gets to BACK.
+    expect([...seen].some((name) => name.includes('field__input'))).toBe(true);
+    expect([...seen].some((name) => name.includes('field__range'))).toBe(true);
+  });
+
+  test('leaves the arrows alone where a control needs them', async ({ page }) => {
+    // A slider needs left and right for its value and a text field needs them
+    // for the caret. Taking those would make the volume control unusable by the
+    // very keyboard this is meant to serve.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    await page.locator('.field__range').focus();
+    const before = await page.locator('.field__range').inputValue();
+    await page.keyboard.press('ArrowLeft');
+    expect(await page.locator('.field__range').inputValue()).not.toBe(before);
+    // Focus stayed on the slider rather than moving away.
+    expect(await page.evaluate(() => document.activeElement?.className ?? '')).toContain(
+      'field__range'
+    );
+  });
+});
+
+/**
+ * Playing with a thumb.
+ *
+ * The gesture vocabulary itself is pinned by unit tests, which is where the
+ * thresholds belong. These are about the wiring: that a real pointer event
+ * reaches the engine, that the zoning holds on the actual laid-out screen, and
+ * that touch does not become a second way past the guards the keyboard respects.
+ */
+test.describe('touch controls', () => {
+  /** Dispatch a touch-type pointer gesture through a list of viewport points. */
+  async function gesture(
+    page: Page,
+    points: readonly { x: number; y: number }[],
+    options: { pauseMs?: number } = {}
+  ): Promise<void> {
+    await page.evaluate(
+      async ({ points, pauseMs }) => {
+        const root = document.querySelector('#app');
+        if (!root) throw new Error('no root');
+        const send = (type: string, x: number, y: number): void => {
+          root.dispatchEvent(
+            new PointerEvent(type, {
+              pointerId: 1,
+              pointerType: 'touch',
+              isPrimary: true,
+              clientX: x,
+              clientY: y,
+              bubbles: true,
+            })
+          );
+        };
+        const first = points[0] as { x: number; y: number };
+        send('pointerdown', first.x, first.y);
+        for (const point of points.slice(1)) {
+          if (pauseMs) await new Promise((done) => setTimeout(done, pauseMs));
+          send('pointermove', point.x, point.y);
+        }
+        const last = points[points.length - 1] as { x: number; y: number };
+        send('pointerup', last.x, last.y);
+      },
+      { points, pauseMs: options.pauseMs ?? 0 }
+    );
+  }
+
+  /** Viewport coordinates for a board column, in the strip and in the field. */
+  async function anchors(page: Page): Promise<{
+    strip: (column: number) => { x: number; y: number };
+    field: (column: number) => { x: number; y: number };
+  }> {
+    const rect = await page.evaluate(() => {
+      const r = window.__refraction?.renderer.wellScreenRect();
+      if (!r) throw new Error('no renderer');
+      return { left: r.left, top: r.top, width: r.width, height: r.height };
+    });
+    const columnX = (column: number): number => rect.left + (rect.width * (column + 0.5)) / 8;
+    return {
+      strip: (column) => ({ x: columnX(column), y: rect.top + rect.height + 20 }),
+      field: (column) => ({ x: columnX(column), y: rect.top + rect.height * 0.4 }),
+    };
+  }
+
+  const column = (page: Page): Promise<number> =>
+    page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
+
+  test('a drag in the strip puts the piece under the finger', async ({ page }) => {
+    // Absolute, not accumulated: the column under the finger is the column the
+    // piece is in, which is the same claim the game makes about everything else.
+    await page.goto('/?debug=1&mode=ascent&seed=touchdrag');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+
+    await gesture(page, [at.strip(4), at.strip(3), at.strip(1), at.strip(0)]);
+    expect(await column(page)).toBe(0);
+
+    await gesture(page, [at.strip(0), at.strip(3), at.strip(6)]);
+    expect(await column(page)).toBeGreaterThan(2);
+  });
+
+  test('a flick down in the strip drops the piece', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=touchdrop');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+
+    // Measured on the board, not on the piece's height. A hard drop locks the
+    // piece and spawns the next one at the same spawn row, so `active.y` reads
+    // the same before and after and cannot tell "dropped" from "did not move".
+    const settled = (): Promise<number> =>
+      page.evaluate(() => window.__refraction?.game.board.filledCells().length ?? -1);
+    expect(await settled()).toBe(0);
+
+    const start = at.strip(4);
+    await gesture(page, [start, { x: start.x, y: start.y + 70 }]);
+    await page.waitForTimeout(250);
+    expect(await settled()).toBeGreaterThan(0);
+  });
+
+  test('a tap above the strip rotates instead of moving', async ({ page }) => {
+    // The zoning is the point: the same finger, a few hundred pixels higher,
+    // means something else entirely.
+    await page.goto('/?debug=1&mode=ascent&seed=touchspin');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+
+    const shape = (): Promise<string> =>
+      page.evaluate(() => JSON.stringify(window.__refraction?.game.active?.offsets ?? []));
+    const before = await shape();
+    const beforeColumn = await column(page);
+    await gesture(page, [at.field(6), at.field(6)]);
+    expect(await shape()).not.toBe(before);
+    expect(await column(page)).toBe(beforeColumn);
+  });
+
+  test('a mouse is still a keyboard player', async ({ page }) => {
+    // Dragging a piece with a cursor is worse than pressing an arrow key, and a
+    // laptop with a touchscreen should not change behaviour based on which
+    // input was used last.
+    await page.goto('/?debug=1&mode=ascent&seed=touchmouse');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+    const before = await column(page);
+
+    await page.mouse.move(at.strip(4).x, at.strip(4).y);
+    await page.mouse.down();
+    await page.mouse.move(at.strip(0).x, at.strip(0).y, { steps: 6 });
+    await page.mouse.up();
+
+    expect(await column(page)).toBe(before);
+  });
+
+  test('does not reach the piece while a menu is up', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=touchmenu');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.panel[data-screen="paused"]')).toBeVisible();
+
+    const before = await column(page);
+    await gesture(page, [at.strip(4), at.strip(0)]);
+    expect(await column(page)).toBe(before);
+  });
+});
+
+/**
+ * Which set of controls a device is told about.
+ *
+ * Chosen by input method, not by width: a narrow window on a laptop still has a
+ * keyboard, and a tablet with one attached reports a fine pointer. Both panels
+ * are in the DOM and CSS picks; these check that it picks correctly, because a
+ * phone being shown `Z` / `X` to rotate is worse than being shown nothing.
+ */
+test.describe('the controls panel follows the input method', () => {
+  test('a phone is told the gestures, not the keys', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    // `isMobile` alone does not move the `pointer` and `hover` media features,
+    // and those are what the stylesheet asks about -- deliberately, since they
+    // are the pair that actually means "touch is the only way in". Emulating
+    // them directly is the honest test: it is exactly what a phone reports.
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+      ],
+    });
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    await expect(page.locator('.keymap--touch')).toBeVisible();
+    await expect(page.locator('.keymap:not(.keymap--touch)')).toBeHidden();
+    // And it describes the scheme the game actually answers to.
+    await expect(page.locator('.keymap--touch')).toContainText('Flick down');
+    await expect(page.locator('.keymap--touch .keymap__foot')).toContainText('Shift meter');
+    await context.close();
+  });
+
+  test('a desktop is told the keys, not the gestures', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    await expect(page.locator('.keymap:not(.keymap--touch)')).toBeVisible();
+    await expect(page.locator('.keymap--touch')).toBeHidden();
   });
 });

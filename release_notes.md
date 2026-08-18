@@ -7,6 +7,266 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M12a — Touch controls
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The game had no touch handling at all: the only pointer listener in the codebase
+resumed the audio context. It has a full gesture vocabulary now, built on the
+zoning from the play notes.
+
+### The scheme
+
+A narrow strip along the bottom moves the piece; everything above it rotates it.
+That zoning is what makes the vocabulary work — a gesture never has to be
+disambiguated by what it happens to be near, because the region it starts in
+already says which verb class it belongs to. It also keeps the thumb off the
+board: movement happens below the well, so the hand is never over the thing being
+aimed at, which was the first worry on the list when this was scoped.
+
+| Gesture                     | Verb                        |
+| --------------------------- | --------------------------- |
+| Drag sideways, in the strip | Move — absolute, per column |
+| Flick down, in the strip    | Hard drop                   |
+| Drag down, in the strip     | Soft drop                   |
+| Tap left of centre, above   | Roll back                   |
+| Tap right of centre, above  | Roll                        |
+| Swipe left / right, above   | Yaw                         |
+| Swipe up / down, above      | Pitch                       |
+
+Two of those replaced the obvious answer with a better one.
+
+**Hard drop is a flick, not a double tap.** A double tap is two taps plus a
+waiting window, so either the drop waits on the window and feels late, or the
+first tap fires and every drop rolls the piece on its way down. A flick and a tap
+differ at the first sample that moves, so neither waits on the other.
+
+**Roll takes its direction from where the tap lands.** Roll is the rotation used
+constantly — the screen-plane one, the ordinary falling-block rotate — so it
+cannot carry the latency of a double tap or the dwell of a long press. Splitting
+the field at the well's centre gives both directions at no cost, and reads
+naturally: tap left to turn left. That is what closes the gap identified when the
+scheme was scoped, where four swipe directions covered only two of three axes.
+
+Movement is **absolute, not accumulated**: the column under the finger is the
+column the piece is in, not a running total of how far the finger has travelled.
+It is the claim the game already makes about everything else. The piece centres
+on the target rather than aligning by its left edge, and each column is a stepped
+move through the collision check, so dragging across a wall stops at the wall.
+
+The turn prompt borrows the strip: while the board is waiting to be turned, a
+sideways drag chooses the face. Same double duty Left and Right already do on a
+keyboard in that state.
+
+### Split so the feel can be tested
+
+`GestureRecogniser` is pure — samples and a layout in, intents out, no DOM and no
+clock of its own — and `TouchController` is thin plumbing that decides nothing.
+Every threshold that governs how a gesture feels is a named constant in one
+module, which is the only way any of it can be tuned or pinned. Seventeen unit
+tests cover the cases that actually matter: a flick that should drop against a
+slow drag of the same distance that should not, a tap against a thumb resting too
+long, a diagonal resolving to one axis rather than both or neither.
+
+### The panel follows the input method
+
+A phone gets the gestures, a keyboard gets the keys, chosen by
+`(hover: none) and (pointer: coarse)` rather than by width — a narrow window on a
+laptop still has a keyboard. Two tables rather than two columns of one, because
+the vocabularies do not line up: a keyboard binds a key per direction, and touch
+gets both directions of roll out of where a tap lands.
+
+### Tested
+
+**321 unit tests, 86 end-to-end tests.** Typecheck and lint clean.
+
+Five browser tests on the wiring — a drag lands the piece under the finger, a
+flick drops it, a tap rotates without moving it, a mouse is still a keyboard
+player, and nothing reaches the piece while a menu is up. Each confirmed to fail
+when its behaviour is reverted.
+
+Two bugs the tests caught in themselves rather than in the code. The drop test
+first asserted on the piece's height, which cannot tell "dropped" from "did not
+move" — a hard drop locks the piece and spawns the next one at the same spawn
+row. It measures the board now. And the panel-selection test looked like broken
+device emulation when it was **a plain CSS cascade error**: the default
+`display: none` for the touch panel was declared after the media query that
+un-hides it, and at equal specificity the later rule wins.
+
+### Still open in M12
+
+Hold, the depth nudge, and pause have no touch route yet. All three want a place
+to live rather than a gesture, so they land with the layout work: the HOLD panel
+is the obvious target for hold, and the nudge appearing as two controls at the
+moment it unlocks at Stage 4 is a better reveal than a gesture nobody discovers.
+Until then a run is playable by thumb but not fully steerable — the Shift meter
+still falls back to turning itself after five seconds.
+
+Portrait layout, safe-area insets, landscape, and the frame budget are M12b and
+M12c.
+
+---
+
+## Play response: one border, not two
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "You don't need to show keyboard mapping for mobile. Just mobile actions. Also,
+> for the landing indicator, remove the border — it gets confusing with the x-ray
+> borders in place."
+
+### The landing mark loses its outline
+
+Two milestones ago the landing mark was invisible, and an outline was what fixed
+it. But an outlined mark sitting inside an outlined x-ray region is two borders a
+few pixels apart saying different things, and both got harder to read for it.
+There is one border on screen now, and it belongs to the x-ray.
+
+Which puts the mark's legibility back on its fill, and the original problem back
+in play: on an open board, where the x-ray correctly does nothing, a translucent
+cube reads as a dead block — 0.44 of a lane colour over the well's near-black
+background lands around luminance 47. The fill is raised to 0.72 and lifted 45%
+toward white, which also evens out the ramp. Violet at luminance 67 is the case
+that decides the numbers: a fill alone leaves the dark end of the spectrum far
+fainter than the bright end, and the lift is what carries it. Measured on an open
+board, the mark now peaks at 168 against an empty cell's 21.
+
+It stays inset at 0.78, which is what keeps it reading as a mark rather than as a
+cube now that it is this solid. The two marks stay distinguishable by hue as well
+as position: the landing mark wears its lane's colour, the surface mark below it
+is near-white.
+
+**A process note worth recording.** The first attempt at this changed nothing,
+because the edit that was supposed to set the new opacity never matched the
+source — so two rounds of measurement were taken against the old value, and the
+numbers looked inexplicably flat. The tell was that raising opacity from 0.5 to
+0.7 moved the measured peak by two luminance levels. When a change has no effect
+it is worth checking that it was applied before concluding anything about it.
+
+### The key map is for keyboards
+
+Hidden on touch-primary devices — `(hover: none) and (pointer: coarse)` rather
+than a width breakpoint, since a narrow window on a laptop still has a keyboard
+and a tablet with one attached reports a fine pointer.
+
+The slot is empty on a phone rather than filled with mobile actions, because the
+mobile actions do not exist yet. A panel documenting gestures the game does not
+answer to is worse than one that says nothing. M12 fills it, and reads whatever
+carries the gestures the same way the key map reads `BINDINGS`.
+
+### The mobile rotation scheme, part-resolved
+
+Recorded in M12 rather than built. The proposed split — a narrow strip along the
+bottom for movement, swipes above it for rotation — is the right idea, and solves
+the hardest part: a gesture no longer has to be disambiguated by what it is near,
+because the region it starts in says which verb class it belongs to.
+
+It does not reach three axes on its own. Four swipe directions cover two axes
+bidirectionally, and the third is left with nothing — and the one left over is
+`roll`, the screen-plane rotation a player uses constantly, while yaw and pitch
+are the specialists. So the resolution is to invert which verbs get which class
+of gesture: tap for roll, swipes for yaw and pitch, and hard drop on a downward
+fling in the strip rather than a double tap, which also removes the collision
+where every double tap would roll the piece once on its way to dropping it.
+
+### Tested
+
+**304 unit tests, 79 end-to-end tests.** Typecheck and lint clean.
+
+The landing-mark test changed with the mark: it asserted a border and now asserts
+the fill, still against the same claim — that the mark reads with nothing in
+front of it, on the board where the x-ray does nothing at all.
+
+---
+
+## M11a — The controls, told to the player
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "Need a key map in settings so player knows what keys do what."
+> "Arrows should allow you to move around the menu."
+
+Both from the play notes, both shipped. Writing the first one is what found a
+bug that had been sitting in the game since the depth nudge was added.
+
+### The bindings are a table now, and the panel reads it
+
+The key map could have been a list written out in the settings panel in its own
+words. That is exactly how a key map goes stale: right on the day it is written,
+wrong by the next binding change, with nothing to catch it. So the bindings moved
+into `src/keymap.ts` as data, and both the input controller and the panel read
+it. The panel cannot describe a key the engine does not answer to, and the engine
+cannot answer to a key the panel does not show.
+
+The end-to-end test asserts the rendered rows against that same table, read off
+the live build rather than copied into the test.
+
+### Which found half a mechanic missing
+
+`nudgeDepth` takes `-1 | 1`, and the design spec said the Depth Nudge "shifts
+the piece ±1 lane" on `W` / `S`. That pairing cannot work: `S` is half of the
+WASD movement cluster the README advertises, and is already the soft drop. So
+only `W` was ever bound, only one direction ever worked, and **half of a Stage 4
+mechanic had been unreachable** — quietly, because nothing in the game had ever
+listed its own controls.
+
+Depth takes its own vertical pair now, `T` deeper and `G` nearer, sitting next to
+the `R` / `F` used for pitch: two spatial axes, two adjacent pairs, and neither
+of them stealing a movement key. The spec and the README are corrected to match.
+
+The table makes this class of bug hard to repeat. `Action` is a union and the
+unit test asserts every member appears exactly once, so an unbound direction is
+now a failing test rather than a silence.
+
+### Arrow keys move through the menus
+
+Focus travels the panels and the mode grid with the same keys that move a piece,
+so the player does not have to work out that this part of the game wants Tab
+instead.
+
+Rows come from the **laid-out geometry**, not from the markup: the mode grid is
+one column on a phone and several on a laptop from the same DOM, and only the
+rectangles know which it currently is. Left and right walk the row and spill into
+the next; up and down change row and keep the nearest horizontal position.
+
+Two controls keep their arrows. A text field needs them for the caret and a
+slider needs left and right for its value — taking those would make the volume
+control unusable by the very keyboard this is meant to serve.
+
+### Two layout fixes the key map forced
+
+- **The settings panel could not scroll.** `.screens` centres its panel in a
+  grid, and centring an item taller than its container pushes the top edge above
+  it, where scrolling cannot reach. It had never mattered because no panel was
+  that tall. `place-items: safe center` falls back to start alignment at exactly
+  the point centring would start hiding something.
+- **Sixteen bindings in one column** made the key map taller than the settings it
+  was added to, pushing the actual controls off the top of the window. It is
+  two-column now, one on narrow screens, with each group a block so the column
+  break cannot strand a row from its heading.
+
+### Tested
+
+**304 unit tests, 79 end-to-end tests.** Typecheck and lint clean.
+
+Eight new unit tests on the table itself — every action bound once, no key with
+two meanings, every code resolving, the depth nudge working both ways and still
+locked before Stage 4 — and six browser tests on the panel and the navigation.
+
+A note on how those were verified, because the method silently failed for a
+while. Playwright's `reuseExistingServer` is on outside CI, so a preview server
+left running from an earlier run keeps serving the **previous build** — which
+means deliberately breaking a behaviour to confirm a test catches it can report a
+false pass. Two of these checks did exactly that before it was noticed. Running
+with `CI=1` forces a fresh server and is the reliable way to confirm a test bites.
+
+The strict compiler is also doing more of this work than expected: removing a
+binding, orphaning the key map builder, or unhooking the arrow handler are all
+caught by `tsc` before a test ever runs. Confirming the _behavioural_ guards
+needed sabotage that still compiles.
+
+---
+
 ## M10a — The landing marks
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
