@@ -846,10 +846,35 @@ body {
  * they do not exist yet, and a panel that documents gestures the game does not
  * answer to is worse than one that says nothing.
  */
+/*
+ * Only one of the two is ever shown, and touch is the exception rather than the
+ * default. This has to come *before* the media block: both selectors are a
+ * single class, so at equal specificity the later rule wins, and declaring the
+ * default afterwards silently overrode the query -- the touch panel stayed
+ * hidden on a phone and the failure looked exactly like broken emulation.
+ */
+.keymap--touch {
+  display: none;
+}
+
 @media (hover: none) and (pointer: coarse) {
   .keymap {
     display: none;
   }
+
+  .keymap--touch {
+    display: block;
+  }
+}
+
+/* A gesture is a phrase, not a keycap, so it is set as text rather than boxed. */
+.keymap--touch .keymap__row {
+  grid-template-columns: 8.6rem 1fr auto;
+}
+
+.gesture {
+  color: var(--text-primary);
+  font-size: 0.76rem;
 }
 
 @media (max-width: 34rem) {
@@ -863,5 +888,43 @@ body {
 
   .keymap__note {
     font-size: 0.64rem;
+  }
+}
+
+/* ------------------------------------------------------------ touch hygiene */
+
+/*
+ * A game is not a page. Individually these are trivial; collectively they are
+ * the difference between something that feels built for the device and
+ * something that scrolls away, zooms, or selects the HUD when a thumb rests on
+ * it for half a second.
+ *
+ * `touch-action: none` on the playfield is the load-bearing one: without it the
+ * browser claims vertical drags for scrolling and the soft drop never fires,
+ * because the gesture is gone before the game sees the second sample.
+ */
+html,
+body {
+  overscroll-behavior: none;
+}
+
+.stage,
+.hud {
+  touch-action: none;
+}
+
+@media (hover: none) and (pointer: coarse) {
+  /* A long press on a label should hold the piece's attention, not the text's. */
+  .hud,
+  .keymap,
+  .panel__title,
+  .mode {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* The grey flash on tap belongs to links, not to a game surface. */
+  * {
+    -webkit-tap-highlight-color: transparent;
   }
 }

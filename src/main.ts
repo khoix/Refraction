@@ -26,6 +26,7 @@ import { isPersonalBest, recordRun, withSettings } from '@core/save';
 import type { SaveData, Settings } from '@core/save';
 import { loadSave, persistSave, storageAvailable } from '@ui/storage';
 import { BINDINGS, keyLabel } from './keymap';
+import { TouchController } from './touch/controller';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
 const STEP_MS = 1000 / 60;
@@ -280,6 +281,9 @@ function boot(root: HTMLElement): void {
       } else if (screens.screen === 'settings') {
         screens.show(settingsReturn);
       }
+      // A gesture half-made when the menu opened must not land on the board
+      // when it closes.
+      touch.cancel();
     },
     onRestart: () => {
       if (screens.screen === 'over') startRun(mode.id, challenge);
@@ -293,6 +297,16 @@ function boot(root: HTMLElement): void {
     // press is what brings the sound up.
     onInteract: () => audio.resume(),
     onToggleMute: () => commit(withSettings(save, { muted: !save.settings.muted })),
+  });
+
+  // Touch and pen only. A mouse keeps the keyboard game: dragging a piece with
+  // a cursor is worse than pressing an arrow key, and a laptop with a
+  // touchscreen should not change behaviour based on which input was used last.
+  const touch = new TouchController(root, () => game, {
+    accepts: playing,
+    onInteract: () => audio.resume(),
+    onTurn: (direction: TurnDirection) => game.chooseTurn(direction),
+    wellRect: () => renderer.wellScreenRect(),
   });
 
   window.addEventListener('resize', () => renderer.resize());

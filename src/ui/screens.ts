@@ -14,7 +14,14 @@ import type { ModeConfig, ModeId } from '@core/modes';
 import { dailyChallenge, parseChallenge } from '@core/challenge';
 import type { Challenge } from '@core/challenge';
 import type { SaveData, Settings } from '@core/save';
-import { BINDINGS, BINDING_GROUPS, TURN_PROMPT_NOTE, keyLabel } from '../keymap';
+import {
+  BINDINGS,
+  BINDING_GROUPS,
+  TOUCH_ACTIONS,
+  TOUCH_TURN_NOTE,
+  TURN_PROMPT_NOTE,
+  keyLabel,
+} from '../keymap';
 
 export type ScreenName =
   'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
@@ -118,6 +125,40 @@ function nextInDirection(
     if (here < bestSoFar) best = candidate;
   }
   return items[best] ?? null;
+}
+
+/**
+ * The same panel for touch.
+ *
+ * Built from `TOUCH_ACTIONS` for the same reason the key map is built from
+ * `BINDINGS`: a panel that carries its own copy of the controls is right on the
+ * day it is written and wrong by the next change. Which of the two is shown is
+ * decided in CSS by input method, not here -- a narrow window on a laptop still
+ * has a keyboard, and a tablet with one attached reports a fine pointer.
+ */
+function buildTouchMap(): HTMLElement {
+  const list = element('div', 'keymap keymap--touch');
+  list.append(element('h3', 'keymap__title', 'CONTROLS'));
+
+  for (const group of BINDING_GROUPS) {
+    const rows = TOUCH_ACTIONS.filter((action) => action.group === group);
+    if (rows.length === 0) continue;
+    const section = element('section', 'keymap__section');
+    section.append(element('h4', 'keymap__group', group.toUpperCase()));
+    for (const action of rows) {
+      const row = element('div', 'keymap__row');
+      row.dataset['gesture'] = action.label;
+      const keys = element('span', 'keymap__keys');
+      keys.append(element('span', 'gesture', action.gesture));
+      row.append(keys, element('span', 'keymap__label', action.label));
+      if (action.note) row.append(element('span', 'keymap__note', action.note));
+      section.append(row);
+    }
+    list.append(section);
+  }
+
+  list.append(element('p', 'keymap__foot', TOUCH_TURN_NOTE));
+  return list;
 }
 
 /**
@@ -425,6 +466,7 @@ export class Screens {
       element('h2', 'panel__title', 'SETTINGS'),
       fields,
       buildKeyMap(),
+      buildTouchMap(),
       actions
     );
   }

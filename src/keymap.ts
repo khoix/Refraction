@@ -124,3 +124,37 @@ export function keyLabel(code: string): string {
  */
 export const TURN_PROMPT_NOTE =
   'While the Shift meter is full, Left and Right choose which face comes forward.';
+
+/**
+ * The same thing for touch.
+ *
+ * A separate table rather than a column added to `BINDINGS`, because the two
+ * vocabularies do not line up: a keyboard binds a key per direction, and touch
+ * gets both directions of roll out of *where* a tap lands. Forcing them into one
+ * table would mean inventing rows that do not exist on one side or the other.
+ *
+ * Read by the settings panel on touch-primary devices, where a key map is no use
+ * to anyone. Same contract as the keyboard table: the panel cannot describe a
+ * gesture the game does not answer to.
+ */
+export interface TouchAction {
+  readonly gesture: string;
+  readonly label: string;
+  readonly group: BindingGroup;
+  readonly note?: string;
+}
+
+export const TOUCH_ACTIONS: readonly TouchAction[] = [
+  { gesture: 'Drag sideways', label: 'Move', group: 'Move', note: 'In the bottom strip' },
+  { gesture: 'Drag down', label: 'Soft drop', group: 'Move', note: 'In the bottom strip' },
+  { gesture: 'Flick down', label: 'Hard drop', group: 'Move', note: 'In the bottom strip' },
+
+  { gesture: 'Tap left', label: 'Roll back', group: 'Rotate', note: 'Above the strip' },
+  { gesture: 'Tap right', label: 'Roll', group: 'Rotate', note: 'Above the strip' },
+  { gesture: 'Swipe left / right', label: 'Yaw', group: 'Rotate', note: 'Above the strip' },
+  { gesture: 'Swipe up / down', label: 'Pitch', group: 'Rotate', note: 'Above the strip' },
+];
+
+/** The touch counterpart of `TURN_PROMPT_NOTE`. */
+export const TOUCH_TURN_NOTE =
+  'While the Shift meter is full, dragging left or right in the strip chooses which face comes forward.';

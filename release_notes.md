@@ -7,6 +7,106 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M12a — Touch controls
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The game had no touch handling at all: the only pointer listener in the codebase
+resumed the audio context. It has a full gesture vocabulary now, built on the
+zoning from the play notes.
+
+### The scheme
+
+A narrow strip along the bottom moves the piece; everything above it rotates it.
+That zoning is what makes the vocabulary work — a gesture never has to be
+disambiguated by what it happens to be near, because the region it starts in
+already says which verb class it belongs to. It also keeps the thumb off the
+board: movement happens below the well, so the hand is never over the thing being
+aimed at, which was the first worry on the list when this was scoped.
+
+| Gesture                     | Verb                        |
+| --------------------------- | --------------------------- |
+| Drag sideways, in the strip | Move — absolute, per column |
+| Flick down, in the strip    | Hard drop                   |
+| Drag down, in the strip     | Soft drop                   |
+| Tap left of centre, above   | Roll back                   |
+| Tap right of centre, above  | Roll                        |
+| Swipe left / right, above   | Yaw                         |
+| Swipe up / down, above      | Pitch                       |
+
+Two of those replaced the obvious answer with a better one.
+
+**Hard drop is a flick, not a double tap.** A double tap is two taps plus a
+waiting window, so either the drop waits on the window and feels late, or the
+first tap fires and every drop rolls the piece on its way down. A flick and a tap
+differ at the first sample that moves, so neither waits on the other.
+
+**Roll takes its direction from where the tap lands.** Roll is the rotation used
+constantly — the screen-plane one, the ordinary falling-block rotate — so it
+cannot carry the latency of a double tap or the dwell of a long press. Splitting
+the field at the well's centre gives both directions at no cost, and reads
+naturally: tap left to turn left. That is what closes the gap identified when the
+scheme was scoped, where four swipe directions covered only two of three axes.
+
+Movement is **absolute, not accumulated**: the column under the finger is the
+column the piece is in, not a running total of how far the finger has travelled.
+It is the claim the game already makes about everything else. The piece centres
+on the target rather than aligning by its left edge, and each column is a stepped
+move through the collision check, so dragging across a wall stops at the wall.
+
+The turn prompt borrows the strip: while the board is waiting to be turned, a
+sideways drag chooses the face. Same double duty Left and Right already do on a
+keyboard in that state.
+
+### Split so the feel can be tested
+
+`GestureRecogniser` is pure — samples and a layout in, intents out, no DOM and no
+clock of its own — and `TouchController` is thin plumbing that decides nothing.
+Every threshold that governs how a gesture feels is a named constant in one
+module, which is the only way any of it can be tuned or pinned. Seventeen unit
+tests cover the cases that actually matter: a flick that should drop against a
+slow drag of the same distance that should not, a tap against a thumb resting too
+long, a diagonal resolving to one axis rather than both or neither.
+
+### The panel follows the input method
+
+A phone gets the gestures, a keyboard gets the keys, chosen by
+`(hover: none) and (pointer: coarse)` rather than by width — a narrow window on a
+laptop still has a keyboard. Two tables rather than two columns of one, because
+the vocabularies do not line up: a keyboard binds a key per direction, and touch
+gets both directions of roll out of where a tap lands.
+
+### Tested
+
+**321 unit tests, 86 end-to-end tests.** Typecheck and lint clean.
+
+Five browser tests on the wiring — a drag lands the piece under the finger, a
+flick drops it, a tap rotates without moving it, a mouse is still a keyboard
+player, and nothing reaches the piece while a menu is up. Each confirmed to fail
+when its behaviour is reverted.
+
+Two bugs the tests caught in themselves rather than in the code. The drop test
+first asserted on the piece's height, which cannot tell "dropped" from "did not
+move" — a hard drop locks the piece and spawns the next one at the same spawn
+row. It measures the board now. And the panel-selection test looked like broken
+device emulation when it was **a plain CSS cascade error**: the default
+`display: none` for the touch panel was declared after the media query that
+un-hides it, and at equal specificity the later rule wins.
+
+### Still open in M12
+
+Hold, the depth nudge, and pause have no touch route yet. All three want a place
+to live rather than a gesture, so they land with the layout work: the HOLD panel
+is the obvious target for hold, and the nudge appearing as two controls at the
+moment it unlocks at Stage 4 is a better reveal than a gesture nobody discovers.
+Until then a run is playable by thumb but not fully steerable — the Shift meter
+still falls back to turning itself after five seconds.
+
+Portrait layout, safe-area insets, landscape, and the frame budget are M12b and
+M12c.
+
+---
+
 ## Play response: one border, not two
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

@@ -455,6 +455,24 @@ story is a single `@media (max-width: 34rem)` block that restacks the mode grid.
 The end-to-end suite checks that the Shift meter stays on screen at phone sizes,
 which proves the board fits, not that the game can be played.
 
+### M12a — Touch controls ✅
+
+The input layer, shipped. The gesture recogniser is pure and unit-tested; the
+controller is thin pointer plumbing that decides nothing. Touch and pen only — a
+mouse keeps the keyboard game, because dragging a piece with a cursor is worse
+than pressing an arrow key and a laptop with a touchscreen should not change
+behaviour based on which input was used last.
+
+The turn prompt borrows the strip: while the board waits to be turned, a sideways
+drag chooses the face. Same gesture, same double duty Left and Right already do
+on a keyboard in exactly that state.
+
+**Still unassigned, and needed before a run can be completed one-thumbed:** hold,
+the depth nudge from Stage 4, and pause. All three want a place to live rather
+than a gesture, so they belong with the layout below — the HOLD panel is the
+obvious target for hold, and the nudge appearing as two controls at the moment
+the mechanic unlocks is a better reveal than a gesture nobody discovers.
+
 ### Direct manipulation, not repeated swipes
 
 A swipe that moves one column is a keyboard binding wearing a costume: eight
