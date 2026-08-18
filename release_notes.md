@@ -7,6 +7,94 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M11a — The controls, told to the player
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "Need a key map in settings so player knows what keys do what."
+> "Arrows should allow you to move around the menu."
+
+Both from the play notes, both shipped. Writing the first one is what found a
+bug that had been sitting in the game since the depth nudge was added.
+
+### The bindings are a table now, and the panel reads it
+
+The key map could have been a list written out in the settings panel in its own
+words. That is exactly how a key map goes stale: right on the day it is written,
+wrong by the next binding change, with nothing to catch it. So the bindings moved
+into `src/keymap.ts` as data, and both the input controller and the panel read
+it. The panel cannot describe a key the engine does not answer to, and the engine
+cannot answer to a key the panel does not show.
+
+The end-to-end test asserts the rendered rows against that same table, read off
+the live build rather than copied into the test.
+
+### Which found half a mechanic missing
+
+`nudgeDepth` takes `-1 | 1`, and the design spec said the Depth Nudge "shifts
+the piece ±1 lane" on `W` / `S`. That pairing cannot work: `S` is half of the
+WASD movement cluster the README advertises, and is already the soft drop. So
+only `W` was ever bound, only one direction ever worked, and **half of a Stage 4
+mechanic had been unreachable** — quietly, because nothing in the game had ever
+listed its own controls.
+
+Depth takes its own vertical pair now, `T` deeper and `G` nearer, sitting next to
+the `R` / `F` used for pitch: two spatial axes, two adjacent pairs, and neither
+of them stealing a movement key. The spec and the README are corrected to match.
+
+The table makes this class of bug hard to repeat. `Action` is a union and the
+unit test asserts every member appears exactly once, so an unbound direction is
+now a failing test rather than a silence.
+
+### Arrow keys move through the menus
+
+Focus travels the panels and the mode grid with the same keys that move a piece,
+so the player does not have to work out that this part of the game wants Tab
+instead.
+
+Rows come from the **laid-out geometry**, not from the markup: the mode grid is
+one column on a phone and several on a laptop from the same DOM, and only the
+rectangles know which it currently is. Left and right walk the row and spill into
+the next; up and down change row and keep the nearest horizontal position.
+
+Two controls keep their arrows. A text field needs them for the caret and a
+slider needs left and right for its value — taking those would make the volume
+control unusable by the very keyboard this is meant to serve.
+
+### Two layout fixes the key map forced
+
+- **The settings panel could not scroll.** `.screens` centres its panel in a
+  grid, and centring an item taller than its container pushes the top edge above
+  it, where scrolling cannot reach. It had never mattered because no panel was
+  that tall. `place-items: safe center` falls back to start alignment at exactly
+  the point centring would start hiding something.
+- **Sixteen bindings in one column** made the key map taller than the settings it
+  was added to, pushing the actual controls off the top of the window. It is
+  two-column now, one on narrow screens, with each group a block so the column
+  break cannot strand a row from its heading.
+
+### Tested
+
+**304 unit tests, 79 end-to-end tests.** Typecheck and lint clean.
+
+Eight new unit tests on the table itself — every action bound once, no key with
+two meanings, every code resolving, the depth nudge working both ways and still
+locked before Stage 4 — and six browser tests on the panel and the navigation.
+
+A note on how those were verified, because the method silently failed for a
+while. Playwright's `reuseExistingServer` is on outside CI, so a preview server
+left running from an earlier run keeps serving the **previous build** — which
+means deliberately breaking a behaviour to confirm a test catches it can report a
+false pass. Two of these checks did exactly that before it was noticed. Running
+with `CI=1` forces a fresh server and is the reliable way to confirm a test bites.
+
+The strict compiler is also doing more of this work than expected: removing a
+binding, orphaning the key map builder, or unhooking the arrow handler are all
+caught by `tsc` before a test ever runs. Confirming the _behavioural_ guards
+needed sabotage that still compiles.
+
+---
+
 ## M10a — The landing marks
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

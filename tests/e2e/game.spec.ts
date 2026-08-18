@@ -654,6 +654,9 @@ test.describe('screens', () => {
   });
 
   test('does not let menu keystrokes reach the piece', async ({ page }) => {
+    // Also the guard on arrow-key menu navigation: the board is live behind
+    // every panel, so a keystroke that moved focus must not also have moved the
+    // piece.
     await page.goto('/?debug=1&mode=ascent&seed=gated');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.keyboard.press('Escape');
@@ -1750,5 +1753,138 @@ test.describe('the landing marks', () => {
     const border = at(falling, 4, 5);
     expect(interior.peak).toBeLessThan(interior.mean * 1.4);
     expect(border.peak).toBeGreaterThan(border.mean * 2);
+  });
+});
+
+/**
+ * The controls, told to the player.
+ *
+ * The game had never said what its keys do anywhere but the README, and it has
+ * enough of them now — move, three rotation axes, a depth nudge, hold, hard
+ * drop, face choice, pause, mute, restart — that it has to.
+ *
+ * The panel is built from the same table the input controller reads, so these
+ * check the rendering against that table rather than against a list written out
+ * here. A key map with its own copy of the bindings is right on the day it is
+ * written and wrong by the next change, with nothing to catch it.
+ */
+test.describe('the key map', () => {
+  async function openSettings(page: Page): Promise<void> {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator('.keymap')).toBeVisible();
+  }
+
+  test('shows a row for every binding, with the keys that work', async ({ page }) => {
+    await openSettings(page);
+
+    const table = await page.evaluate(() => window.__refraction?.bindings ?? []);
+    expect(table.length).toBeGreaterThan(10);
+
+    for (const binding of table) {
+      const row = page.locator(`.keymap__row[data-action="${binding.action}"]`);
+      await expect(row).toBeVisible();
+      await expect(row.locator('.keymap__label')).toHaveText(binding.label);
+      await expect(row.locator('.key')).toHaveText(binding.keys);
+    }
+    // Nothing rendered that the table does not carry.
+    await expect(page.locator('.keymap__row')).toHaveCount(table.length);
+  });
+
+  test('names the one key that means two things', async ({ page }) => {
+    // Left and Right move the piece, and answer the turn prompt while the Shift
+    // meter is full. A key map that lists only the first is telling a half
+    // truth about the game's most important input.
+    await openSettings(page);
+    await expect(page.locator('.keymap__foot')).toContainText('Shift meter');
+  });
+
+  test('the depth nudge is listed in both directions', async ({ page }) => {
+    // The bug the table found: only one direction had ever been bound, so half
+    // of a Stage 4 mechanic was unreachable.
+    await openSettings(page);
+    await expect(page.locator('.keymap__row[data-action="nudgeDeeper"]')).toBeVisible();
+    await expect(page.locator('.keymap__row[data-action="nudgeNearer"]')).toBeVisible();
+  });
+});
+
+/**
+ * Getting around without a mouse.
+ *
+ * The same keys that move a piece move through the menu — which is the point:
+ * the player should not have to work out that this part of the game wants Tab
+ * instead.
+ */
+test.describe('arrow keys move through the menus', () => {
+  const focused = (page: Page): Promise<string> =>
+    page.evaluate(() => {
+      const el = document.activeElement;
+      if (!el) return '';
+      return (el.querySelector('.mode__name')?.textContent ?? el.textContent ?? '').trim();
+    });
+
+  test('walks the mode grid as a grid, not as a list', async ({ page }) => {
+    // Left and right walk the row; up and down change row and keep the column.
+    // A grid that is one column on a phone and three on a laptop is the same
+    // markup either way, so the rows come from the laid-out geometry.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+
+    const top = (): Promise<number> =>
+      page.evaluate(() => Math.round(document.activeElement?.getBoundingClientRect().top ?? -1));
+
+    const firstName = await focused(page);
+    const firstRow = await top();
+
+    await page.keyboard.press('ArrowRight');
+    expect(await focused(page)).not.toBe(firstName);
+    expect(await top()).toBe(firstRow);
+
+    await page.keyboard.press('ArrowDown');
+    const lowerRow = await top();
+    expect(lowerRow).toBeGreaterThan(firstRow);
+
+    await page.keyboard.press('ArrowUp');
+    expect(await top()).toBeLessThan(lowerRow);
+
+    // Deliberately not asserting that down-then-up returns to the same card.
+    // It does not always, and should not: a locked mode is not focusable, so
+    // the rows can hold different numbers of cards, and moving between two rows
+    // of different occupancy keeps the nearest column rather than an exact one.
+  });
+
+  test('moves down the settings rows and reaches the button at the end', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    const seen = new Set<string>();
+    for (let i = 0; i < 12; i += 1) {
+      seen.add(await page.evaluate(() => document.activeElement?.className ?? ''));
+      await page.keyboard.press('ArrowDown');
+    }
+    // It travels the checkboxes and the slider, and gets to BACK.
+    expect([...seen].some((name) => name.includes('field__input'))).toBe(true);
+    expect([...seen].some((name) => name.includes('field__range'))).toBe(true);
+  });
+
+  test('leaves the arrows alone where a control needs them', async ({ page }) => {
+    // A slider needs left and right for its value and a text field needs them
+    // for the caret. Taking those would make the volume control unusable by the
+    // very keyboard this is meant to serve.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    await page.locator('.field__range').focus();
+    const before = await page.locator('.field__range').inputValue();
+    await page.keyboard.press('ArrowLeft');
+    expect(await page.locator('.field__range').inputValue()).not.toBe(before);
+    // Focus stayed on the slider rather than moving away.
+    expect(await page.evaluate(() => document.activeElement?.className ?? '')).toContain(
+      'field__range'
+    );
   });
 });

@@ -416,15 +416,20 @@ here is built on top of a board the player can read.
 - Banded, luminance, and colour-vision-safe depth ramps; lane numerals. Any
   alternative to ROYGBIV must preserve the core distinction: depth is relative
   to the current camera orientation.
-- **Key map in settings** _(play notes)_ — a visible reference for what every key
-  does. The game has never told the player its controls anywhere but the README,
-  and it now has enough of them (move, three rotation axes, depth nudge, hold,
-  hard drop, face choice, pause, mute, restart) that it has to. Precursor to the
-  remapping below, which needs somewhere to display the bindings anyway.
-- **Arrow keys move through menus** _(play notes)_ — focus travels the panels and
-  the mode grid with the same keys that move a piece, so the whole game is
-  reachable without a mouse. Implied by "completable by keyboard alone" below;
-  making it explicit because it is a real gap today, not a refinement.
+- ✅ **Key map in settings** _(play notes)_ — a visible reference for what every
+  key does, built from the same table the input controller reads, so the panel
+  cannot describe a key the engine does not answer to.
+
+  Writing the bindings out as a table is what found the bug it now documents:
+  the depth nudge takes ±1 and the spec said `W` / `S`, but `S` is half of the
+  WASD movement cluster and already the soft drop, so only `W` had ever been
+  bound and half a Stage 4 mechanic was unreachable. Depth is `T` / `G` now.
+
+- ✅ **Arrow keys move through menus** _(play notes)_ — focus travels the panels
+  and the mode grid with the same keys that move a piece. Rows come from the
+  laid-out geometry rather than the markup, because the mode grid is one column
+  on a phone and several on a laptop from the same DOM. A text field keeps its
+  arrows for the caret and a slider keeps left and right for its value.
 - Full key remapping; gamepad parity.
 - Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake
   controls, audio accessibility, screen-reader board summaries, focus

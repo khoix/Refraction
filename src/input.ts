@@ -3,9 +3,15 @@
  *
  * Translates key events into game intents. Repeat handling (DAS/ARR) lives here
  * rather than in the engine so the engine stays a pure function of its inputs.
+ *
+ * Which key means what is **not** decided here -- it comes from `keymap.ts`,
+ * which the settings panel reads too. This file resolves a code to an action and
+ * then acts on the action, so a binding cannot exist in the engine without
+ * appearing in the key map, or appear in the key map without working.
  */
 
 import type { Game } from '@core/game';
+import { ACTION_BY_CODE } from './keymap';
 
 /** Delayed auto shift: hold before a move starts repeating. */
 export const DAS_MS = 150;
@@ -62,7 +68,9 @@ export class InputController {
     const game = this.game();
     this.handlers.onInteract();
 
-    if (event.code === 'Escape') {
+    const action = ACTION_BY_CODE.get(event.code);
+
+    if (action === 'pause') {
       this.releaseAll();
       this.handlers.onPause();
       event.preventDefault();
@@ -73,79 +81,69 @@ export class InputController {
     // engine, or the piece drifts behind the panel while the player reads it.
     if (!this.handlers.accepts()) return;
 
-    if (event.code === 'KeyM') {
+    if (action === 'mute') {
       this.handlers.onToggleMute();
       event.preventDefault();
       return;
     }
 
-    // The turn prompt takes over the arrow keys while it is up.
+    // The turn prompt takes over the movement keys while it is up.
     if (game.status === 'awaitingTurn') {
-      if (event.code === 'ArrowLeft' || event.code === 'KeyA') {
+      if (action === 'moveLeft') {
         this.handlers.onTurn('left');
         event.preventDefault();
-      } else if (event.code === 'ArrowRight' || event.code === 'KeyD') {
+      } else if (action === 'moveRight') {
         this.handlers.onTurn('right');
         event.preventDefault();
       }
       return;
     }
 
-    switch (event.code) {
-      case 'ArrowLeft':
-      case 'KeyA':
-        if (!this.left.held) {
-          this.left.held = true;
-          this.left.elapsed = 0;
-          this.left.repeating = false;
-          game.moveHorizontal(-1);
-        }
+    if (action === undefined) return;
+
+    switch (action) {
+      case 'moveLeft':
+        this.press(this.left, () => game.moveHorizontal(-1));
         break;
-      case 'ArrowRight':
-      case 'KeyD':
-        if (!this.right.held) {
-          this.right.held = true;
-          this.right.elapsed = 0;
-          this.right.repeating = false;
-          game.moveHorizontal(1);
-        }
+      case 'moveRight':
+        this.press(this.right, () => game.moveHorizontal(1));
         break;
-      case 'ArrowDown':
-      case 'KeyS':
+      case 'softDrop':
         this.softDropHeld = true;
         this.softDropElapsed = 0;
         game.softDrop();
         break;
-      case 'Space':
+      case 'hardDrop':
         game.hardDrop();
         break;
-      case 'KeyZ':
+      case 'rollAnti':
         game.rotatePiece('roll', false);
         break;
-      case 'KeyX':
-      case 'ArrowUp':
+      case 'rollClock':
         game.rotatePiece('roll', true);
         break;
-      case 'KeyQ':
+      case 'yawAnti':
         game.rotatePiece('yaw', false);
         break;
-      case 'KeyE':
+      case 'yawClock':
         game.rotatePiece('yaw', true);
         break;
-      case 'KeyR':
+      case 'pitchUp':
         game.rotatePiece('pitch', true);
         break;
-      case 'KeyF':
+      case 'pitchDown':
         game.rotatePiece('pitch', false);
         break;
-      case 'KeyW':
+      case 'nudgeNearer':
         game.nudgeDepth(-1);
         break;
-      case 'KeyC':
-      case 'ShiftLeft':
+      case 'nudgeDeeper':
+        game.nudgeDepth(1);
+        break;
+      case 'hold':
         game.hold();
         break;
-      case 'Enter':
+      case 'restart':
         if (game.status === 'gameOver') this.handlers.onRestart();
         break;
       default:
@@ -154,18 +152,24 @@ export class InputController {
     event.preventDefault();
   }
 
+  /** Start a repeatable press, ignoring the browser's own key repeat. */
+  private press(state: RepeatState, action: () => void): void {
+    if (state.held) return;
+    state.held = true;
+    state.elapsed = 0;
+    state.repeating = false;
+    action();
+  }
+
   private handleUp(event: KeyboardEvent): void {
-    switch (event.code) {
-      case 'ArrowLeft':
-      case 'KeyA':
+    switch (ACTION_BY_CODE.get(event.code)) {
+      case 'moveLeft':
         this.left.held = false;
         break;
-      case 'ArrowRight':
-      case 'KeyD':
+      case 'moveRight':
         this.right.held = false;
         break;
-      case 'ArrowDown':
-      case 'KeyS':
+      case 'softDrop':
         this.softDropHeld = false;
         break;
       default:

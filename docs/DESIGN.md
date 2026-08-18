@@ -410,8 +410,16 @@ point — become impossible.
 - The anchor lane is visible before the piece lands: the preview renders it in
   depth colour, the piece spawns already wearing its lane's colour, and the
   ghost shows the landing footprint at the correct depth.
-- **Depth Nudge** (`W` / `S`) shifts the piece ±1 lane. It is **locked until
-  Stage 4**, and always available in Prism and Zen.
+- **Depth Nudge** (`T` deeper, `G` nearer) shifts the piece ±1 lane. It is
+  **locked until Stage 4**, and always available in Prism and Zen.
+
+  This said `W` / `S` until M11, and that pairing cannot work: `S` is half of the
+  WASD movement cluster the README advertises and is already the soft drop. What
+  actually shipped was `W` alone, so the nudge only ever moved the piece one way
+  and half a Stage 4 mechanic was unreachable. Writing the bindings out as a
+  table for the key map is what surfaced it. Depth takes its own vertical pair
+  now, next to the `R` / `F` used for pitch: two spatial axes, two adjacent
+  pairs, neither stealing a movement key.
 
 This preserves the reveal arc the proposal is built around. Stages 1–3 genuinely
 play as a 2D game where colour is the only signal that something else is going
