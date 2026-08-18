@@ -288,21 +288,28 @@ export class GameRenderer {
    * flush. This one says where the piece will *sit*; `contact` below says what
    * it will sit *on*, and on a stepped board they are rows apart.
    *
-   * Fill plus outline, for the same reason the x-ray is: a translucent cube
-   * alone reads as a dead block against the well's near-black background --
-   * 0.44 of a lane colour lands around luminance 47 -- and it was at its
-   * faintest on an open board, where the x-ray correctly does nothing and there
-   * was nothing to lend it contrast. A mark may not depend on the x-ray to be
-   * legible, so it carries its own edge.
+   * **No outline.** It had one briefly, and an outlined mark sitting inside an
+   * outlined x-ray region is two borders a few pixels apart saying different
+   * things -- the mark lost, and the region's edge got harder to read too.
+   *
+   * So the legibility has to come from the fill. A mark may not depend on the
+   * x-ray to be seen: on an open board, where the x-ray correctly does nothing,
+   * a translucent cube alone reads as a dead block -- 0.44 of a lane colour over
+   * the well's near-black background lands around luminance 47. It is raised and
+   * lifted toward white, which also evens out the ramp: violet at luminance 67
+   * is the case that decides the numbers, since a fill alone leaves the dark end
+   * of the spectrum far fainter than the bright end.
+   *
+   * It stays inset at 0.78, which is what keeps it reading as a mark rather than
+   * as a cube now that it is this solid.
    */
   private readonly ghost = new VoxelLayer({
-    opacity: 0.3,
+    opacity: 0.72,
+    lift: 0.45,
     ghost: true,
     renderOrder: 3,
     maxInstances: 8,
   });
-  // Topmost, above every see-through pass: a mark nothing may paint over.
-  private readonly ghostEdges = new EdgeLayer(8, 0.85, 8);
   /**
    * Lines that are complete and about to be removed, drawn additively over the
    * board. During a turn these are the lines the rotation is *revealing* -- they
@@ -446,7 +453,6 @@ export class GameRenderer {
       this.columnPanel,
       this.lockedXray.mesh,
       this.lockedXrayEdges.lines,
-      this.ghostEdges.lines,
       this.lockedPlain.mesh,
       this.lockedMuted.mesh,
       this.active.mesh,
@@ -506,7 +512,6 @@ export class GameRenderer {
     this.prefs = { ...this.prefs, ...patch };
     for (const layer of this.voxelLayers) layer.setDepthColour(this.prefs.depthColour);
     this.lockedXrayEdges.setDepthColour(this.prefs.depthColour);
-    this.ghostEdges.setDepthColour(this.prefs.depthColour);
   }
 
   get preferences(): RenderPreferences {
@@ -710,7 +715,6 @@ export class GameRenderer {
     this.active.update(activeCells, yaw, separation, whiteout);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(ghostCells, yaw, 0.78 * separation);
-    this.ghostEdges.update(ghostCells, game.face, yaw);
     // The same cells again, drawn only where the board hides them -- now only
     // load-bearing for focal and far cubes, since nearer ones no longer write
     // depth. Keep them: a same-lane overhang still occludes.
@@ -749,7 +753,6 @@ export class GameRenderer {
   dispose(): void {
     this.lockedXray.dispose();
     this.lockedXrayEdges.dispose();
-    this.ghostEdges.dispose();
     this.lockedPlain.dispose();
     this.lockedMuted.dispose();
     this.active.dispose();

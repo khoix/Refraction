@@ -7,6 +7,78 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Play response: one border, not two
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "You don't need to show keyboard mapping for mobile. Just mobile actions. Also,
+> for the landing indicator, remove the border — it gets confusing with the x-ray
+> borders in place."
+
+### The landing mark loses its outline
+
+Two milestones ago the landing mark was invisible, and an outline was what fixed
+it. But an outlined mark sitting inside an outlined x-ray region is two borders a
+few pixels apart saying different things, and both got harder to read for it.
+There is one border on screen now, and it belongs to the x-ray.
+
+Which puts the mark's legibility back on its fill, and the original problem back
+in play: on an open board, where the x-ray correctly does nothing, a translucent
+cube reads as a dead block — 0.44 of a lane colour over the well's near-black
+background lands around luminance 47. The fill is raised to 0.72 and lifted 45%
+toward white, which also evens out the ramp. Violet at luminance 67 is the case
+that decides the numbers: a fill alone leaves the dark end of the spectrum far
+fainter than the bright end, and the lift is what carries it. Measured on an open
+board, the mark now peaks at 168 against an empty cell's 21.
+
+It stays inset at 0.78, which is what keeps it reading as a mark rather than as a
+cube now that it is this solid. The two marks stay distinguishable by hue as well
+as position: the landing mark wears its lane's colour, the surface mark below it
+is near-white.
+
+**A process note worth recording.** The first attempt at this changed nothing,
+because the edit that was supposed to set the new opacity never matched the
+source — so two rounds of measurement were taken against the old value, and the
+numbers looked inexplicably flat. The tell was that raising opacity from 0.5 to
+0.7 moved the measured peak by two luminance levels. When a change has no effect
+it is worth checking that it was applied before concluding anything about it.
+
+### The key map is for keyboards
+
+Hidden on touch-primary devices — `(hover: none) and (pointer: coarse)` rather
+than a width breakpoint, since a narrow window on a laptop still has a keyboard
+and a tablet with one attached reports a fine pointer.
+
+The slot is empty on a phone rather than filled with mobile actions, because the
+mobile actions do not exist yet. A panel documenting gestures the game does not
+answer to is worse than one that says nothing. M12 fills it, and reads whatever
+carries the gestures the same way the key map reads `BINDINGS`.
+
+### The mobile rotation scheme, part-resolved
+
+Recorded in M12 rather than built. The proposed split — a narrow strip along the
+bottom for movement, swipes above it for rotation — is the right idea, and solves
+the hardest part: a gesture no longer has to be disambiguated by what it is near,
+because the region it starts in says which verb class it belongs to.
+
+It does not reach three axes on its own. Four swipe directions cover two axes
+bidirectionally, and the third is left with nothing — and the one left over is
+`roll`, the screen-plane rotation a player uses constantly, while yaw and pitch
+are the specialists. So the resolution is to invert which verbs get which class
+of gesture: tap for roll, swipes for yaw and pitch, and hard drop on a downward
+fling in the strip rather than a double tap, which also removes the collision
+where every double tap would roll the piece once on its way to dropping it.
+
+### Tested
+
+**304 unit tests, 79 end-to-end tests.** Typecheck and lint clean.
+
+The landing-mark test changed with the mark: it asserted a border and now asserts
+the fill, still against the same claim — that the mark reads with nothing in
+front of it, on the board where the x-ray does nothing at all.
+
+---
+
 ## M11a — The controls, told to the player
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

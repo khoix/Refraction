@@ -501,13 +501,46 @@ cannot be dropped: three-axis rotation is why the pieces are cubes rather than
 tetrominoes. A phone cannot carry six rotation buttons without burying the
 board, and the drag/tap vocabulary above is already spent on movement.
 
-Options to evaluate, none chosen yet: a radial rotation control that appears
-under a long press and disappears on release; two-finger twist for one axis with
-the other two on taps; a small persistent control cluster in the thumb zone
-below the well, accepting the vertical cost; or an axis selector that changes
-what a rotate gesture applies to. **Decide before building** — this is the
-choice the milestone lives or dies on, and it deserves a prototype rather than a
-guess.
+**A scheme to prototype**, proposed and part-resolved. Split the screen: a
+narrow strip along the bottom takes horizontal drags and moves the piece;
+everything above it takes swipes, and a swipe rotates.
+
+That zoning is the right idea and solves the hardest part — a gesture no longer
+has to be disambiguated by what it happens to be near, because the region it
+starts in already says which verb class it belongs to.
+
+It does not, on its own, reach three axes. Up, down, left and right are four
+gestures; an axis needs two of them to turn both ways, so four gestures cover
+**two** axes and the third is left with nothing.
+
+And the axis left over is the one used most. In a falling-block game the constant
+rotation is the one in the screen plane — here that is `roll`, on `Z` / `X`.
+Yaw and pitch are the depth-aware rotations, and a player reaches for them far
+less often. Swipes covering yaw and pitch would strand the game's most frequent
+verb.
+
+So the resolution is to invert which verbs get which class of gesture:
+
+| Gesture                          | Verb                        |
+| -------------------------------- | --------------------------- |
+| Horizontal drag, in the strip    | Move — absolute, per column |
+| Fling down, in the strip         | Hard drop                   |
+| Slow drag down, in the strip     | Soft drop                   |
+| Tap, above the strip             | Roll — the frequent one     |
+| Swipe up / down, above the strip | Pitch ±                     |
+| Swipe left / right, above strip  | Yaw ±                       |
+
+Putting hard drop on a downward fling rather than a double tap also removes the
+collision that double tap creates: with tap meaning roll, every double tap would
+roll the piece once on its way to dropping it. A fling is a distinct gesture from
+a tap at the first sample, so neither has to wait on the other, and the drop
+stops feeling late.
+
+Two things still open in this scheme. **Roll's other direction** — rare, and a
+candidate for a two-finger tap or a long press, or for being left out entirely on
+the grounds that three rolls get there. And **the strip's height**: tall enough
+for a thumb, which is around 44 px, without eating a well that is already 18 rows
+in portrait.
 
 The **turn prompt** needs a touch answer too. When the Shift meter fills the game
 asks for left or right and falls back after five seconds; on a phone that has to
@@ -536,6 +569,18 @@ be a pair of targets, not a keypress.
   the expensive path and is already handled.
 - Establish a frame-time budget and measure against a throttled CPU profile in
   the end-to-end suite, so a regression is caught rather than felt.
+
+### Say the mobile controls, not the keyboard ones
+
+The key map in settings is hidden on touch-primary devices already — by input
+method rather than by width, since a narrow window on a laptop still has a
+keyboard. The slot is empty on a phone until this milestone fills it with the
+gestures above. A panel that documents controls the game does not answer to is
+worse than one that says nothing, so it stays empty until they exist.
+
+The same table-shared-with-the-implementation approach applies: whatever carries
+the gestures should be what the panel reads, for the same reason the key map
+reads `BINDINGS`.
 
 ### Touch hygiene
 

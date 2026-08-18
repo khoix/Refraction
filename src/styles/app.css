@@ -836,6 +836,22 @@ body {
   }
 }
 
+/*
+ * A phone has no keyboard, so it has no use for a key map. Hidden by input
+ * method rather than by width: a narrow window on a laptop still has a keyboard,
+ * and a tablet with one attached reports a fine pointer. `(hover: none) and
+ * (pointer: coarse)` is the pair that actually means "touch is the only way in".
+ *
+ * The mobile controls take this slot in M12. They are not listed yet because
+ * they do not exist yet, and a panel that documents gestures the game does not
+ * answer to is worse than one that says nothing.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .keymap {
+    display: none;
+  }
+}
+
 @media (max-width: 34rem) {
   /* Narrower key column, but still three across: measured at 390px the note
      fits on the line, and wrapping it under the label read as broken layout

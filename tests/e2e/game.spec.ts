@@ -1707,11 +1707,16 @@ test.describe('the landing marks', () => {
     expect((marked as CellSample).mean).toBeGreaterThan((plain as CellSample).mean * 1.15);
   });
 
-  test('the landing outline reads with nothing in front of it', async ({ page }) => {
+  test('the landing mark reads with nothing in front of it', async ({ page }) => {
     // A mark may not depend on the x-ray to be legible. On an open board the
-    // x-ray correctly does nothing, which used to be exactly where the landing
-    // outline was faintest — a 0.44 cube over a near-black background, reading
-    // around luminance 47. It carries its own edge now.
+    // x-ray correctly does nothing, which is exactly where the landing mark was
+    // faintest — a 0.44 cube over a near-black background, reading around
+    // luminance 47.
+    //
+    // It had an outline for a while, which fixed that and created a worse
+    // problem: an outlined mark inside an outlined x-ray region is two borders
+    // a few pixels apart saying different things. The legibility comes from the
+    // fill now, raised and lifted toward white.
     //
     // Row 9 is where the bar comes to rest, and with no wall there is nothing
     // else in that cell at all: whatever is measured there is the mark.
