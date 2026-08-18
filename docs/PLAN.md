@@ -469,6 +469,10 @@ Four small ones, unrelated to each other except that they are all interface.
   first contact with the one idea the whole game rests on. It is already
   unlocked from the start, so nothing else has to move.
 
+  Pairs with the rotation-axis change in M12: as the default and the first thing
+  anyone sees, Flatland wants to be roll-only, so a new player meets one new idea
+  rather than four at once.
+
 **Exit criteria:** the game is completable with depth colour fully disabled and
 by keyboard alone.
 
@@ -496,14 +500,37 @@ The turn prompt borrows the strip: while the board waits to be turned, a sideway
 drag chooses the face. Same gesture, same double duty Left and Right already do
 on a keyboard in exactly that state.
 
-**Gate the strip by mode, or by setting** _(play notes)_. The strip is dedicated
-screen space and it is not equally earned in every mode: Flatland deals only
-planar pieces, so two of the three rotation axes have nothing to do and the
-field/strip split buys less. The note asks for it to appear only where it is
-needed, or behind a setting. **Which modes "require it" needs settling before
-this is built** — the strip carries movement, which every mode needs, so the
-question is really whether the _split_ is what varies, or the strip's dedicated
-height, or the rotation vocabulary above it.
+**Gate the split by mode** _(play notes)_. The field/strip split exists to carry
+three rotation axes. A mode that does not need three does not need the split: the
+whole screen can move the piece, a tap anywhere rolls it, and the strip stops
+being dedicated screen space that has to be paid for out of an eighteen-row well.
+
+**But gating the UI alone would be wrong, and measurably so.** Tier 1 is exactly
+the five planar pieces — I, O, L, T, S, every cell at `z = 0` — so Flatland
+(`maxTier: 1`) deals nothing but flat pieces. Yaw and pitch are _not_ no-ops on
+them, though: rotating the I-piece about Y takes it from four columns in one lane
+to four lanes in one column. It leaves the screen plane entirely.
+
+So a Flatland player on a keyboard can already press `Q` and put a piece across
+four lanes, and hiding the swipe zone on a phone would take that away from touch
+alone. Input parity is not something to lose quietly.
+
+The fix is in the mode table, not the UI: **which rotation axes a mode permits
+becomes configuration**, the same way every other mode difference already is —
+modes are data over the stage table, never code paths. Flatland becomes roll
+only, which is what its name has been claiming all along: flat pieces _and_ flat
+rotation. Every UI consequence then follows from one field.
+
+- Touch drops the split in roll-only modes.
+- The key map, which is built from `BINDINGS`, has to learn that some rows do
+  not apply to the mode in play — or it will list `Q` and `E` in a mode that
+  ignores them, which is exactly the drift the shared table exists to prevent.
+- It makes Flatland a far better default and a far better tutorial ground: one
+  new idea at a time, and the board turning is the only three-dimensional thing
+  in it.
+
+**This is a gameplay change, not a UI gate**, so it is worth confirming before
+building. It narrows what a Flatland player can do today.
 
 **Still unassigned, and needed before a run can be completed one-thumbed:** hold,
 the depth nudge from Stage 4, and pause. All three want a place to live rather
