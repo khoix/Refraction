@@ -341,8 +341,15 @@ with the input work in M11, and moved there.
   new tests compare it against the palette and against the DOM preview instead;
   each of the three causes was re-introduced to confirm they fail on it.
 - ✅ **Retuned the three bands against a full-strength board.** The x-ray's
-  opacities and `FAR_DIM` were all measured under the wash, so the far band came
-  out brighter than the x-ray in front of it once the wash was gone.
+  opacities and the muted dim were all measured under the wash, so the muted band
+  came out brighter than the x-ray in front of it once the wash was gone.
+- ✅ **Scoped the x-ray to the drop channel** _(play notes, with illustration)_.
+  The rollback above fixed how the bands were drawn but kept classifying the
+  whole board by lane, so a piece dealt to a back lane still turned everything to
+  glass. The region is the columns the piece spans, from its landing row upward:
+  at or in front of the piece's depth is x-ray, behind it is muted, and every
+  other cube on the board — a different column, or below the ghost — is normal.
+  There is no separate focal band. See DESIGN §9.
 - **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
   after the rollback, and check behaviour on highly occluded boards.
 

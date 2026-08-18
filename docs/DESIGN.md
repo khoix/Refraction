@@ -584,44 +584,74 @@ at least two of:
   colours — a rendering override only, with normal occlusion between settled
   cubes untouched. The active silhouette is solid and the ghost's fainter and
   inset, so the two stay distinct even when both show through the stack.
-- **Lane focus, as an x-ray.** The falling piece's occupied lanes are a focal
-  plane, and the board is drawn in three bands relative to it:
+- **The x-ray, over the drop channel.** Cubes standing between the player and
+  the surface the piece is aimed at are drawn see-through rather than solid.
 
-  | Band                  | Treatment                                                           |
-  | --------------------- | ------------------------------------------------------------------- |
-  | In front of the piece | **X-ray** — a near-invisible fill plus a bright twelve-edge outline |
-  | The piece's own lanes | Fully opaque, at full strength — the landing surface                |
-  | Behind the piece      | Darkened toward the void, keeping its hue                           |
+  **The region is the channel, not the board.** It is the columns the falling
+  piece spans, from the row it will land on upward — nothing wider, nothing
+  lower. Inside it:
+
+  | Where the cube is                               | Drawn as   |
+  | ----------------------------------------------- | ---------- |
+  | At or in front of the piece's depth             | **X-ray**  |
+  | Behind the piece's depth                        | **Muted**  |
+  | Anywhere else — another column, below the ghost | **Normal** |
+
+  There is no fourth "focal" state. The piece's own lanes are x-rayed along with
+  the ones in front of them, because a cube above the ghost hides the landing row
+  whatever its depth. Normal is the default and the great majority of the board
+  is in it at any moment.
+
+  Two consequences worth stating, because both were got wrong first:
+
+  - **A cube only changes if it is in the way.** The first implementation
+    classified every cube on the board by its lane alone. A piece dealt to a back
+    lane therefore turned the entire board to glass and one dealt to the front
+    muted all of it — which is what "everything looks muted" was, and no amount of
+    tuning the opacities would have fixed it. Restricting the region to the
+    channel is the fix; the opacities were never the problem.
+  - **On a level board the x-ray does nothing, correctly.** The ghost sits on top
+    of the stack, so on flat ground there is nothing above it to see through. The
+    effect only has work to do when the stack is uneven — when cubes in some other
+    lane stand higher than the row the piece is aiming for.
+
+  The channel is measured per column rather than as one bounding box. An S or an
+  L lands at different heights in different columns and may occupy different lanes
+  in each, so the region follows the piece rather than a box drawn round it. Both
+  ends are read off the ghost, which already carries the columns, the lanes and
+  the landing row.
 
   **X-ray is not a fade, and the difference is the whole point.** A uniformly
   translucent cube trades one for the other: whatever fraction of it you can
   see is exactly the fraction of the board behind it that you cannot. Turn it
   down far enough to reveal the board and the cube disappears; turn it up far
   enough to see the cube and everything underneath greys out. There is no
-  setting at which both read, which is why the first attempt — a flat 0.28 veil
-  over the near band — made the whole board look muted.
+  setting at which both read.
 
   Splitting fill from structure escapes that. The fill goes to almost nothing so
   the board behind comes through at full strength, and the outline carries the
   cube's shape _and_ its lane colour, so an x-rayed cube still says how deep it
-  is. Measured on an isolated cube per lane, the signature is a **low mean with
-  a high peak**: mostly empty, crisply edged.
+  is. The signature is a **low mean with a high peak**: mostly empty, crisply
+  edged. Against an untouched cube measuring a flat 107 in and out, an x-rayed
+  one means 52 with a peak of 169 — half the light, and structure where the solid
+  cube has none.
 
   The outline needs real line primitives. `wireframe` on a box draws every
   triangle edge, which puts a diagonal across all six faces and turns a wall of
   cubes into a mesh of X's, so `EdgeLayer` rebuilds twelve clean edges per cube
   each frame instead of instancing triangles.
 
-  The gradient is relative to the _piece_, moves when the piece moves, and
-  vanishes at lock — it cannot be read as an absolute distance cue the way size
-  falloff or haze would. Gated to `falling`; off during a turn, when lanes are
-  being remapped.
+  The region belongs to the _piece_, moves when the piece moves, and vanishes at
+  lock — it cannot be read as an absolute distance cue the way size falloff or
+  haze would. Gated to `falling`; off during a turn, when lanes are being
+  remapped.
 
-  Levels are tuned by measurement, not by eye, and asserted end-to-end: the
-  focal band is the brightest surface, the near band's mean sits under 60% of it
-  while its peak stays above the focal mean and below the focal peak, and the
-  far band is dimmer than the near band on average with no bright edges at all —
-  dark, but never deleted. It still carries its hue.
+  Levels are tuned by measurement, not by eye, and asserted end-to-end: a column
+  the piece does not cover renders identically whether or not something is
+  falling; the channel stops at the landing row, with the buried stack below it
+  untouched; a cube level with the ghost in a nearer lane is x-rayed, not solid,
+  so the marker reads through it; and the muted band is dark but never deleted —
+  it still carries its hue.
 
 - **Ghost piece** — rendered at the true landing depth, in that lane's colour,
   and drawn _after_ the x-ray passes. It once sat at the default render order,
@@ -634,7 +664,7 @@ at least two of:
   the depth colours it will arrive wearing.
 
 The visual hierarchy when these overlap, strongest to weakest: **active piece →
-landing ghost → focal-lane board → faded far board → transparent near board.**
+landing ghost → untouched board → x-rayed channel → muted band behind it.**
 
 ## 10. Accessibility **[GAP — critical]**
 

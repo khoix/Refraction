@@ -7,6 +7,94 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## The x-ray becomes a channel, not a mode the board is in
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+> "It's say you have a blue piece 4 voxel long, and it's turned sideways and
+> center at the top… All voxels in the 4 lanes beneath the piece, above the ghost
+> indicator, as well as any in front of those are x-ray voxels. Any behind are
+> muted."
+
+Sent with a hand-drawn illustration, and it named three things the previous pass
+had wrong.
+
+### The region was the whole board
+
+Every version until now classified **every cube on the board** by its lane alone:
+in front of the piece, in the piece's lane, or behind. That is why a piece dealt
+to a back lane turned the entire board to glass and one dealt to the front muted
+all of it — and it is the real reason "everything looks muted" survived a
+rollback, a retune, and a colour-pipeline fix. The opacities were never the
+problem. The region was.
+
+The region is the **drop channel**: the columns the piece spans, from the row it
+will land on upward, and nothing else.
+
+| Where the cube is                                   | Drawn as   |
+| --------------------------------------------------- | ---------- |
+| In the channel, at or in front of the piece's depth | **X-ray**  |
+| In the channel, behind the piece's depth            | **Muted**  |
+| Anywhere else — another column, below the ghost     | **Normal** |
+
+On a 4-wide piece that is 4 of 8 columns, above one row. The rest of the board —
+most of it, most of the time — is untouched.
+
+### There was no vertical cut at all
+
+"Above the ghost indicator" had no counterpart in the code. The buried stack
+below the landing row was being x-rayed along with everything else, despite
+having nothing to do with the shot being lined up. The channel now has a floor,
+read per column off the ghost.
+
+A consequence worth stating: **on a level board the x-ray does nothing, and that
+is correct.** The ghost sits on top of the stack, so on flat ground there is
+nothing above it to see through. The effect only has work to do when the stack is
+uneven. The first rewrite of the tests missed this and built a flat slab, which
+measured the one board where the right answer is "no change".
+
+### There is no focal band
+
+The legend in the illustration lists four things — normal, x-ray, ghost, muted —
+and a focal state is not among them. The piece's own lanes are x-rayed along with
+the ones in front of them, because a cube above the ghost hides the landing row
+whatever its depth. Normal is the default state, not a third band. The layers are
+renamed to match: `lockedXray`, `lockedPlain`, `lockedMuted`.
+
+A follow-up note — "any voxels in front of a ghosted or x-rayed voxel are also
+x-rayed" — is satisfied by construction, since the channel runs from the front
+lane through the piece's depth in one span. It is now pinned by its own test
+rather than left as an implication.
+
+### Tested
+
+**296 unit tests, 69 end-to-end tests.** Typecheck and lint clean.
+
+The old band tests were built on the lane split and could not be adapted, so the
+x-ray suite is rewritten around the channel instead:
+
+- a column the piece does not cover renders identically whether or not something
+  is falling;
+- the channel stops at the landing row, with the stack below it untouched;
+- an x-rayed cell reads as glass, not as a fade — mean 52 against an untouched
+  cube's 107, but a peak of 169 where the solid cube is a flat 107;
+- a cube level with the ghost in a nearer lane is x-rayed, so the marker reads
+  through it — measured with the marker suppressed and again with it drawn, since
+  the difference between those two _is_ how much of the ghost gets through;
+- what stands behind the landing surface is dark but not deleted.
+
+Both boundaries were confirmed by breaking them: shifting the channel floor by
+one row fails three tests, and dropping the column restriction fails the first.
+
+One measurement bug worth recording, because it very nearly produced a wrong
+conclusion. The band sampler averaged the middle 70% of a cell for both mean and
+peak — but a cube's outline runs around its **perimeter**, so an interior-only
+window measures fill and nothing else, and reads a perfectly good x-ray as a flat
+fade. Mean now comes from the interior and peak from the whole cell: fill from
+the middle, structure from the edge.
+
+---
+
 ## The board gets its colour back
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
