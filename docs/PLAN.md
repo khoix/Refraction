@@ -1,6 +1,6 @@
 # Refraction — Build Plan
 
-Fourteen milestones. Each one is a self-contained push: source, tests, and a
+Sixteen milestones. Each one is a self-contained push: source, tests, and a
 `release_notes.md` entry. Every milestone leaves `main` in a state that builds,
 passes `npm run verify:full`, and can be played or inspected.
 
@@ -310,9 +310,11 @@ with the input work in M11, and moved there.
 - **Peek** — hold to tilt 8°, parallax inspection, snaps back, changes no state.
   Limited at Stage 6+, disabled in Blind Spectrum.
 - Rotating 3D next-piece preview; static preview as a harder option.
-- First-run onboarding that teaches by design rather than by tutorial text:
-  position is absolute, colour is relative, rotation changes viewpoint, opposite
-  faces mirror, hidden geometry can be inferred before it is revealed.
+- ~~First-run onboarding that teaches by design rather than by tutorial text.~~
+  **Superseded by M13.** The play notes ask for the opposite and are more
+  specific: a hands-on, on-rails playthrough that pauses to highlight each idea
+  as it happens. Teaching by pure design is a lovely goal, and this game has one
+  idea too strange to leave to it.
 - ✅ **Rolled the X-ray back to the rule it was meant to implement**
   _(play notes)_.
   The intended behaviour was never a whole-board effect: the lanes **under** the
@@ -403,9 +405,11 @@ behaviour is reverted.
 understands what happened afterwards. The ghost is findable at a glance on a full
 board, and no cube is dimmed unless it sits behind the falling piece.
 
-**Sequencing:** the first two items lead this milestone. They are a live
-playability regression on `main` rather than a polish pass, and everything else
-here is built on top of a board the player can read.
+**Sequencing (updated):** the two items that led this milestone — the x-ray
+rollback and the ghost — have shipped, along with everything the play notes
+added after them. What remains is Peek, the rotating preview, and the clarity
+pass; none of them blocks anything else, and the onboarding bullet has moved out
+to M13.
 
 ---
 
@@ -440,6 +444,31 @@ controls with swipe and tap", "responsive layout from 390 px to ultrawide" — a
 they are neither one line of work nor an accessibility footnote. They are their
 own milestone now; see M12.
 
+### Interface corrections — M11b _(play notes)_
+
+Four small ones, unrelated to each other except that they are all interface.
+
+- **The Shift bar paints over every menu.** `.hud__shift` carries `z-index: 1`
+  and `.screens` carries none, so the meter sits above the title screen, the
+  mode grid, settings, pause and game over alike. It is purely visual — the HUD
+  is `pointer-events: none` — but it is on screen at all times including the
+  front door. A live bug on every device, so it goes first rather than waiting
+  for the rest of this group.
+- **The ghost piece stops being a setting.** It is not a preference, it is how
+  the game is read: everything the last three milestones did to the landing
+  marks assumed it is there. A toggle invites a player to turn off the thing
+  that makes depth legible and then conclude the game is unfair. Removing a
+  setting from the accessibility milestone is worth stating plainly — the case
+  for it is that the ghost is a _comprehension_ aid, and the modes that want it
+  gone (Blind Spectrum) already say so in their own configuration.
+- **Volume loses its description.** "Master level, kept separately from mute"
+  explains a distinction nobody asked about. Everyone knows what volume is.
+- **Flatland becomes the default mode.** `DEFAULT_MODE_ID` is `ascent` today.
+  Flatland deals planar pieces only, so depth is purely a property of where a
+  piece is put rather than of its own shape — which is the gentlest possible
+  first contact with the one idea the whole game rests on. It is already
+  unlocked from the start, so nothing else has to move.
+
 **Exit criteria:** the game is completable with depth colour fully disabled and
 by keyboard alone.
 
@@ -466,6 +495,15 @@ behaviour based on which input was used last.
 The turn prompt borrows the strip: while the board waits to be turned, a sideways
 drag chooses the face. Same gesture, same double duty Left and Right already do
 on a keyboard in exactly that state.
+
+**Gate the strip by mode, or by setting** _(play notes)_. The strip is dedicated
+screen space and it is not equally earned in every mode: Flatland deals only
+planar pieces, so two of the three rotation axes have nothing to do and the
+field/strip split buys less. The note asks for it to appear only where it is
+needed, or behind a setting. **Which modes "require it" needs settling before
+this is built** — the strip carries movement, which every mode needs, so the
+question is really whether the _split_ is what varies, or the strip's dedicated
+height, or the rotation vocabulary above it.
 
 **Still unassigned, and needed before a run can be completed one-thumbed:** hold,
 the depth nudge from Stage 4, and pause. All three want a place to live rather
@@ -612,7 +650,78 @@ needs, and holding its frame budget on a mid-range device profile.
 
 ---
 
-## M13 — Performance and Release Candidate
+## M13 — Teaching
+
+**Goal:** a player understands the core idea without being told it in prose.
+
+**This supersedes M10's onboarding bullet**, which said the game should teach
+"by design rather than by tutorial text" and named no tutorial at all. The play
+note asks for the opposite and is more specific: a **hands-on, on-rails
+playthrough** that pauses to highlight the key parts as they happen. Worth
+recording as a change of direction rather than a refinement — teaching by pure
+design is a lovely goal and this game has one idea too strange to leave to it.
+
+- **On rails.** The tutorial deals a fixed sequence of pieces into a fixed
+  board, so every beat lands where the script expects. The engine already
+  supports this exactly: a run is determined by `(seed, input log)`, and the
+  seeded challenge machinery from M9 is the same mechanism. A scripted board is
+  a fixture, not a new code path.
+- **Hands-on.** The player makes the moves. A tutorial that plays itself teaches
+  the player to watch.
+- **Pausing to highlight.** `paused` is already a real `GameStatus` that
+  preserves determinism, so the tutorial can stop the clock on a beat, point at
+  something, and resume without the run drifting.
+- **The beats**, in the order the game reveals them: position is absolute and
+  colour is relative; a line is eight cells sharing a row _and a lane_; the
+  Shift meter fills and the board turns; a face you could not see becomes the
+  face you are playing; a line you did not know you had built clears on arrival.
+  The turn is the moment the game exists for, so the tutorial's job is to get a
+  player to their first one having understood what happened.
+- **Skippable, and offered once.** It runs on first launch and lives in the
+  title screen afterwards.
+
+**Sequencing note:** this wants the title screen (M14) to have somewhere to
+offer it from, but does not depend on it.
+
+**Exit criteria:** a player who has never seen the game completes the tutorial
+and can then say, unprompted, what the colours mean and what turning does.
+
+---
+
+## M14 — The Look
+
+**Goal:** the game looks like itself.
+
+- **A stylised title screen** _(play notes)_. It is plain DOM type on a live
+  board today, which was right for getting the front door working and is not a
+  title screen. The board behind it is the strongest asset the game has;
+  whatever this becomes should use it rather than cover it.
+- **Gel voxels** _(play notes, with reference images)_. Each cube gets a subtle
+  three-dimensional gel material: translucent, lit from within, glossy along the
+  bevels, with the glow pooling toward the lower edges and a brighter rim where
+  the surface turns away. The reference reads as cast resin — a slightly deeper
+  core, faint internal specks, a soft bounce onto the ground.
+
+  **The constraint that governs this is DESIGN §2.5:** a settled cube renders at
+  exactly its `depthColor`, and two end-to-end tests hold it there. A gel
+  material adds variation _within_ a cube — that is the whole point of it — so
+  the rule has to be restated rather than broken: **the cube's mean stays at the
+  palette value, and the material lives in the variation around it.** Depth is
+  read from the field of cubes, not from any one pixel, so a cube that averages
+  to its palette colour still says exactly what it said before. Getting this
+  wrong is how the board ended up at a fifth of its palette value once already.
+
+  Second constraint, from §2.1: whatever the material does must not vary with
+  depth. A gel that glows more brightly at the front would be a second depth cue
+  competing with the spectrum, which is the one thing the projection rules
+  forbid outright.
+
+**Exit criteria:** a still frame of the board is recognisably this game and
+nothing else, and the colour-fidelity tests still pass unchanged.
+
+---
+
+## M15 — Performance and Release Candidate
 
 **Goal:** ship quality.
 
