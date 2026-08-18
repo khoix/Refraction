@@ -469,9 +469,9 @@ Four small ones, unrelated to each other except that they are all interface.
   first contact with the one idea the whole game rests on. It is already
   unlocked from the start, so nothing else has to move.
 
-  Pairs with the rotation-axis change in M12: as the default and the first thing
-  anyone sees, Flatland wants to be roll-only, so a new player meets one new idea
-  rather than four at once.
+  Pairs with the rotation-axis change in M12. As the default and the first thing
+  anyone sees, Flatland is roll-only with no depth nudge, so a new player meets
+  exactly one new idea — the board turning — rather than four at once.
 
 **Exit criteria:** the game is completable with depth colour fully disabled and
 by keyboard alone.
@@ -503,34 +503,44 @@ on a keyboard in exactly that state.
 **Gate the split by mode** _(play notes)_. The field/strip split exists to carry
 three rotation axes. A mode that does not need three does not need the split: the
 whole screen can move the piece, a tap anywhere rolls it, and the strip stops
-being dedicated screen space that has to be paid for out of an eighteen-row well.
+being dedicated screen space paid for out of an eighteen-row well.
 
-**But gating the UI alone would be wrong, and measurably so.** Tier 1 is exactly
-the five planar pieces — I, O, L, T, S, every cell at `z = 0` — so Flatland
-(`maxTier: 1`) deals nothing but flat pieces. Yaw and pitch are _not_ no-ops on
-them, though: rotating the I-piece about Y takes it from four columns in one lane
-to four lanes in one column. It leaves the screen plane entirely.
+**The gate belongs in the mode table, not the UI.** Flatland is a full
+three-dimensional mode today that merely happens to be dealt flat pieces:
 
-So a Flatland player on a keyboard can already press `Q` and put a piece across
-four lanes, and hiding the swipe zone on a phone would take that away from touch
-alone. Input parity is not something to lose quietly.
+| What Flatland has now | Measured                                            |
+| --------------------- | --------------------------------------------------- |
+| Pieces                | Tier 1 only — I, O, L, T, S, every cell at `z = 0`  |
+| Rotation              | All three axes, unrestricted                        |
+| Depth nudge           | Locked at stage 2, **unlocks at stage 4, 30 lines** |
 
-The fix is in the mode table, not the UI: **which rotation axes a mode permits
-becomes configuration**, the same way every other mode difference already is —
-modes are data over the stage table, never code paths. Flatland becomes roll
-only, which is what its name has been claiming all along: flat pieces _and_ flat
-rotation. Every UI consequence then follows from one field.
+And yaw is not idle on a flat piece: rotating the I about Y turns it from four
+columns in one lane into one column across four lanes. It leaves the screen plane
+entirely. So hiding the swipe zone on a phone would take from touch something a
+keyboard still had — an input-parity break, and an invisible one until someone
+plays both.
 
-- Touch drops the split in roll-only modes.
-- The key map, which is built from `BINDINGS`, has to learn that some rows do
-  not apply to the mode in play — or it will list `Q` and `E` in a mode that
-  ignores them, which is exactly the drift the shared table exists to prevent.
-- It makes Flatland a far better default and a far better tutorial ground: one
-  new idea at a time, and the board turning is the only three-dimensional thing
-  in it.
+**Confirmed shape: Flatland becomes roll only, with no depth nudge at all.** The
+piece never leaves the screen plane, and its lane changes only when the board
+turns — which is what "pure projection reading" has always claimed and what the
+mode's own blurb already promises. Two fields in the mode table carry it:
 
-**This is a gameplay change, not a UI gate**, so it is worth confirming before
-building. It narrows what a Flatland player can do today.
+- **Which rotation axes the mode permits.** Flatland gets roll alone.
+- **Whether the depth nudge is ever available.** `forceDepthNudge` exists to turn
+  it on early; the inverse is missing, and a mode needs to be able to withhold it
+  outright rather than merely start below stage 4. Worth folding both into one
+  field — never / by stage / always — rather than adding a second boolean that
+  contradicts the first.
+
+Everything else follows from those two:
+
+- Touch drops the split in roll-only modes. Tap to roll, drag to move.
+- `Q`, `E`, `R`, `F`, `T` and `G` do nothing in Flatland, so the key map — built
+  from `BINDINGS` — has to learn that a row can be inapplicable to the mode in
+  play. Otherwise it lists keys the engine is ignoring, which is exactly the
+  drift the shared table exists to prevent.
+- The greedy agent in `playability.test.ts` only ever rolls (`rotate(offsets,
+'z')`), so the balance tests are unaffected by the restriction.
 
 **Still unassigned, and needed before a run can be completed one-thumbed:** hold,
 the depth nudge from Stage 4, and pause. All three want a place to live rather
