@@ -139,17 +139,23 @@ function highlightCells(game: Game): Cell[] {
  * The falling piece's drop channel, per screen column.
  *
  * The channel is what the player is trying to see into: the columns the piece
- * covers, from the row it will land on upward. Both ends are read off the ghost,
- * which is the piece projected to its landing position and therefore already
- * carries the columns, the lanes and the floor.
+ * covers, and how far down they have to see.
+ *
+ * **Down to the first real voxel, not to where the piece stops.** Those are the
+ * same row only when the piece lands flush. A piece whose underside does not
+ * match the stack comes to rest on its highest point and leaves a gap under
+ * everything else -- a flat four-wide bar on a staircase lands at one height in
+ * all four columns while the surface below sits four, six and seven rows lower.
+ * The gap is the single most useful thing to be able to see, and stopping the
+ * channel at the landing row is exactly what hid it.
  *
  * Per column rather than as one bounding box, because a piece is not always a
  * flat bar. An S or an L lands at different heights in different columns and may
- * occupy different lanes in each, and the channel should follow the piece rather
- * than a box drawn around it.
+ * occupy different lanes in each, so the channel follows the piece rather than a
+ * box drawn around it.
  */
 interface DropChannel {
-  /** Lowest row the channel covers here: the row the piece lands on. */
+  /** Lowest row the channel reaches here: the first settled cube beneath it. */
   readonly floor: number;
   /** Deepest lane the piece occupies here. Everything up to it is x-rayed. */
   readonly back: number;
@@ -160,12 +166,22 @@ function dropChannel(game: Game): Map<number, DropChannel> | null {
   const ghost = game.ghostCells();
   if (ghost.length === 0) return null;
 
+  // Where the surface actually is, keyed by the column and lane it sits under.
+  // A column with nothing beneath the piece has no contact cell at all, and its
+  // channel should reach the well floor rather than stop in mid-air.
+  const surface = new Map<string, number>();
+  for (const cell of game.firstContactCells()) {
+    const { u, y, lane } = toView(game.face, cell);
+    surface.set(`${u},${lane}`, y);
+  }
+
   const channel = new Map<number, DropChannel>();
   for (const cell of ghost) {
-    const { u, y, lane } = toView(game.face, cell);
+    const { u, lane } = toView(game.face, cell);
+    const floor = surface.get(`${u},${lane}`) ?? 0;
     const found = channel.get(u);
     channel.set(u, {
-      floor: found ? Math.min(found.floor, y) : y,
+      floor: found ? Math.min(found.floor, floor) : floor,
       back: found ? Math.max(found.back, lane) : lane,
     });
   }
@@ -186,15 +202,16 @@ function dropChannel(game: Game): Map<number, DropChannel> | null {
  * | -------------------------------------------------- | -------- |
  * | In the channel, at or in front of the piece's depth | x-ray    |
  * | In the channel, behind the piece's depth            | muted    |
- * | Anywhere else -- other columns, below the ghost      | normal   |
+ * | The surface the piece will rest on                  | normal   |
+ * | Anywhere else -- other columns, below the surface    | normal   |
  *
  * So a cube only changes if it is standing between the player and the landing
  * surface, or directly behind that surface. Everything else on the board keeps
  * its full depth colour, which is most of it most of the time.
  *
  * The piece's own lanes are x-rayed along with the ones in front. There is no
- * separate focal band: a cube above the ghost blocks the view of the landing row
- * whatever its depth, so the whole front-to-piece run is glass.
+ * separate focal band: a cube above the surface blocks the view of it whatever
+ * its depth, so the whole front-to-piece run is glass.
  */
 interface BoardBands {
   readonly xray: Cell[];
@@ -207,15 +224,25 @@ function partitionBoard(game: Game): BoardBands {
   const channel = dropChannel(game);
   if (!channel) return { xray: [], plain: filled, muted: [] };
 
+  // The surface cubes the piece will come to rest on are the one thing in the
+  // channel that stays solid. They are the backstop the channel stops against,
+  // and they carry the landing mark -- an x-rayed cube cannot hold a mark.
+  const backstop = new Set<string>();
+  for (const cell of game.firstContactCells()) backstop.add(`${cell.x},${cell.y},${cell.z}`);
+
   const xray: Cell[] = [];
   const plain: Cell[] = [];
   const muted: Cell[] = [];
   for (const cell of filled) {
     const { u, y, lane } = toView(game.face, cell);
     const column = channel.get(u);
-    if (!column || y < column.floor) plain.push(cell);
-    else if (lane <= column.back) xray.push(cell);
-    else muted.push(cell);
+    if (!column || y < column.floor || backstop.has(`${cell.x},${cell.y},${cell.z}`)) {
+      plain.push(cell);
+    } else if (lane <= column.back) {
+      xray.push(cell);
+    } else {
+      muted.push(cell);
+    }
   }
   return { xray, plain, muted };
 }
@@ -239,6 +266,8 @@ export class GameRenderer {
    * was corrected to reproduce the palette exactly. Their opacities carry that
    * factor instead, so an x-rayed cube keeps a low mean with a bright edge
    * against a board now drawn at full palette strength.
+   *
+   * The outline is of the *region*, not of each cube in it -- see `EdgeLayer`.
    */
   private readonly lockedXray = new VoxelLayer({
     opacity: 0.12,
@@ -246,26 +275,34 @@ export class GameRenderer {
     depthWrite: false,
     renderOrder: 1,
   });
-  private readonly lockedXrayEdges = new EdgeLayer(MAX_EDGE_CELLS, 0.7);
+  private readonly lockedXrayEdges = new EdgeLayer(MAX_EDGE_CELLS, 0.7, 2);
   /** Everything the channel does not touch, which is most of the board. */
   private readonly lockedPlain = new VoxelLayer();
   /** In the channel but behind the piece: dark, still carrying its hue. */
   private readonly lockedMuted = new VoxelLayer();
-  private readonly active = new VoxelLayer({ emissive: 0.35, maxInstances: 8 });
+  private readonly active = new VoxelLayer({ maxInstances: 8 });
   /**
-   * The landing footprint.
+   * The landing footprint: where the piece's own cubes will come to rest.
    *
-   * Draws *after* the x-ray passes (renderOrder 3 against their 1). It used to
-   * sit at the default 0, which put a 0.28 veil on top of a 0.3 ghost and
-   * washed it out -- the ghost was never missing, just painted over. It is the
-   * single most useful mark on the board, so it goes last and it goes brighter.
+   * One of two marks, and the higher of them whenever the piece does not land
+   * flush. This one says where the piece will *sit*; `contact` below says what
+   * it will sit *on*, and on a stepped board they are rows apart.
+   *
+   * Fill plus outline, for the same reason the x-ray is: a translucent cube
+   * alone reads as a dead block against the well's near-black background --
+   * 0.44 of a lane colour lands around luminance 47 -- and it was at its
+   * faintest on an open board, where the x-ray correctly does nothing and there
+   * was nothing to lend it contrast. A mark may not depend on the x-ray to be
+   * legible, so it carries its own edge.
    */
   private readonly ghost = new VoxelLayer({
-    opacity: 0.44,
+    opacity: 0.3,
     ghost: true,
     renderOrder: 3,
     maxInstances: 8,
   });
+  // Topmost, above every see-through pass: a mark nothing may paint over.
+  private readonly ghostEdges = new EdgeLayer(8, 0.85, 8);
   /**
    * Lines that are complete and about to be removed, drawn additively over the
    * board. During a turn these are the lines the rotation is *revealing* -- they
@@ -295,12 +332,29 @@ export class GameRenderer {
   });
 
   /**
-   * Restrained emphasis on the cubes the falling piece will actually touch --
-   * a brighter inner core, no additive glow, no pulse. The lane-focus veil is
-   * what makes them visible; this just says "these ones".
+   * The landing mark: a smaller solid square on the face of the cube the piece
+   * will come to rest on. The second of the two marks, and the lower one.
+   *
+   * Drawn inset at 0.72 and lifted toward white. The inset alone was never
+   * enough -- and for its whole life it did nothing at all, because the layer
+   * asked for `emissive: 0.7` on a material whose emissive colour was black, so
+   * it drew a slightly smaller cube in exactly the colour of the cube
+   * underneath it. Invisible by construction, which is why the landing surface
+   * has never had any emphasis.
+   *
+   * Lifted almost to white rather than tinted. Halfway was measured first and
+   * is not enough: on an already-bright lane -- green means luminance 198, yellow
+   * 190 -- a 50% lift moves it about 12%, so the mark disappears on exactly the
+   * colours it most needs to survive. Near-white gives a step of a quarter or
+   * more on every stop of the ramp, and it is the more consistent choice anyway:
+   * the cube it sits on already states the depth, so the mark is chrome, and
+   * chrome in this game is achromatic.
    */
   private readonly contact = new VoxelLayer({
-    emissive: 0.7,
+    lift: 0.85,
+    // Half a cell forward, so a 0.66 cube straddles the 0.92 cube's near face
+    // and reads as a raised square patch on it rather than as a cube inside it.
+    faceOffset: 0.5,
     renderOrder: 2,
     maxInstances: 8,
   });
@@ -392,6 +446,7 @@ export class GameRenderer {
       this.columnPanel,
       this.lockedXray.mesh,
       this.lockedXrayEdges.lines,
+      this.ghostEdges.lines,
       this.lockedPlain.mesh,
       this.lockedMuted.mesh,
       this.active.mesh,
@@ -451,6 +506,7 @@ export class GameRenderer {
     this.prefs = { ...this.prefs, ...patch };
     for (const layer of this.voxelLayers) layer.setDepthColour(this.prefs.depthColour);
     this.lockedXrayEdges.setDepthColour(this.prefs.depthColour);
+    this.ghostEdges.setDepthColour(this.prefs.depthColour);
   }
 
   get preferences(): RenderPreferences {
@@ -635,7 +691,7 @@ export class GameRenderer {
 
     const bands = partitionBoard(game);
     this.lockedXray.update(bands.xray, yaw, separation, whiteout);
-    this.lockedXrayEdges.update(bands.xray, yaw, separation);
+    this.lockedXrayEdges.update(bands.xray, game.face, yaw);
     this.lockedPlain.update(bands.plain, yaw, separation, whiteout);
     // Behind the landing surface: dark and receding, not merely desaturated.
     this.lockedMuted.update(bands.muted, yaw, separation, whiteout, MUTED_DIM);
@@ -654,6 +710,7 @@ export class GameRenderer {
     this.active.update(activeCells, yaw, separation, whiteout);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(ghostCells, yaw, 0.78 * separation);
+    this.ghostEdges.update(ghostCells, game.face, yaw);
     // The same cells again, drawn only where the board hides them -- now only
     // load-bearing for focal and far cubes, since nearer ones no longer write
     // depth. Keep them: a same-lane overhang still occludes.
@@ -692,6 +749,7 @@ export class GameRenderer {
   dispose(): void {
     this.lockedXray.dispose();
     this.lockedXrayEdges.dispose();
+    this.ghostEdges.dispose();
     this.lockedPlain.dispose();
     this.lockedMuted.dispose();
     this.active.dispose();

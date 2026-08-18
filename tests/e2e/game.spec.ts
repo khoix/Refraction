@@ -1257,10 +1257,10 @@ test.describe('the x-ray', () => {
     }
   });
 
-  test('the channel stops at the row the piece lands on', async ({ page }) => {
-    // Above the landing row the player is looking through the channel at the
-    // surface they are aiming for. Below it the stack is settled and has nothing
-    // to do with the shot being lined up, so it stays at full strength.
+  test('the channel stops at the surface the piece will rest on', async ({ page }) => {
+    // Above the surface the player is looking through the channel at what they
+    // are aiming for. Below it the stack is buried and has nothing to do with
+    // the shot being lined up, so it stays at full strength.
     const below = BASE_HEIGHT - 3;
     const probe = [
       { u: 3, y: PROBE_ROW },
@@ -1349,7 +1349,14 @@ test.describe('the x-ray', () => {
     const probe = [{ u: 3, y: PROBE_ROW }];
     const [falling] = await sample(page, IN_FRONT, probe);
     const [settled] = await sample(page, { ...IN_FRONT, falling: false }, probe);
-    expect((settled as CellSample).mean).toBeGreaterThan((falling as CellSample).mean * 2);
+
+    // Substantially changed while the piece is in play...
+    expect((falling as CellSample).mean).toBeLessThan((settled as CellSample).mean * 0.6);
+    // ...and a flat solid face once it is gone: no fill, no region outline, no
+    // mark, nothing. Measured as peak against mean rather than as a brightness
+    // ratio between the two states, which sat within a percent of its threshold
+    // and would have failed on any change of a few luminance levels.
+    expect((settled as CellSample).peak - (settled as CellSample).mean).toBeLessThan(3);
   });
 });
 
@@ -1523,5 +1530,225 @@ test.describe('the board renders the palette it was given', () => {
     // the preview's chroma.
     expect(preview).toBeGreaterThan(80);
     expect(board).toBeGreaterThan(preview * 0.75);
+  });
+});
+
+/**
+ * Where the piece will come to rest, and what it will come to rest on.
+ *
+ * Two marks, not one, and on a stepped board they are rows apart. A piece whose
+ * underside does not match the stack lands on its highest point and leaves a gap
+ * under everything else — so "where it lands" and "the first real voxel" are
+ * different cells, and the player needs both.
+ */
+test.describe('the landing marks', () => {
+  /**
+   * A staircase in one lane with a solid wall in front of it.
+   *
+   * The staircase makes the gap: a flat four-wide bar rests on the tallest step
+   * and hangs over the rest. The wall gives the channel something to see through
+   * at every row, so the channel's reach can be measured as a change in a cube
+   * rather than as empty space, which has no brightness to compare.
+   */
+  const STAIRCASE = [0, 9, 5, 3, 2, 0, 0];
+  const WALL_LANES = 3;
+  const PIECE_LANE = 3;
+
+  interface CellSample {
+    readonly u: number;
+    readonly y: number;
+    readonly mean: number;
+    readonly peak: number;
+  }
+
+  async function sample(
+    page: Page,
+    cells: readonly { u: number; y: number }[],
+    options: { falling?: boolean; wall?: boolean } = {}
+  ): Promise<CellSample[]> {
+    await page.goto('/?debug=1&mode=ascent&seed=marks');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.evaluate(
+      ({ staircase, wallLanes, pieceLane, falling, wall }) => {
+        const game = window.__refraction?.game;
+        if (!game || !game.active) throw new Error('debug hook unavailable');
+        // Seven columns; the eighth stays empty so no line ever completes and
+        // the engine stays in 'falling'.
+        for (let x = 0; x < 7; x += 1) {
+          for (let lane = 0; lane < 8; lane += 1) {
+            const height =
+              lane === pieceLane ? (staircase[x] ?? 0) : wall !== false && lane < wallLanes ? 9 : 0;
+            for (let y = 0; y < height; y += 1) game.board.fill({ x, y, z: 7 - lane });
+          }
+        }
+        if (falling === false) {
+          game.active = null;
+          return;
+        }
+        game.active = {
+          ...game.active,
+          offsets: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 2, y: 0, z: 0 },
+            { x: 3, y: 0, z: 0 },
+          ],
+          u: 1,
+          lane: pieceLane,
+          y: 15,
+        };
+      },
+      {
+        staircase: STAIRCASE,
+        wallLanes: WALL_LANES,
+        pieceLane: PIECE_LANE,
+        falling: options.falling ?? true,
+        wall: options.wall ?? true,
+      }
+    );
+    await page.waitForTimeout(400);
+
+    return page.evaluate(
+      ({ cells }) => {
+        const renderer = window.__refraction?.renderer;
+        const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+        if (!renderer) throw new Error('debug hook unavailable');
+        const rect = renderer.wellScreenRect();
+        const box = source.getBoundingClientRect();
+        const scaleX = source.width / box.width;
+        const scaleY = source.height / box.height;
+
+        const scratch = document.createElement('canvas');
+        scratch.width = source.width;
+        scratch.height = source.height;
+        const context = scratch.getContext('2d');
+        if (!context) throw new Error('no 2d context');
+        context.drawImage(source, 0, 0);
+        const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+        const PAD = 0.6;
+        const rows = 18 + PAD * 2;
+        const luminance = (px: number, py: number): number => {
+          const i = (Math.round(py * scaleY) * scratch.width + Math.round(px * scaleX)) * 4;
+          return (
+            0.2126 * (data[i] as number) +
+            0.7152 * (data[i + 1] as number) +
+            0.0722 * (data[i + 2] as number)
+          );
+        };
+
+        return cells.map(({ u, y }) => {
+          const left = rect.left - box.left + (rect.width * u) / 8;
+          const width = rect.width / 8;
+          const top = rect.top - box.top + (rect.height * (PAD + (18 - y - 1))) / rows;
+          const height = rect.height / rows;
+
+          let sum = 0;
+          let count = 0;
+          for (let py = top + height * 0.15; py < top + height * 0.85; py += 1) {
+            for (let px = left + width * 0.15; px < left + width * 0.85; px += 1) {
+              sum += luminance(px, py);
+              count += 1;
+            }
+          }
+          let peak = 0;
+          for (let py = top; py < top + height; py += 1) {
+            for (let px = left; px < left + width; px += 1) {
+              peak = Math.max(peak, luminance(px, py));
+            }
+          }
+          return { u, y, mean: sum / Math.max(1, count), peak };
+        });
+      },
+      { cells }
+    );
+  }
+
+  const at = (samples: CellSample[], u: number, y: number): CellSample =>
+    samples.find((s) => s.u === u && s.y === y) as CellSample;
+
+  test('the channel reaches the first real voxel, not where the piece stops', async ({ page }) => {
+    // The bar rests at row 9 in every column it covers, but the surface under it
+    // sits at 8, 4, 2 and 1. Row 4 is therefore *inside* the channel in column 3,
+    // whose surface is two rows lower, and *outside* it in column 1, whose
+    // surface is directly beneath the piece. Same row, same wall in front, and
+    // the only difference is how far down the player has to see.
+    //
+    // Stopping the channel at the landing row — as it did — put both of them
+    // outside, which hid the gap: the single most useful thing on the board when
+    // a piece is about to land badly.
+    const probe = [
+      { u: 3, y: 4 },
+      { u: 1, y: 4 },
+    ];
+    const falling = await sample(page, probe);
+    const still = await sample(page, probe, { falling: false });
+
+    expect(at(falling, 3, 4).mean).toBeLessThan(at(still, 3, 4).mean * 0.6);
+    expect(Math.abs(at(falling, 1, 4).mean - at(still, 1, 4).mean)).toBeLessThan(4);
+  });
+
+  test('the surface the piece will rest on stays solid, and is marked', async ({ page }) => {
+    // The backstop. Everything above it in the channel goes to glass, but the
+    // surface cube itself stays opaque — an x-rayed cube cannot carry a mark —
+    // and takes a smaller, brighter square on its face.
+    //
+    // Measured with no wall in front, so the mark is on its own and nothing can
+    // be credited to the x-ray. The mark lives *inside* the cell, so it lifts the
+    // interior mean rather than the peak at the border.
+    const probe = [{ u: 3, y: 2 }];
+    const [marked] = await sample(page, probe, { wall: false });
+    const [plain] = await sample(page, probe, { wall: false, falling: false });
+
+    expect((marked as CellSample).mean).toBeGreaterThan((plain as CellSample).mean * 1.15);
+  });
+
+  test('the landing outline reads with nothing in front of it', async ({ page }) => {
+    // A mark may not depend on the x-ray to be legible. On an open board the
+    // x-ray correctly does nothing, which used to be exactly where the landing
+    // outline was faintest — a 0.44 cube over a near-black background, reading
+    // around luminance 47. It carries its own edge now.
+    //
+    // Row 9 is where the bar comes to rest, and with no wall there is nothing
+    // else in that cell at all: whatever is measured there is the mark.
+    const probe = [{ u: 3, y: 9 }];
+    const [mark] = await sample(page, probe, { wall: false });
+    const [empty] = await sample(page, probe, { wall: false, falling: false });
+
+    // Relative, because the room is not perfectly black behind the well and an
+    // absolute floor would be measuring the environment's brightness instead.
+    expect((mark as CellSample).peak).toBeGreaterThan((empty as CellSample).peak * 2.5);
+    expect((mark as CellSample).peak).toBeGreaterThan(80);
+  });
+
+  test('outlines the x-rayed region once, not every cube in it', async ({ page }) => {
+    // Twelve edges per cube turns a block of them into a grid of boxes, which is
+    // busy and competes with the marks above. Only the region's outer edge
+    // carries a border now.
+    //
+    // A cell in the middle of the region and a cell on its edge, both x-rayed:
+    // the interior one must be flat, the edge one must not.
+    //
+    // Picking the two cells needs care, and two wrong choices were measured on
+    // the way. The staircase makes the region's own shape stepped — each column's
+    // floor is its own surface — so a cell that looks interior may sit against a
+    // column whose floor is higher. And every column's floor row holds the
+    // backstop cube, which is solid and carries the landing mark, so a cell there
+    // is not measuring the x-ray at all.
+    //
+    // Row 5 clears both: the floors of columns 2, 3 and 4 are all below it, and
+    // none of their backstops are in it. (3, 5) is surrounded; (4, 5) is right
+    // beside it against column 5, which the piece does not cover.
+    const probe = [
+      { u: 3, y: 5 },
+      { u: 4, y: 5 },
+    ];
+    const falling = await sample(page, probe);
+
+    const interior = at(falling, 3, 5);
+    const border = at(falling, 4, 5);
+    expect(interior.peak).toBeLessThan(interior.mean * 1.4);
+    expect(border.peak).toBeGreaterThan(border.mean * 2);
   });
 });

@@ -87,7 +87,7 @@ npm run dev        # http://localhost:5173
 | Document                                       | Contents                                                                                                                                                        |
 | ---------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [`docs/DESIGN.md`](docs/DESIGN.md)             | The implementation spec. Board, projection, pieces, scoring, progression, accessibility. Gaps in the original proposal are marked **[GAP]** with the reasoning. |
-| [`docs/PLAN.md`](docs/PLAN.md)                 | Thirteen milestones, M0–M12.                                                                                                                                    |
+| [`docs/PLAN.md`](docs/PLAN.md)                 | Fourteen milestones, M0–M13.                                                                                                                                    |
 | [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module layout and the pure-core decision.                                                                                                                       |
 | [`docs/TESTING.md`](docs/TESTING.md)           | Test strategy, layers, conventions.                                                                                                                             |
 | [`release_notes.md`](release_notes.md)         | Milestone log, newest first.                                                                                                                                    |

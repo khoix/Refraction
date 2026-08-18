@@ -12,9 +12,9 @@
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
-import { depthParameterAtYaw } from '@core/projection';
+import { depthParameterAtYaw, toView } from '@core/projection';
 import { depthColor } from '@core/spectrum';
-import type { Cell } from '@core/types';
+import type { Cell, Face } from '@core/types';
 import { toSceneX, toSceneY, toSceneZ } from './scene';
 
 const MAX_INSTANCES = BOARD_WIDTH * BOARD_HEIGHT * BOARD_DEPTH;
@@ -32,7 +32,22 @@ const BLIND_FILL = { r: 0.62, g: 0.64, b: 0.68 } as const;
 
 export interface VoxelLayerOptions {
   readonly opacity?: number;
-  readonly emissive?: number;
+  /**
+   * Raise the layer's colour toward white, 0..1, so it reads as a mark rather
+   * than as another cube.
+   *
+   * This replaces an `emissive` option that never did anything. The material
+   * was built with `emissiveIntensity: options.emissive` alongside
+   * `emissive: 0x000000` -- an intensity multiplied into black -- so the contact
+   * highlight's 0.7 and the active piece's 0.35 had been silently zero since
+   * they were written. The contact layer was therefore drawing a slightly
+   * smaller cube in exactly the colour of the cube underneath it, which is
+   * invisible by construction.
+   *
+   * Lifting toward white rather than lighting it differently keeps the mark's
+   * hue, which still has to say what depth it is sitting at.
+   */
+  readonly lift?: number;
   /** Draw only wireframe-ish shells, used for the ghost piece. */
   readonly ghost?: boolean;
   /** Unlit and additively blended, for the glow on lines about to clear. */
@@ -49,6 +64,16 @@ export interface VoxelLayerOptions {
    * Ignore the depth buffer entirely and draw after the board.
    */
   readonly throughWalls?: boolean;
+  /**
+   * Push instances toward the camera by this many cells, so a mark sits *on* the
+   * face of the cube it belongs to rather than inside it.
+   *
+   * Without this a smaller cube sharing a centre with a bigger opaque one is
+   * simply inside it, and no amount of colour makes it visible. That is the
+   * second half of why the landing mark has never been seen: the first was a
+   * dead `emissive` option, and even with that fixed the geometry was buried.
+   */
+  readonly faceOffset?: number;
   /** Skip writing depth, so cubes behind this layer stay visible. */
   readonly depthWrite?: boolean;
   /** Explicit render order, for layering the see-through passes. */
@@ -64,8 +89,12 @@ export class VoxelLayer {
   private readonly scaleVector = new THREE.Vector3();
   private readonly color = new THREE.Color();
   private depthColour = true;
+  private readonly lift: number;
+  private readonly faceOffset: number;
 
   constructor(options: VoxelLayerOptions = {}) {
+    this.lift = THREE.MathUtils.clamp(options.lift ?? 0, 0, 1);
+    this.faceOffset = options.faceOffset ?? 0;
     const geometry = new RoundedBoxGeometry(1, 1, 1, 3, 0.11);
     const transparent = options.opacity !== undefined && options.opacity < 1;
 
@@ -94,8 +123,6 @@ export class VoxelLayer {
             metalness: 0,
             transparent,
             opacity: options.opacity ?? 1,
-            emissiveIntensity: options.emissive ?? 0.22,
-            emissive: new THREE.Color(0x000000),
           });
 
     // Where-hidden passes invert the depth test: fragments draw only when
@@ -143,12 +170,17 @@ export class VoxelLayer {
     const size = CUBE_GAP * scaleBias;
     const toWhite = THREE.MathUtils.clamp(whiteout, 0, 1);
     const toVoid = THREE.MathUtils.clamp(dim, 0, 1);
+    // Toward the camera at the current yaw, so a face-mounted mark stays on the
+    // face the player is looking at as the board turns.
+    const yaw = THREE.MathUtils.degToRad(yawDegrees);
+    const outX = Math.sin(yaw) * this.faceOffset;
+    const outZ = Math.cos(yaw) * this.faceOffset;
 
     for (let i = 0; i < count; i += 1) {
       const cell = cells[i] as Cell;
       const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
 
-      this.position.set(toSceneX(cell.x), toSceneY(cell.y), toSceneZ(cell.z));
+      this.position.set(toSceneX(cell.x) + outX, toSceneY(cell.y), toSceneZ(cell.z) + outZ);
       this.scaleVector.setScalar(size);
       this.matrix.compose(this.position, this.quaternion, this.scaleVector);
       this.mesh.setMatrixAt(i, this.matrix);
@@ -157,10 +189,14 @@ export class VoxelLayer {
       // metaphor stated literally: the visible spectrum combined is white light.
       const { r, g, b } = this.depthColour ? depthColor(depth) : BLIND_FILL;
       const lit = 1 - toVoid;
+      // The layer's own lift folds into the same lerp as the whiteout, so a
+      // mark is bright by the same mechanism the board is, and a Full Spectrum
+      // whiteout still carries it the rest of the way.
+      const white = Math.min(1, toWhite + this.lift * (1 - toWhite));
       this.color.setRGB(
-        THREE.MathUtils.lerp(r, 1, toWhite) * lit,
-        THREE.MathUtils.lerp(g, 1, toWhite) * lit,
-        THREE.MathUtils.lerp(b, 1, toWhite) * lit,
+        THREE.MathUtils.lerp(r, 1, white) * lit,
+        THREE.MathUtils.lerp(g, 1, white) * lit,
+        THREE.MathUtils.lerp(b, 1, white) * lit,
         THREE.SRGBColorSpace
       );
       this.mesh.setColorAt(i, this.color);
@@ -182,23 +218,36 @@ export class VoxelLayer {
 }
 
 /**
- * Cube outlines, for the x-ray.
+ * The outline around a region of cells, drawn as one silhouette.
  *
- * The twelve edges of each cube and nothing else. Paired with a near-invisible
- * fill, this is what lets a cube be *seen through* rather than *faded*: the
- * shape stays legible while the board behind it comes through at full strength.
- * A translucent solid cannot do both -- whatever fraction of the cube you can
- * see is exactly the fraction of the board you cannot.
+ * Paired with a near-invisible fill, an outline is what lets a cube be *seen
+ * through* rather than *faded*: the shape stays legible while the board behind
+ * comes through at full strength. A translucent solid cannot do both -- whatever
+ * fraction of the cube you can see is exactly the fraction of the board you
+ * cannot.
+ *
+ * **The outline is of the region, not of each cube in it.** Twelve edges per
+ * cube turns a block of them into a grid of boxes: busy, and it competes with
+ * the landing marks for exactly the attention those need. So the cells are
+ * projected to screen cells and only the edges bordering an *unoccupied*
+ * neighbour are emitted. Interior seams disappear and the region reads as one
+ * shape, with holes in it outlined too, which is correct -- a hole in the
+ * x-rayed area is a place where there is nothing to see through.
+ *
+ * Drawn as a flat outline on the plane just in front of the board rather than in
+ * depth. The projection is orthographic, so a screen-space boundary is exactly
+ * what a silhouette is, and putting it at the front means nothing on the board
+ * can hide the border of the region the player is being asked to look into.
+ *
+ * Each boundary edge carries the spectrum colour of the frontmost cell behind
+ * it -- the depth of the nearest thing being seen through at that point -- so the
+ * outline still says how deep the region starts, which is the one thing the game
+ * may never stop saying.
  *
  * Not an `InstancedMesh`: instancing draws triangles, and `wireframe` on a box
- * draws every triangle edge, which puts a diagonal across all six faces and
- * turns a wall of cubes into a mesh of X's. Twelve clean edges need line
- * primitives, so the geometry is rebuilt each frame instead. It is a few
- * hundred cubes at most and the buffers are preallocated, so the cost is a
- * memcpy, not an allocation.
- *
- * Edges carry their lane's spectrum colour: an x-rayed cube still says how deep
- * it is, which is the one thing the game may never stop saying.
+ * draws every triangle edge, which puts a diagonal across all six faces. Clean
+ * lines need line primitives, so the geometry is rebuilt each frame. It is a few
+ * hundred cells at most into preallocated buffers, so the cost is a memcpy.
  */
 export class EdgeLayer {
   readonly lines: THREE.LineSegments;
@@ -209,24 +258,13 @@ export class EdgeLayer {
   private readonly material: THREE.LineBasicMaterial;
   private depthColour = true;
 
-  /** The twelve edges of a unit cube, as pairs of corner indices. */
-  private static readonly EDGES: readonly (readonly [number, number])[] = [
-    [0, 1],
-    [1, 3],
-    [3, 2],
-    [2, 0],
-    [4, 5],
-    [5, 7],
-    [7, 6],
-    [6, 4],
-    [0, 4],
-    [1, 5],
-    [2, 6],
-    [3, 7],
-  ];
+  /** Screen cell -> the smallest depth parameter seen at it, for the colour. */
+  private readonly occupied = new Map<number, number>();
 
-  constructor(maxCells = MAX_INSTANCES, opacity = 0.3) {
-    const vertices = maxCells * EdgeLayer.EDGES.length * 2;
+  constructor(maxCells = MAX_INSTANCES, opacity = 0.3, renderOrder = 0) {
+    // Four boundary edges per cell is the worst case, when no cell touches
+    // another. Two vertices each.
+    const vertices = maxCells * 4 * 2;
     this.positions = new Float32Array(vertices * 3);
     this.colors = new Float32Array(vertices * 3);
 
@@ -239,10 +277,12 @@ export class EdgeLayer {
       transparent: true,
       opacity,
       depthWrite: false,
+      depthTest: false,
     });
 
     this.lines = new THREE.LineSegments(this.geometry, this.material);
     this.lines.frustumCulled = false;
+    this.lines.renderOrder = renderOrder;
     this.geometry.setDrawRange(0, 0);
   }
 
@@ -254,34 +294,90 @@ export class EdgeLayer {
     this.material.opacity = THREE.MathUtils.clamp(opacity, 0, 1);
   }
 
-  update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1): void {
-    const half = (CUBE_GAP * scaleBias) / 2;
-    let v = 0;
-
+  /**
+   * `face` is the face the cells are being read on, which is always the face
+   * the board has already snapped to -- the regions this outlines exist only
+   * while a piece is falling, and nothing falls during a turn.
+   */
+  update(cells: readonly Cell[], face: Face, yawDegrees: number): void {
+    this.occupied.clear();
     for (const cell of cells) {
+      const { u, y } = toView(face, cell);
       const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
-      const { r, g, b } = this.depthColour ? depthColor(depth) : BLIND_FILL;
-      const cx = toSceneX(cell.x);
-      const cy = toSceneY(cell.y);
-      const cz = toSceneZ(cell.z);
+      const key = EdgeLayer.key(u, y);
+      const known = this.occupied.get(key);
+      if (known === undefined || depth < known) this.occupied.set(key, depth);
+    }
 
-      for (const [a, z] of EdgeLayer.EDGES) {
-        for (const corner of [a, z]) {
-          if (v * 3 + 2 >= this.positions.length) break;
-          this.positions[v * 3] = cx + (corner & 1 ? half : -half);
-          this.positions[v * 3 + 1] = cy + (corner & 2 ? half : -half);
-          this.positions[v * 3 + 2] = cz + (corner & 4 ? half : -half);
-          this.colors[v * 3] = r;
-          this.colors[v * 3 + 1] = g;
-          this.colors[v * 3 + 2] = b;
-          v += 1;
-        }
+    // Screen basis at the current yaw. Orthographic, so this is exact.
+    const yaw = THREE.MathUtils.degToRad(yawDegrees);
+    const rightX = Math.cos(yaw);
+    const rightZ = -Math.sin(yaw);
+    // Out of the board toward the camera, far enough to clear the front face.
+    const outX = Math.sin(yaw) * (BOARD_DEPTH / 2 + 0.06);
+    const outZ = Math.cos(yaw) * (BOARD_DEPTH / 2 + 0.06);
+
+    let v = 0;
+    const edge = (
+      u0: number,
+      y0: number,
+      u1: number,
+      y1: number,
+      r: number,
+      g: number,
+      b: number
+    ): void => {
+      for (const [u, y] of [
+        [u0, y0],
+        [u1, y1],
+      ] as const) {
+        if (v * 3 + 2 >= this.positions.length) return;
+        const across = u - (BOARD_WIDTH - 1) / 2;
+        this.positions[v * 3] = across * rightX + outX;
+        this.positions[v * 3 + 1] = y - (BOARD_HEIGHT - 1) / 2;
+        this.positions[v * 3 + 2] = across * rightZ + outZ;
+        this.colors[v * 3] = r;
+        this.colors[v * 3 + 1] = g;
+        this.colors[v * 3 + 2] = b;
+        v += 1;
+      }
+    };
+
+    const half = CUBE_GAP / 2;
+    for (const [key, depth] of this.occupied) {
+      const u = EdgeLayer.keyU(key);
+      const y = EdgeLayer.keyY(key);
+      const { r, g, b } = this.depthColour ? depthColor(depth) : BLIND_FILL;
+
+      // Only the sides facing a cell that is not in the region.
+      if (!this.occupied.has(EdgeLayer.key(u, y + 1))) {
+        edge(u - half, y + half, u + half, y + half, r, g, b);
+      }
+      if (!this.occupied.has(EdgeLayer.key(u, y - 1))) {
+        edge(u - half, y - half, u + half, y - half, r, g, b);
+      }
+      if (!this.occupied.has(EdgeLayer.key(u - 1, y))) {
+        edge(u - half, y - half, u - half, y + half, r, g, b);
+      }
+      if (!this.occupied.has(EdgeLayer.key(u + 1, y))) {
+        edge(u + half, y - half, u + half, y + half, r, g, b);
       }
     }
 
     this.geometry.setDrawRange(0, v);
     this.geometry.getAttribute('position').needsUpdate = true;
     this.geometry.getAttribute('color').needsUpdate = true;
+  }
+
+  /** Screen cells are small and bounded, so one integer keys the map. */
+  private static key(u: number, y: number): number {
+    return (u + 1) * 1024 + (y + 1);
+  }
+  private static keyU(key: number): number {
+    return Math.floor(key / 1024) - 1;
+  }
+  private static keyY(key: number): number {
+    return (key % 1024) - 1;
   }
 
   dispose(): void {

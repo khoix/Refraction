@@ -1,6 +1,6 @@
 # Refraction — Build Plan
 
-Thirteen milestones. Each one is a self-contained push: source, tests, and a
+Fourteen milestones. Each one is a self-contained push: source, tests, and a
 `release_notes.md` entry. Every milestone leaves `main` in a state that builds,
 passes `npm run verify:full`, and can be played or inspected.
 
@@ -350,8 +350,54 @@ with the input work in M11, and moved there.
   at or in front of the piece's depth is x-ray, behind it is muted, and every
   other cube on the board — a different column, or below the ghost — is normal.
   There is no separate focal band. See DESIGN §9.
+
+### The landing marks — M10a ✅ _(play notes)_
+
+Four notes, sharing a vocabulary problem that had been costing passes: **"the
+ghost voxel" means the first settled cube beneath the piece — the surface it
+comes to rest above — not the projected piece position.** Those are the same cell
+only when the piece lands flush, and a piece that does not fit its footprint
+stops with a gap underneath.
+
+Measured, with a flat four-wide bar dropped onto a staircase:
+
+| Column | Piece lands at | First actual voxel | Gap    |
+| ------ | -------------- | ------------------ | ------ |
+| 1      | y = 9          | y = 8              | 0 rows |
+| 2      | y = 9          | y = 4              | 4 rows |
+| 3      | y = 9          | y = 2              | 6 rows |
+| 4      | y = 9          | y = 1              | 7 rows |
+
+- ✅ **The channel reaches the first real voxel.** Its floor was the landing row,
+  so rows 1 to 8 under three of those columns sat outside it and drew solid —
+  precisely the gap the player needs to see into. Taken per column from
+  `firstContactCells()`, which was already being computed every frame.
+- ✅ **The surface cube stays solid.** It is the backstop the channel stops
+  against, and it carries the landing mark; an x-rayed cube cannot hold a mark.
+- ✅ **The surface mark exists at last.** Two compounding reasons it never did:
+  `VoxelLayer` set `emissiveIntensity: options.emissive` alongside
+  `emissive: 0x000000`, multiplying every layer's intensity into black, and the
+  mark's geometry was a smaller cube sharing a centre with the cube it marked —
+  which is simply inside it. It is pushed onto the near face now and lifted
+  nearly to white. Half was measured first and is not enough: on green at
+  luminance 198 or yellow at 190, a half lift moves it 12% and the mark vanishes
+  on exactly the colours it most needs to survive.
+- ✅ **Neither mark depends on the x-ray.** The landing outline was a 0.44
+  translucent cube reading around luminance 47 over the well's background, and it
+  was faintest on an open board — where the x-ray correctly does nothing and
+  there was nothing to lend it contrast. It carries its own outline now, above
+  every see-through pass.
+- ✅ **The x-rayed region is outlined once, not per cube.** `EdgeLayer` derives
+  the region's screen-space silhouette and draws only the edges bordering an
+  unoccupied neighbour.
+
+**Exit criteria, met:** on an open board and a crowded one alike, a player can
+see both where the piece will come to rest and what it will rest on, and how big
+the gap between them is. Five end-to-end tests, each confirmed to fail when its
+behaviour is reverted.
+
 - **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
-  after the rollback, and check behaviour on highly occluded boards.
+  once the above lands, and check behaviour on highly occluded boards.
 
 **Exit criteria:** a new player reaches their first turn without instructions and
 understands what happened afterwards. The ghost is findable at a glance on a full
@@ -379,18 +425,126 @@ here is built on top of a board the player can read.
   the mode grid with the same keys that move a piece, so the whole game is
   reachable without a mouse. Implied by "completable by keyboard alone" below;
   making it explicit because it is a real gap today, not a refinement.
-- Full key remapping; gamepad parity; touch controls with swipe and tap.
-- Responsive layout from 390 px to ultrawide; readable UI scaling.
+- Full key remapping; gamepad parity.
 - Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake
   controls, audio accessibility, screen-reader board summaries, focus
   management.
 
-**Exit criteria:** the game is completable with depth colour fully disabled, on
-a phone, and by keyboard alone.
+Touch controls and the responsive layout were one-line bullets here — "touch
+controls with swipe and tap", "responsive layout from 390 px to ultrawide" — and
+they are neither one line of work nor an accessibility footnote. They are their
+own milestone now; see M12.
+
+**Exit criteria:** the game is completable with depth colour fully disabled and
+by keyboard alone.
 
 ---
 
-## M12 — Performance and Release Candidate
+## M12 — Mobile
+
+**Goal:** the game is genuinely good on a phone, not merely reachable from one.
+
+Nothing exists yet. There is no touch handling of any kind — the only pointer
+listener in the codebase resumes the audio context — and the whole responsive
+story is a single `@media (max-width: 34rem)` block that restacks the mode grid.
+The end-to-end suite checks that the Shift meter stays on screen at phone sizes,
+which proves the board fits, not that the game can be played.
+
+### Direct manipulation, not repeated swipes
+
+A swipe that moves one column is a keyboard binding wearing a costume: eight
+columns means eight swipes. The piece should **follow the finger** instead.
+
+- **Drag to place.** While a finger is down the piece tracks its column
+  continuously and snaps cell by cell, absolutely — the column under the finger
+  is the column the piece is in, not an accumulated offset. That is the same
+  claim the game already makes about everything else: position is absolute.
+- **Double tap to drop.** Hard drop, once the piece is where it should be.
+- **Drag down to soft drop**, so the slow descent is available without a second
+  gesture vocabulary.
+
+Three things have to be solved for this to feel right, and all three are
+gameplay-affecting rather than cosmetic:
+
+- **The finger covers the board.** A thumb over an 8 × 18 well hides several
+  cells, including — on a low stack — the landing surface and both landing marks
+  the previous milestone just made visible. Some offset between touch point and
+  target column, or a lift of the piece's column indicator above the thumb, has
+  to be designed rather than defaulted.
+- **Tap, double tap and drag must not fight.** A double tap is two taps plus a
+  window, and holding the hard drop behind that window makes it feel late. The
+  usual escape is to treat the second touch-down as the drop rather than waiting
+  for the second touch-up.
+- **A drag that starts on the piece and a drag that starts anywhere else** should
+  probably not mean different things, but that is a decision, not an assumption.
+
+### The verb problem, which is the real work
+
+This game has more to say than a flat falling-block game, and a phone has less
+room to say it in. The current bindings carry **twelve distinct verbs**:
+
+| Verb                       | Count | Keyboard      |
+| -------------------------- | ----- | ------------- |
+| Move along the face's axis | 2     | arrows / A D  |
+| Soft drop, hard drop       | 2     | down, space   |
+| Rotate — roll, yaw, pitch  | 6     | Z X, Q E, R F |
+| Depth nudge                | 1     | W             |
+| Hold                       | 1     | C / Shift     |
+
+Six of those are rotations across three axes, and that is the one thing that
+cannot be dropped: three-axis rotation is why the pieces are cubes rather than
+tetrominoes. A phone cannot carry six rotation buttons without burying the
+board, and the drag/tap vocabulary above is already spent on movement.
+
+Options to evaluate, none chosen yet: a radial rotation control that appears
+under a long press and disappears on release; two-finger twist for one axis with
+the other two on taps; a small persistent control cluster in the thumb zone
+below the well, accepting the vertical cost; or an axis selector that changes
+what a rotate gesture applies to. **Decide before building** — this is the
+choice the milestone lives or dies on, and it deserves a prototype rather than a
+guess.
+
+The **turn prompt** needs a touch answer too. When the Shift meter fills the game
+asks for left or right and falls back after five seconds; on a phone that has to
+be a pair of targets, not a keypress.
+
+### Layout
+
+- Portrait first. The HUD flanks the board today — score to the left, next and
+  hold to the right — which is exactly wrong on a narrow screen. Above and below,
+  and the well takes the width.
+- Safe-area insets, so nothing lands under a notch or a home indicator.
+- Landscape as a genuine second layout, not a squashed portrait.
+- `HUD_RESERVE` and the camera fit were tuned against desktop framing and want
+  re-checking once the HUD moves.
+
+### Smooth
+
+- **Every frame is currently rendered**, deliberately: render-on-demand was tried
+  and backed out because the room has to keep moving when the board is still. On
+  a phone that is a thermal and battery cost, so the environment's own frame cost
+  is the thing to reduce rather than the frame itself.
+- Pixel ratio is capped at 2. On a DPR-3 phone that is still four times the
+  pixels of DPR-1.5, for a scene that is flat colour and hard edges. Worth
+  measuring whether the cap should be lower on small screens.
+- The bloom chain is already gated to frames where something can bloom, which is
+  the expensive path and is already handled.
+- Establish a frame-time budget and measure against a throttled CPU profile in
+  the end-to-end suite, so a regression is caught rather than felt.
+
+### Touch hygiene
+
+`touch-action: none` on the playfield, no pull-to-refresh, no double-tap zoom, no
+text selection on a long press, no tap highlight. Individually trivial,
+collectively the difference between a web game and a web page.
+
+**Exit criteria:** a full run — start to game over, including a turn and a hold —
+played on a phone with one thumb, without the finger hiding anything the player
+needs, and holding its frame budget on a mid-range device profile.
+
+---
+
+## M13 — Performance and Release Candidate
 
 **Goal:** ship quality.
 
