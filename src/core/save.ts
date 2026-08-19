@@ -17,7 +17,7 @@
  * `src/ui/storage.ts`; this is testable in milliseconds without either.
  */
 
-import { MODES } from './modes';
+import { DEFAULT_MODE_ID, MODES } from './modes';
 import type { ModeId } from './modes';
 
 export const SAVE_VERSION = 3;
@@ -30,7 +30,6 @@ export interface Settings {
   readonly reducedMotion: boolean;
   readonly screenShake: boolean;
   readonly bloom: boolean;
-  readonly showGhost: boolean;
 }
 
 export interface ModeRecord {
@@ -85,7 +84,6 @@ export const DEFAULT_SETTINGS: Settings = {
   reducedMotion: false,
   screenShake: true,
   bloom: true,
-  showGhost: true,
 };
 
 const EMPTY_RECORD: ModeRecord = { bestScore: 0, bestLines: 0, bestStage: 0, runs: 0 };
@@ -105,7 +103,7 @@ export function defaultSave(): SaveData {
     records: emptyRecords(),
     stats: EMPTY_STATS,
     session: [],
-    lastMode: 'ascent',
+    lastMode: DEFAULT_MODE_ID,
   };
 }
 
@@ -132,7 +130,6 @@ function readSettings(raw: unknown): Settings {
     reducedMotion: bool(raw['reducedMotion'], DEFAULT_SETTINGS.reducedMotion),
     screenShake: bool(raw['screenShake'], DEFAULT_SETTINGS.screenShake),
     bloom: bool(raw['bloom'], DEFAULT_SETTINGS.bloom),
-    showGhost: bool(raw['showGhost'], DEFAULT_SETTINGS.showGhost),
   };
 }
 
@@ -196,7 +193,7 @@ function readSession(raw: unknown): SessionRun[] {
 }
 
 function readModeId(raw: unknown): ModeId {
-  return MODES.some((mode) => mode.id === raw) ? (raw as ModeId) : 'ascent';
+  return MODES.some((mode) => mode.id === raw) ? (raw as ModeId) : DEFAULT_MODE_ID;
 }
 
 /**

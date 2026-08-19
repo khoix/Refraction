@@ -10,6 +10,7 @@
 import { describe, expect, it } from 'vitest';
 import { Game } from '@core/game';
 import {
+  AUTHORED_MODE_ID,
   CONTINUOUS_GRAVITY_STEP,
   DEFAULT_MODE_ID,
   MODES,
@@ -60,7 +61,10 @@ describe('the mode table', () => {
     }
   });
 
-  it('falls back to Ascent for anything unrecognised', () => {
+  it('falls back to the mode a new player would get, for anything unrecognised', () => {
+    // A bad `?mode=` in a shared link, or a save written by a future version.
+    // Either way the player should land where a new player lands, not on
+    // whichever mode the engine happens to treat as its reference.
     expect(modeById(null).id).toBe(DEFAULT_MODE_ID);
     expect(modeById('nonsense').id).toBe(DEFAULT_MODE_ID);
     expect(modeById('prism').id).toBe('prism');
@@ -202,8 +206,26 @@ describe('a real game honours its mode', () => {
     expect(endless.stage.index).toBe(stageBefore);
   });
 
-  it('defaults to Ascent when no mode is given', () => {
-    expect(new Game({ seed: 'default' }).mode.id).toBe(DEFAULT_MODE_ID);
+  it('defaults to the authored arc when no mode is given', () => {
+    // Named, not taken from whichever constant happens to be handy. This test
+    // asserted `DEFAULT_MODE_ID` while its name said Ascent, so it agreed with
+    // itself right up until the player-facing default moved to Flatland and a
+    // game built with no mode quietly became a tier-capped one.
+    expect(AUTHORED_MODE_ID).toBe('ascent');
+    expect(new Game({ seed: 'default' }).mode.id).toBe(AUTHORED_MODE_ID);
+    expect(new Game({ seed: 'default' }).stage.index).toBe(1);
+  });
+
+  it('offers a new player Flatland, and it is open from the start', () => {
+    // A different question from the one above: what the rules do when nobody
+    // says otherwise, against what a player is handed first. Flatland deals
+    // planar pieces only, so depth is purely a property of where a piece is put
+    // -- the gentlest first contact with the idea the game rests on. It would be
+    // a poor default if it were locked.
+    expect(DEFAULT_MODE_ID).toBe('flatland');
+    const flatland = modeById(DEFAULT_MODE_ID);
+    expect(flatland.unlock).toBeNull();
+    expect(flatland.maxTier).toBe(1);
   });
 });
 

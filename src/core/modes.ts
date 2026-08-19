@@ -181,7 +181,29 @@ export const MODES_BY_ID: ReadonlyMap<ModeId, ModeConfig> = new Map(
   MODES.map((mode) => [mode.id, mode])
 );
 
-export const DEFAULT_MODE_ID: ModeId = 'ascent';
+/**
+ * The mode a new player meets, and the fallback for an unknown id.
+ *
+ * Flatland rather than Ascent. It deals planar pieces only, so depth is purely a
+ * property of where a piece is put rather than of its own shape -- the gentlest
+ * possible first contact with the one idea the whole game rests on. It is
+ * unlocked from the start, so nothing else has to move.
+ */
+export const DEFAULT_MODE_ID: ModeId = 'flatland';
+
+/**
+ * The engine's own default when a `Game` is constructed without a mode: the
+ * authored arc.
+ *
+ * Deliberately **not** `DEFAULT_MODE_ID`. The two were one constant and it hid a
+ * real distinction: what a player is offered first is a question about teaching,
+ * and what the rules do when nobody says otherwise is a question about the
+ * reference implementation. Sharing one value meant moving the player-facing
+ * default silently rewrote what every `new Game({ seed })` in the test suite was
+ * testing -- two of them started failing, correctly, because a game that had
+ * been the full arc became a capped one.
+ */
+export const AUTHORED_MODE_ID: ModeId = 'ascent';
 
 /** Look up a mode, falling back to Ascent for anything unrecognised. */
 export function modeById(id: string | null | undefined): ModeConfig {

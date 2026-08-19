@@ -444,26 +444,26 @@ controls with swipe and tap", "responsive layout from 390 px to ultrawide" — a
 they are neither one line of work nor an accessibility footnote. They are their
 own milestone now; see M12.
 
-### Interface corrections — M11b _(play notes)_
+### Interface corrections — M11b ✅ _(play notes)_
 
 Four small ones, unrelated to each other except that they are all interface.
 
-- **The Shift bar paints over every menu.** `.hud__shift` carries `z-index: 1`
+- ✅ **The Shift bar paints over every menu.** `.hud__shift` carries `z-index: 1`
   and `.screens` carries none, so the meter sits above the title screen, the
   mode grid, settings, pause and game over alike. It is purely visual — the HUD
   is `pointer-events: none` — but it is on screen at all times including the
   front door. A live bug on every device, so it goes first rather than waiting
   for the rest of this group.
-- **The ghost piece stops being a setting.** It is not a preference, it is how
+- ✅ **The ghost piece stops being a setting.** It is not a preference, it is how
   the game is read: everything the last three milestones did to the landing
   marks assumed it is there. A toggle invites a player to turn off the thing
   that makes depth legible and then conclude the game is unfair. Removing a
   setting from the accessibility milestone is worth stating plainly — the case
   for it is that the ghost is a _comprehension_ aid, and the modes that want it
   gone (Blind Spectrum) already say so in their own configuration.
-- **Volume loses its description.** "Master level, kept separately from mute"
+- ✅ **Volume loses its description.** "Master level, kept separately from mute"
   explains a distinction nobody asked about. Everyone knows what volume is.
-- **Flatland becomes the default mode.** `DEFAULT_MODE_ID` is `ascent` today.
+- ✅ **Flatland becomes the default mode.** `DEFAULT_MODE_ID` is `ascent` today.
   Flatland deals planar pieces only, so depth is purely a property of where a
   piece is put rather than of its own shape — which is the gentlest possible
   first contact with the one idea the whole game rests on. It is already
@@ -471,7 +471,16 @@ Four small ones, unrelated to each other except that they are all interface.
 
   Pairs with the rotation-axis change in M12. As the default and the first thing
   anyone sees, Flatland is roll-only with no depth nudge, so a new player meets
-  exactly one new idea — the board turning — rather than four at once.
+  exactly one new idea — the board turning — rather than four at once. **That
+  half is still M12's**; what shipped here is the default itself, so a new player
+  currently gets flat pieces but all three rotation axes.
+
+  Two things had to move with it. The mode grid opens on the last-played mode
+  rather than on whichever card is first in the table, which is what makes a
+  default mean anything on screen rather than only in storage. And the engine's
+  own fallback split off as `AUTHORED_MODE_ID`: `new Game({ seed })` means "the
+  authored arc", and it had been reading the player-facing constant, so moving
+  that constant quietly turned every mode-less test game into a tier-capped one.
 
 ### Remapping, and the WASD cluster — M11c _(play notes)_
 
