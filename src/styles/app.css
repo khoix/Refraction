@@ -739,6 +739,100 @@ input,
   text-shadow: 0 2px 24px rgb(5 6 10 / 0.9);
 }
 
+/* -------------------------------------------------------------- boot gate */
+
+/*
+ * The front door.
+ *
+ * The same top-to-bottom gradient as the title screen rather than a vignette of
+ * its own, and that is the point: these are the same picture a moment apart, so
+ * the shade under the type has to survive the transition. A radial wash was
+ * tried first and read as a different screen -- worse, it sat over the stack and
+ * drained the cubes to grey, which on the one screen whose whole job is to say
+ * what this game looks like is the most expensive possible mistake.
+ *
+ * The block is centred, as a front door should be, but centred in the space
+ * *above* the stack: the padding takes the bottom quarter out of the centring
+ * box, so the mark and the bar land in the covered upper half and the arrangement
+ * keeps the clear lower half to itself. Both are then legible at once, which
+ * centring in the whole viewport does not achieve -- it puts the button on top
+ * of the cubes.
+ */
+.screens[data-screen='boot'] {
+  background: linear-gradient(
+    to bottom,
+    rgb(5 6 10 / 0.94) 0%,
+    rgb(5 6 10 / 0.88) 32%,
+    rgb(5 6 10 / 0.58) 52%,
+    rgb(5 6 10 / 0.16) 74%,
+    rgb(5 6 10 / 0.04) 100%
+  );
+  backdrop-filter: none;
+  padding-bottom: 30vh;
+}
+
+/* Same measure as the title, since it holds the same wordmark. */
+.panel--boot {
+  width: min(60rem, 100%);
+  gap: 1.5rem;
+  text-shadow: 0 2px 24px rgb(5 6 10 / 0.9);
+}
+
+.loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  width: min(24rem, 78%);
+}
+
+/*
+ * Achromatic, like every other surface that is not a cube.
+ *
+ * A loading bar is the single most tempting place in an interface to run a
+ * gradient through the spectrum, and in this game that is precisely the thing
+ * the palette rule forbids: hue means distance from the camera and nothing else,
+ * so a red-to-violet bar would be a second colour language on the first screen
+ * the player ever sees. It is a neutral ink ramp instead.
+ */
+.loading__bar {
+  position: relative;
+  width: 100%;
+  height: 2px;
+  border-radius: 999px;
+  background: rgb(var(--accent-ui-glow) / 0.14);
+  overflow: hidden;
+}
+
+.loading__fill {
+  height: 100%;
+  width: 0;
+  border-radius: inherit;
+  background: var(--accent-ui);
+  box-shadow: 0 0 12px rgb(var(--accent-ui-glow) / 0.45);
+  /*
+   * Short enough to be a smoothing of the steps the reader delivers, not an
+   * animation with an opinion of its own. A bar that eases toward its target
+   * disagrees with the download exactly at the end, which is when it is being
+   * watched.
+   */
+  transition: width 120ms linear;
+}
+
+.loading__note {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  color: var(--text-dim);
+}
+
+/* The way in, once there is something to go in to. */
+.panel--boot.panel--ready .loading__note {
+  color: var(--text-secondary);
+}
+
 /* ------------------------------------------------------------------- title */
 
 .title {

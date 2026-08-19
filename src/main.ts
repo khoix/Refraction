@@ -14,6 +14,8 @@ import { GameRenderer } from '@render/game-renderer';
 import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
+import { THEME } from './audio/tracks';
+import { preload } from './assets/preload';
 import { Screens } from '@ui/screens';
 import { composeAttract } from '@ui/attract';
 import type { ScreenName } from '@ui/screens';
@@ -40,6 +42,16 @@ function randomSeed(): string {
 }
 
 /**
+ * The screens the menu theme belongs to.
+ *
+ * Everything a player passes through before a run, and nothing that sits over
+ * one. `settings` is deliberately absent and resolved separately, because it is
+ * the one panel reachable from both sides -- opened from the title it is still
+ * the menu, opened from a pause it is not.
+ */
+const MENU_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>(['title', 'modes', 'challenge']);
+
+/**
  * `?debug=1` publishes the live game on `window`, and `?seed=` pins the run.
  *
  * The engine is deterministic but the *player* is not, and some states -- a
@@ -55,6 +67,14 @@ interface DebugHandle {
   play: (mode: ModeId, seed?: string) => void;
   save: () => SaveData;
   screen: () => ScreenName;
+  /**
+   * What the music is doing.
+   *
+   * `playing` is read off the media element, not off the intent that was handed
+   * to it, so the suite can tell "we asked for the theme" apart from "the theme
+   * is running".
+   */
+  music: () => { ready: boolean; playing: boolean };
   /**
    * The binding table, flattened for assertions. The end-to-end suite checks the
    * rendered key map against this rather than against a copy of the bindings
@@ -240,6 +260,22 @@ function boot(root: HTMLElement): void {
 
   const screens: Screens = new Screens(save, {
     onStart: (id) => startRun(id),
+    /*
+     * The front door opens.
+     *
+     * Everything here is synchronous and inside the click, which is what makes
+     * the sound work: a browser will only start an `AudioContext` from a user
+     * gesture, and this is the first one the game is guaranteed to get. The
+     * theme is started here as well as from the frame loop -- the loop would
+     * pick it up a frame later anyway, but by then the gesture has ended, and
+     * starting media outside one relies on the browser's stickier "has
+     * interacted" rule rather than on the gesture itself.
+     */
+    onEnter: () => {
+      audio.resume();
+      screens.show('title');
+      audio.playMusic();
+    },
     onChallenge: (entry) => startRun(entry.mode.id, entry),
     onResume: (): void => {
       game.resume();
@@ -274,6 +310,13 @@ function boot(root: HTMLElement): void {
   // `?challenge=CODE` and `?mode=prism` both open straight into a run. A deep
   // link still respects the unlock, so it cannot be used to jump the queue --
   // the lock is a pacing device, and a URL is not a reason to spend it.
+  //
+  // A deep link goes round the front door rather than through it. The boot gate
+  // is there to fill a wait and collect a gesture; a link that names a run is a
+  // player who has already chosen, and holding a shared challenge code behind a
+  // two-megabyte download of music it will not play would be a worse front door
+  // than none. The preload still runs -- see below -- so the theme is there if
+  // they quit back to the menu.
   const linkedChallenge = parseChallenge(params.get('challenge'));
   const requested = MODES.find((entry) => entry.id === params.get('mode'));
   if (linkedChallenge && isUnlocked(linkedChallenge.mode, save.stats.bestStage)) {
@@ -281,6 +324,24 @@ function boot(root: HTMLElement): void {
   } else if (requested && isUnlocked(requested, save.stats.bestStage)) {
     startRun(requested.id);
   }
+
+  /*
+   * Pull the theme down while the player is looking at the door.
+   *
+   * Deliberately not awaited and deliberately unable to reject: `preload`
+   * resolves a failed asset rather than throwing, so the worst case is a game
+   * with no music and a door that still opens. A front door that can be jammed
+   * shut by a missing file would be a strictly worse product than no front door
+   * at all.
+   */
+  void preload([{ id: THEME.id, url: THEME.url, bytes: THEME.bytes }], {
+    onProgress: (progress) => screens.setLoading(progress.fraction),
+  }).then((loaded) => {
+    const theme = loaded.find((asset) => asset.id === THEME.id);
+    if (theme?.blob) audio.loadMusic(theme.blob);
+    screens.setLoading(1);
+    screens.setReady(true);
+  });
 
   const playing = (): boolean => screens.screen === 'playing';
 
@@ -313,6 +374,7 @@ function boot(root: HTMLElement): void {
       },
       save: () => save,
       screen: () => screens.screen,
+      music: () => ({ ready: audio.musicReady, playing: audio.musicPlaying }),
       bindings: BINDINGS.map((binding) => ({
         action: binding.action,
         label: binding.label,
@@ -470,6 +532,21 @@ function boot(root: HTMLElement): void {
       screens.show('over');
     }
 
+    /*
+     * The theme follows the screen, not the transition into it.
+     *
+     * Driven from state here rather than from the handlers that change screens,
+     * for the reason the game-over panel above is: there are eight ways to reach
+     * the mode grid and one of them will eventually forget to make the call. A
+     * screen the player is *on* cannot be missed. `Music` is idempotent at the
+     * graph level precisely so this can run every frame.
+     */
+    const screen = screens.screen;
+    const menu =
+      screen === 'settings' ? MENU_SCREENS.has(settingsReturn) : MENU_SCREENS.has(screen);
+    if (menu) audio.playMusic();
+    else audio.stopMusic();
+
     // The title turns.
     //
     // The board presents each face in turn, using the game's own turn rather
@@ -478,11 +555,15 @@ function boot(root: HTMLElement): void {
     // anything, and there is only one piece of turn choreography in the codebase
     // rather than two that can drift apart.
     //
+    // The boot gate turns too. It is the same picture with the same wordmark
+    // over it, and a board that started moving only once the door opened would
+    // make the first screen read as a still image of the second.
+    //
     // Held between turns so it reads as presenting a face rather than as
     // spinning. Suppressed entirely under reduced motion -- an unattended,
     // unstoppable animation is exactly what that setting is for, and the still
     // board is a perfectly good backdrop.
-    if (screens.screen === 'title' && !save.settings.reducedMotion) {
+    if ((screen === 'title' || screen === 'boot') && !save.settings.reducedMotion) {
       attractDwell += elapsed;
       if (!renderer.isTurning && attractDwell >= ATTRACT_DWELL_MS) {
         attractDwell = 0;
@@ -500,8 +581,8 @@ function boot(root: HTMLElement): void {
     // The HUD lays out first so the preview's rectangle is this frame's, not
     // last frame's -- otherwise the turning piece lags the panel by a frame
     // through every resize.
-    // The title screen is the board, not the HUD.
-    hud.setHidden(screens.screen === 'title');
+    // The title screen is the board, not the HUD. Nor is the gate in front of it.
+    hud.setHidden(screen === 'title' || screen === 'boot');
     hud.setHeat(game.spectralAllowed ? game.heat : null, game.spectralReady);
     hud.update(game, elapsed);
     hud.layoutWell(

@@ -1019,9 +1019,44 @@ the spectrum, and for anyone whose colour vision makes the ramp harder.
 | Game over     | a single low fall                                                  |
 
 Decisions live in `src/audio/tones.ts` as pure data and are unit-tested;
-`audio.ts` only turns them into sound. Audio starts on the first key press,
-because a browser will not open an `AudioContext` outside a user gesture. `M`
-mutes.
+`audio.ts` only turns them into sound. `M` mutes.
+
+### 10.2 Starting the sound
+
+A browser will not open an `AudioContext` outside a user gesture, so something
+has to collect one. Any key press or menu click will do it, and for the effects
+that is enough — the first sound a player hears is a lock, and by then they have
+pressed something.
+
+Music cannot work that way. It has to be running *before* the player does
+anything, which is a contradiction unless there is a screen whose entire job is
+to be the thing they do first. That is the boot gate: wordmark, a progress bar
+reporting a real fetch, and a button. The loading is genuine and the gesture is
+genuinely required; neither is there to justify the other.
+
+A deep link (`?mode=`, `?challenge=`) goes round the gate. It fills a wait and
+collects a gesture, and a player arriving on a shared code has already chosen.
+
+### 10.3 Music
+
+**Menu music, at first.** One track on the front door and the menus, faded out
+when a run begins. In a run the audio is reactive and pitched by depth, and a
+bed under it is a claim that has not been designed yet.
+
+Music routes through the same master gain as the effects, so mute and volume
+reach it without knowing it exists. Anything reaching the destination by another
+route is a channel the player's settings do not control.
+
+**Streamed, not decoded.** Decoded audio is float32 at the context's rate — a
+two-minute track is tens of megabytes resident for a file that is under two on
+disk. Music plays through an `<audio>` element and a
+`MediaElementAudioSourceNode`; the cost is that its loop is not sample-exact, and
+that trade is right for a bed and wrong for an effect.
+
+**Opus in WebM**, because a loop is the point: MP3 and AAC pad the stream to fill
+the final block and that padding decodes as silence at the seam. Opus stores the
+exact sample count and a standardised pre-skip. Encode at 48 kHz — libopus only
+encodes at that rate, and resampling on the way out moves the loop boundary.
 
 ## 11. Modes
 

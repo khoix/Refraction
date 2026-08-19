@@ -7,6 +7,131 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M18 — The Front Door
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+A real title screen. The wordmark centred over the live board, a progress bar
+under it reporting a genuine fetch, and a `TAP TO PLAY` button that appears when
+the fetch finishes. Behind it, `Blockfall Skyline` starts on the menu and stops
+when a run begins.
+
+### The tap is the mechanism, not the decoration
+
+A browser will not start an `AudioContext` outside a user gesture. Until there
+was a screen whose entire job was to collect one, the first sound in the game was
+whatever the player happened to press first — which meant menu music was not
+something this game could have, regardless of what was in the repository. The
+gate exists to collect that gesture; filling the wait with a loading bar is what
+makes collecting it honest rather than a toll.
+
+So `onEnter` does everything synchronously inside the click: resume the context,
+show the title, start the theme. The frame loop would pick the theme up a frame
+later anyway, but by then the gesture has ended and starting media relies on the
+browser's stickier "has interacted" rule instead of on the gesture itself.
+
+### Streamed, not decoded
+
+The theme is 137 seconds at ~112 kbps. Decoded into an `AudioBuffer` that is
+about **53 MB** of resident float32 for a file that is 1.8 MB on disk, which is
+not a price a phone should pay for menu music. It plays through an `<audio>`
+element and a `MediaElementAudioSourceNode` instead, so only the compressed bytes
+are held.
+
+The cost is real and is written down where the decision is: a `MediaElement` loop
+is not sample-exact, so there is a small seam at the wrap. Accepted for music,
+and the wrong trade for a sound effect.
+
+The graph is `element → source → fade → master → destination`. Routing through
+`master` is not a tidiness preference — mute and volume are implemented as
+`master.gain`, so an element left to play on its own would be music that keeps
+going after the player mutes the game.
+
+### What "an honest progress bar" turned out to require
+
+Three properties, each of which the obvious implementation gets wrong, and each
+now pinned by a test that was verified to fail without it:
+
+- **It cannot read full before the bytes are in.** An asset's share is capped
+  just below its weight until the transfer actually completes. The failing case
+  is an understated `Content-Length` — a stale manifest, a proxy that re-encoded
+  — where `received / expected` passes 1 well before the body ends.
+- **It always finishes.** A failed asset resolves its whole share and reports
+  the error rather than rejecting. A front door that a missing file can jam shut
+  is worse than no front door at all.
+- **It weights by declared size, not by asset count.** A 100 KB file finishing
+  first moves the bar a tenth, not a half.
+
+The timeout is a **stall** timeout, re-armed on every chunk, not a deadline. A
+deadline punishes exactly the connection that most needs patience: a slow link
+making steady progress is working, and killing it at fifteen seconds turns a long
+wait into no music at all.
+
+### Corrected during the milestone
+
+Two of the six preload tests did not discriminate when first written, found by
+sabotage rather than by review:
+
+- The slow-transfer fake built a `ReadableStream` that ignored its abort signal,
+  so a timeout that fired and a timeout that did not looked identical. Replaced
+  with a paced body that errors on abort, the way a real fetch body does.
+- The module doc claimed the monotonic filter prevents the bar rewinding when
+  `Content-Length` corrects an estimate. It does not, and cannot: each asset's
+  denominator is fixed when its headers land, before any progress for it is
+  reported, so the sum is already monotonic. What the filter actually removes is
+  _repeats_ — once a share is held at the cap, every further chunk computes the
+  same fraction. Comment rewritten to say that, and a seventh test added to pin
+  it.
+
+The first visual pass used a radial vignette of its own and was wrong twice over:
+it read as a different screen from the title, and it sat over the arrangement and
+drained the cubes to grey — on the one screen whose whole job is to say what this
+game looks like. Replaced with the title screen's own gradient, and the block
+centred in the space _above_ the stack rather than in the viewport, so the mark
+and the arrangement are both legible at once.
+
+### Rules kept
+
+- **The bar is achromatic.** A loading bar is the most tempting surface in this
+  interface to run through the spectrum, and §2.2 reserves hue for cubes alone —
+  a red-to-violet bar would be a second colour language on the first screen
+  anyone sees. Held by an end-to-end test that rejects both a background _image_
+  and a wide channel spread.
+- **Deep links go round the door.** `?mode=` and `?challenge=` still open
+  straight into a run; the preload runs behind it, so the theme is there if the
+  player quits back to the menu.
+- **Only the track that plays is imported.** An `import.meta.glob` would pick up
+  all six in a line and emit 9.7 MB into `dist` for the one that is reachable.
+
+### Tested
+
+- **Preload (7 unit)** — starts empty and ends full; never reads full early;
+  finishes and reports when an asset fails; weights by declared size; emits each
+  step once; survives a slow transfer; abandons a silent one. All five relevant
+  sabotages caught by exactly one test each.
+- **Front door (5 e2e)** — opens on the gate with the room behind it and an
+  achromatic bar; holds the button until loading finishes (asset held open by a
+  route); starts the theme on the menu and stops it for a run, read off the media
+  element rather than off the intent; a deep link bypasses; an aborted track
+  still opens the door.
+- Sabotage-verified end to end: opening the gate early, letting the theme run
+  into a game, and making a failed asset reject each fail exactly one test.
+
+### Scripts
+
+`scripts/boot-capture.mjs` — captures the gate loading, ready and after the tap,
+at desktop and phone sizes, holding the asset with a route so the loading state
+can actually be looked at.
+
+### Next
+
+**M18a — the rest of the music.** Five tracks sit unreferenced. The question is
+not how to play one but when: the room already carries a tension signal driving
+the lattice glow, and music that ignores it would be the one part of the
+presentation not answering to the board. See `docs/PLAN.md`.
+
+---
+
 ## M17 — Spectral Collapse
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
