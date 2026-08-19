@@ -191,6 +191,17 @@ body {
   text-align: right;
 }
 
+/*
+ * The next-piece panel is a window when the turning preview is on: the preview
+ * is drawn into the canvas, which sits behind the HUD, so a panel with a fill of
+ * its own covers it. The fill moves to the preview's own scene, where it is
+ * behind the piece instead of in front of it. Border and label stay here.
+ */
+.slot--window {
+  background: transparent;
+  backdrop-filter: none;
+}
+
 .slot__body {
   display: flex;
   justify-content: flex-end;

@@ -4,6 +4,12 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="color-scheme" content="dark" />
+    <!--
+      Declared rather than left to the browser's default probe for /favicon.ico,
+      which the site does not have: that probe was logging a 404 on every boot,
+      which the console-error test correctly refused to accept.
+    -->
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta
       name="description"
       content="Refraction - a perspective-shifting falling-block puzzle game built inside a three-dimensional board."

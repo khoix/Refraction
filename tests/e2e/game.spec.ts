@@ -65,6 +65,58 @@ async function distinctWellColours(page: Page): Promise<number> {
   });
 }
 
+/**
+ * Sample the canvas where the turning next-piece preview is drawn.
+ *
+ * The preview is not DOM any more: it is a scissored corner of the same WebGL
+ * canvas as the board, sitting *behind* the HUD panel that frames it. So the
+ * panel's own rectangle gives the region, and the pixels come from the canvas.
+ *
+ * Inset, because the panel's border and label are DOM and would be sampled as
+ * part of the picture otherwise.
+ */
+async function previewPixels(
+  page: Page
+): Promise<{ lit: number; chroma: number; signature: string }> {
+  return page.evaluate(() => {
+    const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+    const panel = document.querySelector('.slot .slot__body') as HTMLElement | null;
+    if (!panel) return { lit: 0, chroma: 0, signature: '' };
+    const box = source.getBoundingClientRect();
+    const rect = panel.getBoundingClientRect();
+    const scaleX = source.width / Math.max(1, box.width);
+    const scaleY = source.height / Math.max(1, box.height);
+    const inset = 0.12;
+    const sx = (rect.left - box.left + rect.width * inset) * scaleX;
+    const sy = (rect.top - box.top + rect.height * inset) * scaleY;
+    const sw = Math.max(1, rect.width * (1 - inset * 2) * scaleX);
+    const sh = Math.max(1, rect.height * (1 - inset * 2) * scaleY);
+
+    const scratch = document.createElement('canvas');
+    scratch.width = 40;
+    scratch.height = 40;
+    const context = scratch.getContext('2d');
+    if (!context) return { lit: 0, chroma: 0, signature: '' };
+    context.drawImage(source, sx, sy, sw, sh, 0, 0, scratch.width, scratch.height);
+    const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+    // The preview paints its own near-black ground, so "lit" means a pixel
+    // brighter than that ground rather than brighter than nothing.
+    let lit = 0;
+    let chroma = 0;
+    const bytes: number[] = [];
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i] as number;
+      const g = data[i + 1] as number;
+      const b = data[i + 2] as number;
+      if (Math.max(r, g, b) > 40) lit += 1;
+      chroma = Math.max(chroma, Math.max(r, g, b) - Math.min(r, g, b));
+      bytes.push(r, g, b);
+    }
+    return { lit, chroma, signature: bytes.join(',') };
+  });
+}
+
 test.describe('boot', () => {
   test('renders the playfield and the HUD', async ({ page }) => {
     await boot(page);
@@ -119,15 +171,24 @@ test.describe('boot', () => {
   });
 
   test('shows the next piece', async ({ page }) => {
-    await boot(page);
-    await expect(page.locator('.slot__body .piece__cell--filled').first()).toBeVisible();
+    // Measured on the canvas, not in the DOM. The preview is a turning 3D render
+    // scissored into the corner of the same canvas as the board, so the panel
+    // supplies the rectangle and the pixels come from WebGL.
+    await page.goto('/?debug=1&mode=ascent&seed=next');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(300);
+    const { lit } = await previewPixels(page);
+    expect(lit).toBeGreaterThan(60);
   });
 
-  test('spaces the next-piece preview evenly in both axes', async ({ page }) => {
+  test('spaces the still preview evenly in both axes', async ({ page }) => {
+    // The DOM grid, which is what the *still* preview and the hold slot use. The
+    // turning preview has no grid to space -- it is a render.
     await boot(page);
+    await page.keyboard.press('KeyC');
     const metrics = await page
       .locator('.slot')
-      .first()
+      .nth(1)
       .locator('.piece')
       .evaluate((grid) => {
         const cells = [...grid.querySelectorAll('.piece__cell')];
@@ -851,6 +912,19 @@ test.describe('modes in play', () => {
 
     // The preview must not leak what the board hides: a coloured next-piece
     // would hand back the very lane this mode withholds.
+    //
+    // Measured on the canvas, where the preview lives since M10. It is drawn by
+    // the same `VoxelLayer` as the board, so the mode's neutral fill has to
+    // reach it through the same switch rather than through a second decision
+    // somewhere in the HUD -- but a shared implementation is a reason to check,
+    // not a reason to assume.
+    await page.waitForTimeout(300);
+    const { lit, chroma } = await previewPixels(page);
+    expect(lit).toBeGreaterThan(60);
+    expect(chroma).toBeLessThan(24);
+
+    // And the hold slot, which is still DOM and paints from the same palette.
+    await page.keyboard.press('KeyC');
     const spreads = await page.evaluate(() => {
       const cells = [...document.querySelectorAll('.slot__body .piece__cell--filled')];
       return cells.map((cell) => {
@@ -1468,11 +1542,22 @@ test.describe('the board renders the palette it was given', () => {
   });
 
   test('the board is as vivid as the piece preview beside it', async ({ page }) => {
-    // The NEXT preview is DOM, painted with depthColorHex directly, so it is
+    // The reference has to be DOM, painted with depthColorHex directly, so it is
     // immune to anything the WebGL pipeline does. When the two disagree it is
     // always the board that is wrong, which is exactly how this was found.
+    //
+    // It reads the HOLD slot now. NEXT used to be that reference and no longer
+    // can be -- it is a WebGL render since M10, so comparing it to the board
+    // would be comparing the pipeline to itself, and every fault this test
+    // exists to catch would cancel out. Hold is still DOM, and it paints at lane
+    // 0, which is the lane the board cube below is filled at: the two are the
+    // same colour, not merely two saturated ones.
     await page.goto('/?debug=1&mode=ascent&seed=fidelity');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.keyboard.press('KeyC');
+    await expect(
+      page.locator('.slot').nth(1).locator('.piece__cell--filled').first()
+    ).toBeVisible();
 
     const { board, preview } = await page.evaluate(() => {
       const game = window.__refraction?.game;
@@ -1510,8 +1595,12 @@ test.describe('the board renders the palette it was given', () => {
               return Math.round(sum / (patch.length / 4));
             });
 
-            // The preview cells carry their colour as an inline style.
-            const cell = document.querySelector('.piece__cell--filled') as HTMLElement | null;
+            // The preview cells carry their colour as an inline style. Indexed
+            // off the slot rather than queried globally, so this cannot silently
+            // start reading NEXT again if the still preview ever becomes the
+            // default -- that would put it back to measuring WebGL against WebGL.
+            const hold = document.querySelectorAll('.slot')[1];
+            const cell = hold?.querySelector('.piece__cell--filled') as HTMLElement | null;
             const style = cell ? getComputedStyle(cell).backgroundColor : 'rgb(0,0,0)';
             const [pr, pg, pb] = (style.match(/\d+/g) ?? ['0', '0', '0']).map(Number) as [
               number,
@@ -1748,6 +1837,14 @@ test.describe('the landing marks', () => {
     // Row 5 clears both: the floors of columns 2, 3 and 4 are all below it, and
     // none of their backstops are in it. (3, 5) is surrounded; (4, 5) is right
     // beside it against column 5, which the piece does not cover.
+    //
+    // Measured as one cell against the other rather than as each cell's peak
+    // against its own mean. That was the original form and it stopped working
+    // when the channel was capped at one pane of glass: the fill is now faint by
+    // design, so an interior cell's mean sits near the background, and scaling
+    // its peak against that turns two luminance levels of antialiasing into a
+    // 55% swing. The claim is a comparison between two cells anyway -- this one
+    // has a border through it, that one does not -- so it is measured as one.
     const probe = [
       { u: 3, y: 5 },
       { u: 4, y: 5 },
@@ -1756,8 +1853,206 @@ test.describe('the landing marks', () => {
 
     const interior = at(falling, 3, 5);
     const border = at(falling, 4, 5);
-    expect(interior.peak).toBeLessThan(interior.mean * 1.4);
+    expect(interior.peak).toBeLessThan(border.peak * 0.5);
     expect(border.peak).toBeGreaterThan(border.mean * 2);
+  });
+});
+
+/**
+ * The marks, on the board that needs them most.
+ *
+ * Every other measurement here puts three lanes of wall in front of the piece.
+ * Three is not the hard case: the well is eight deep, and a stack that has
+ * filled the front of the board is exactly when a player cannot tell where
+ * anything is going to land.
+ *
+ * It was also where the aid quietly stopped working. Translucency accumulates,
+ * so a channel seen through seven panes of glass came back to 59% coverage --
+ * measured at luminance 93 where an untouched cube reads 107. The landing
+ * footprint behind it peaked at 135 against glass peaking at 119: a 13%
+ * separation, where an open board gives fourteen times. The x-ray dissolved as
+ * the board got harder, which is backwards, and no amount of re-tuning the marks
+ * could fix it because the marks were not the problem.
+ *
+ * The channel draws one pane per screen cell now. These hold that: both marks
+ * have to read against a full-depth wall the way they read against nothing.
+ */
+test.describe('the marks survive a buried board', () => {
+  /**
+   * The deepest lane, behind a wall filling every lane in front of it.
+   *
+   * The piece is a flat four-wide bar in lane 7 with a single three-high stack
+   * under one end, so it comes to rest at row 3 and hangs over the rest -- the
+   * two marks are rows apart, and both are behind seven cubes of wall. Column 7
+   * stays empty so no line ever completes and the engine stays in `falling`.
+   */
+  const LANE7 = [0, 3, 0, 0, 0, 0, 0];
+  const PIECE_LANE = 7;
+  const WALL_TOP = 14;
+
+  interface CellSample {
+    readonly u: number;
+    readonly y: number;
+    readonly mean: number;
+    readonly peak: number;
+  }
+
+  async function sample(
+    page: Page,
+    cells: readonly { u: number; y: number }[],
+    options: { buried?: boolean } = {}
+  ): Promise<CellSample[]> {
+    await page.goto('/?debug=1&mode=ascent&seed=buried');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.evaluate(
+      ({ lane7, pieceLane, wallTop }) => {
+        const game = window.__refraction?.game;
+        if (!game || !game.active) throw new Error('debug hook unavailable');
+        for (let x = 0; x < 7; x += 1) {
+          for (let lane = 0; lane < 8; lane += 1) {
+            const height = lane === pieceLane ? (lane7[x] ?? 0) : wallTop;
+            for (let y = 0; y < height; y += 1) game.board.fill({ x, y, z: 7 - lane });
+          }
+        }
+        game.active = {
+          ...game.active,
+          offsets: [
+            { x: 0, y: 0, z: 0 },
+            { x: 1, y: 0, z: 0 },
+            { x: 2, y: 0, z: 0 },
+            { x: 3, y: 0, z: 0 },
+          ],
+          u: 1,
+          lane: pieceLane,
+          y: 16,
+        };
+      },
+      {
+        lane7: LANE7,
+        pieceLane: PIECE_LANE,
+        wallTop: options.buried === false ? 0 : WALL_TOP,
+      }
+    );
+    await page.waitForTimeout(400);
+
+    return page.evaluate(
+      ({ cells }) => {
+        const renderer = window.__refraction?.renderer;
+        const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+        if (!renderer) throw new Error('debug hook unavailable');
+        const rect = renderer.wellScreenRect();
+        const box = source.getBoundingClientRect();
+        const scaleX = source.width / box.width;
+        const scaleY = source.height / box.height;
+
+        const scratch = document.createElement('canvas');
+        scratch.width = source.width;
+        scratch.height = source.height;
+        const context = scratch.getContext('2d');
+        if (!context) throw new Error('no 2d context');
+        context.drawImage(source, 0, 0);
+        const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+        const PAD = 0.6;
+        const rows = 18 + PAD * 2;
+        const luminance = (px: number, py: number): number => {
+          const i = (Math.round(py * scaleY) * scratch.width + Math.round(px * scaleX)) * 4;
+          return (
+            0.2126 * (data[i] as number) +
+            0.7152 * (data[i + 1] as number) +
+            0.0722 * (data[i + 2] as number)
+          );
+        };
+
+        return cells.map(({ u, y }) => {
+          const left = rect.left - box.left + (rect.width * u) / 8;
+          const width = rect.width / 8;
+          const top = rect.top - box.top + (rect.height * (PAD + (18 - y - 1))) / rows;
+          const height = rect.height / rows;
+
+          let sum = 0;
+          let count = 0;
+          for (let py = top + height * 0.15; py < top + height * 0.85; py += 1) {
+            for (let px = left + width * 0.15; px < left + width * 0.85; px += 1) {
+              sum += luminance(px, py);
+              count += 1;
+            }
+          }
+          let peak = 0;
+          for (let py = top; py < top + height; py += 1) {
+            for (let px = left; px < left + width; px += 1) {
+              peak = Math.max(peak, luminance(px, py));
+            }
+          }
+          return { u, y, mean: sum / Math.max(1, count), peak };
+        });
+      },
+      { cells }
+    );
+  }
+
+  const at = (samples: CellSample[], u: number, y: number): CellSample =>
+    samples.find((s) => s.u === u && s.y === y) as CellSample;
+
+  test('both marks stand clear of seven lanes of glass', async ({ page }) => {
+    // Row 3 is where the bar rests; row 2 is the cube it rests on; row 8 is the
+    // same channel well above both, where there is nothing behind the glass at
+    // all. The marks have to separate from that, not merely exceed it.
+    const probe = [
+      { u: 1, y: 3 },
+      { u: 1, y: 2 },
+      { u: 1, y: 8 },
+    ];
+    const buried = await sample(page, probe);
+
+    const glass = at(buried, 1, 8);
+    expect(at(buried, 1, 3).mean).toBeGreaterThan(glass.mean * 3);
+    expect(at(buried, 1, 2).mean).toBeGreaterThan(glass.mean * 3);
+    // And the two marks stay distinguishable from each other. They say different
+    // things -- where the piece will sit, and what it will sit on -- so a board
+    // that flattens them into one bright smear has lost the gap between them.
+    expect(at(buried, 1, 2).mean).toBeGreaterThan(at(buried, 1, 3).mean * 1.3);
+  });
+
+  test('a wall in front costs the marks almost nothing', async ({ page }) => {
+    // The measurement that made the accumulation obvious. With the channel
+    // capped at one pane the buried board and the open one read within a tenth
+    // of each other; before the cap the contact mark lost a sixth of its
+    // strength to the wall and the footprint gained a quarter from the glass in
+    // front of it, which is the aid becoming the obstruction.
+    const probe = [
+      { u: 1, y: 3 },
+      { u: 1, y: 2 },
+    ];
+    const buried = await sample(page, probe);
+    const open = await sample(page, probe, { buried: false });
+
+    for (const y of [3, 2]) {
+      const ratio = at(buried, 1, y).mean / at(open, 1, y).mean;
+      expect(ratio).toBeGreaterThan(0.85);
+      expect(ratio).toBeLessThan(1.15);
+    }
+  });
+
+  test('a column the piece does not cover keeps its full colour', async ({ page }) => {
+    // The cap must not have turned into a general thinning of the board. Column
+    // 6 is outside the channel, so its front cube is untouched whatever is
+    // happening in the columns beside it.
+    const probe = [
+      { u: 6, y: 3 },
+      // Above the wall, which stops at row 13, and outside the piece's columns:
+      // empty. The dark reference, so a pass cannot come from the sample simply
+      // reading everything as bright.
+      { u: 6, y: 15 },
+    ];
+    const buried = await sample(page, probe);
+
+    const wall = at(buried, 6, 3);
+    expect(wall.mean).toBeGreaterThan(80);
+    // Flat, too: no glass, no outline, no mark anywhere near it.
+    expect(wall.peak - wall.mean).toBeLessThan(3);
+    expect(at(buried, 6, 15).mean).toBeLessThan(30);
   });
 });
 
@@ -2191,5 +2486,215 @@ test.describe('interface corrections', () => {
     await expect
       .poll(() => page.evaluate(() => window.__refraction?.game.mode.id))
       .toBe('flatland');
+  });
+});
+
+/**
+ * Peek: a held key that tilts the camera and does nothing else.
+ *
+ * A settled board is seen dead-on, so it offers no parallax at all -- which is
+ * the point, since parallax would be a second way to read depth competing with
+ * the spectrum. Peek lends the player eight degrees of it for as long as they
+ * hold the key, and takes it back when they let go.
+ *
+ * It is a comprehension aid with a deadline. It is offered while the spectrum is
+ * still being learned and withdrawn at Stage 6, where reading depth from colour
+ * is the skill rather than the tutorial; and it is off entirely in Blind
+ * Spectrum, where it would not supplement the depth channel but *be* it.
+ */
+test.describe('Peek', () => {
+  const peeking = (page: Page): Promise<boolean | undefined> =>
+    page.evaluate(() => window.__refraction?.renderer.peeking);
+
+  test('tilts while held and comes back when released', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=peek');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    expect(await peeking(page)).toBe(false);
+    await page.keyboard.down('KeyP');
+    await expect.poll(() => peeking(page)).toBe(true);
+    await page.keyboard.up('KeyP');
+    await expect.poll(() => peeking(page)).toBe(false);
+  });
+
+  test('the tilt is eased rather than snapped', async ({ page }) => {
+    // The movement is what carries the parallax: it is the cubes sliding past
+    // each other that says which is in front. A hard cut to eight degrees would
+    // arrive at the same camera position and show none of it.
+    await page.goto('/?debug=1&mode=ascent&seed=peek&turnMs=4000');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    await page.keyboard.down('KeyP');
+    // One frame in, the camera has to be on its way but not yet there. The ease
+    // runs 180ms, so a single frame is a small fraction of it.
+    const partway = await page.evaluate(
+      () =>
+        new Promise<boolean>((resolve) => {
+          requestAnimationFrame(() =>
+            requestAnimationFrame(() => resolve(Boolean(window.__refraction?.renderer.peeking)))
+          );
+        })
+    );
+    await page.keyboard.up('KeyP');
+    expect(partway).toBe(true);
+  });
+
+  test('moves the camera and nothing else', async ({ page }) => {
+    // The reason it is safe to offer at all. Peek is a renderer concern: no
+    // piece moves, no lock timer runs down, no line resolves. If it touched the
+    // run it would be a mechanic, and a mechanic that switches itself off at
+    // Stage 6 would be a cliff rather than a lesson.
+    await page.goto('/?debug=1&mode=ascent&seed=peek');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const snapshot = (): Promise<string> =>
+      page.evaluate(() => {
+        const game = window.__refraction?.game;
+        if (!game) throw new Error('debug hook unavailable');
+        game.status = 'falling';
+        return JSON.stringify({ active: game.active, lines: game.lines, score: game.score });
+      });
+
+    const before = await snapshot();
+    await page.keyboard.down('KeyP');
+    await expect.poll(() => peeking(page)).toBe(true);
+    const during = await snapshot();
+    await page.keyboard.up('KeyP');
+
+    expect(during).toBe(before);
+  });
+
+  test('is withdrawn at the stage the spectrum has to carry alone', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=peek');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(
+      ({ perStage }) => {
+        const game = window.__refraction?.game;
+        if (!game) throw new Error('debug hook unavailable');
+        game.lines = perStage * 5;
+      },
+      { perStage: LINES_PER_STAGE }
+    );
+    await expect.poll(() => page.evaluate(() => window.__refraction?.game.stage.index)).toBe(6);
+
+    await page.keyboard.down('KeyP');
+    await page.waitForTimeout(300);
+    const tilted = await peeking(page);
+    await page.keyboard.up('KeyP');
+    expect(tilted).toBe(false);
+  });
+
+  test('is off entirely where there is no colour to supplement', async ({ page }) => {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.goto('/?debug=1&mode=blindSpectrum&seed=peek');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    await page.keyboard.down('KeyP');
+    await page.waitForTimeout(300);
+    const tilted = await peeking(page);
+    await page.keyboard.up('KeyP');
+    expect(tilted).toBe(false);
+  });
+
+  test('a menu opening cannot strand the tilt', async ({ page }) => {
+    // Holding a key and opening pause means the keyup lands on the menu, not on
+    // the game. Without an explicit release the camera would stay tilted for the
+    // rest of the run with no key held down to explain it.
+    await page.goto('/?debug=1&mode=ascent&seed=peek');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    await page.keyboard.down('KeyP');
+    await expect.poll(() => peeking(page)).toBe(true);
+    await page.keyboard.press('Escape');
+    await expect.poll(() => peeking(page)).toBe(false);
+    await page.keyboard.up('KeyP');
+  });
+});
+
+/**
+ * The next piece, turning.
+ *
+ * A flat preview shows the piece's silhouette from the front, which is exactly
+ * as much as the board shows -- and for a piece with cubes at two depths that is
+ * not enough to know its shape. A screw and its mirror project identically from
+ * one face, so the player is asked to plan a placement for a solid they have
+ * only ever seen flattened.
+ *
+ * It is drawn into a scissored corner of the board's own canvas rather than into
+ * a canvas of its own, which is why the panel that frames it had to become a
+ * window: the canvas sits behind the HUD, and a panel with a fill of its own
+ * simply covers the render. That failure looked exactly like a black preview,
+ * and cost a long hunt through the camera, the frustum and the instance count
+ * before the panel above it was suspected.
+ */
+test.describe('the turning preview', () => {
+  test('turns, rather than holding one projection', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=spin');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(200);
+
+    const first = await previewPixels(page);
+    // A revolution is seven seconds, so a second is about a seventh of a turn:
+    // plenty to change every face's projection, and short enough that the piece
+    // on screen is still the same one.
+    await page.waitForTimeout(1000);
+    const second = await previewPixels(page);
+
+    expect(first.lit).toBeGreaterThan(60);
+    expect(second.signature).not.toBe(first.signature);
+  });
+
+  test('holds still when the player asks it to', async ({ page }) => {
+    // Off is the *harder* option, not the plainer one: a still preview shows the
+    // piece the way the board shows everything, as one projection, and leaves
+    // the player to infer the rest.
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: {}, records: {}, settings: { spinPreview: false } })
+      );
+    });
+    await page.goto('/?debug=1&mode=ascent&seed=spin');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    // The still preview is the DOM grid, and the panel goes back to being a
+    // panel rather than a window over the canvas.
+    await expect(
+      page.locator('.slot').first().locator('.piece__cell--filled').first()
+    ).toBeVisible();
+    await expect(page.locator('.slot').first()).not.toHaveClass(/slot--window/);
+  });
+
+  test('draws the piece at the depth it will arrive at', async ({ page }) => {
+    // The preview turns; the *colour* does not. Each cube wears the colour of
+    // the lane it will arrive in, exactly as on the board, because the preview's
+    // job is to say what is coming and where -- not to invent a second way of
+    // describing depth. A preview that repainted itself as it spun would be
+    // saying the piece was moving through the board while it sat in a panel.
+    await page.goto('/?debug=1&mode=ascent&seed=spin');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    await page.waitForTimeout(200);
+
+    // Chroma rather than exact bytes: the render is lit and antialiased, and the
+    // piece is turning, so no single pixel is stable. What must hold is that the
+    // preview shows a spectrum colour rather than the neutral fill, and that the
+    // colour does not drift as the piece turns through its faces.
+    const first = await previewPixels(page);
+    await page.waitForTimeout(900);
+    const second = await previewPixels(page);
+    expect(first.chroma).toBeGreaterThan(40);
+    expect(Math.abs(second.chroma - first.chroma)).toBeLessThan(30);
   });
 });

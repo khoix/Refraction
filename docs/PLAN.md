@@ -307,9 +307,54 @@ with the input work in M11, and moved there.
 
 **Goal:** the comprehension tools.
 
-- **Peek** — hold to tilt 8°, parallax inspection, snaps back, changes no state.
-  Limited at Stage 6+, disabled in Blind Spectrum.
-- Rotating 3D next-piece preview; static preview as a harder option.
+- ✅ **Peek** — hold to tilt 8°, parallax inspection, eases back, changes no
+  state. Withdrawn from Stage 6, off in Blind Spectrum.
+
+  The rule lives in the core (`peekAllowed`), not in the renderer, so it is
+  testable without a canvas — and it is keyed off the mode's `depthColour` flag
+  rather than off Blind Spectrum's name, because that is the actual reason: Peek
+  is meant to supplement the depth channel, and in a mode with no depth colour it
+  would _be_ the depth channel instead.
+
+  Eight degrees, eased over 180ms in both directions. Small on purpose: enough to
+  separate a settled stack along the depth axis, which is the whole point since a
+  dead-on board offers no parallax at all, without becoming a second way to read
+  depth competing with the spectrum. The board stays orthographic throughout, so
+  a far cube is still exactly the size of a near one — only the angle changes.
+  The easing is not decoration either: it is the cubes sliding past each other
+  that says which is in front, so a hard cut would arrive at the same camera
+  position and show none of it.
+
+  Released explicitly when input is dropped, so opening pause with the key held
+  cannot strand the camera off-axis for the rest of the run.
+
+- ✅ **Rotating 3D next-piece preview; static preview as a harder option.**
+
+  Drawn into a scissored corner of the board's own canvas rather than into a
+  canvas of its own: a second `WebGLRenderer` means a second GL context, a second
+  copy of every shader and a second frame to keep in step, where a scissor
+  rectangle costs a viewport change. The rectangle comes from the DOM panel that
+  frames it, so the two stay aligned through every layout change without either
+  knowing about the other.
+
+  Which is also what made it hard. The canvas sits _behind_ the HUD, so the
+  panel's own `rgb(10 12 20 / 0.82)` fill and backdrop blur were painted over the
+  render — it looked like a black preview, and the camera, the frustum, the
+  instance count and the light were all checked before the panel above it was
+  suspected. The panel is a window now (`.slot--window`), and its fill moved into
+  the preview scene's own background where it sits behind the piece.
+
+  It turns; its colour does not. Each cube wears the colour of the lane it will
+  arrive in, exactly as on the board, because the preview's job is to say what is
+  coming and where — not to invent a second way of describing depth.
+
+  Two fixes came out of the hunt. `setViewport`/`setScissor` multiply by the
+  renderer's pixel ratio internally, so the rect must be passed in CSS pixels;
+  pre-multiplying was invisible at ratio 1 and wrong on every other display. And
+  the frustum is sized for the longest piece at any yaw rather than fitted to
+  each piece, so a compact piece looks small — pieces keep their true relative
+  size instead of each being scaled to fill the panel.
+
 - ~~First-run onboarding that teaches by design rather than by tutorial text.~~
   **Superseded by M13.** The play notes ask for the opposite and are more
   specific: a hands-on, on-rails playthrough that pauses to highlight each idea
@@ -398,18 +443,65 @@ see both where the piece will come to rest and what it will rest on, and how big
 the gap between them is. Five end-to-end tests, each confirmed to fail when its
 behaviour is reverted.
 
-- **Ghost and contact clarity pass** — re-tune opacity, emphasis and hierarchy
-  once the above lands, and check behaviour on highly occluded boards.
+### The clarity pass — M10b ✅
 
-**Exit criteria:** a new player reaches their first turn without instructions and
-understands what happened afterwards. The ghost is findable at a glance on a full
-board, and no cube is dimmed unless it sits behind the falling piece.
+- ✅ **Ghost and contact clarity pass** — measured on a highly occluded board
+  before anything was re-tuned, and the measurement is why nothing was.
 
-**Sequencing (updated):** the two items that led this milestone — the x-ray
-rollback and the ghost — have shipped, along with everything the play notes
-added after them. What remains is Peek, the rotating preview, and the clarity
-pass; none of them blocks anything else, and the onboarding bullet has moved out
-to M13.
+  The marks were fine. The x-ray was not. Every measurement up to this point had
+  put three lanes of wall in front of the piece, and three is not the hard case:
+  the well is eight deep, and a stack that has filled the front of the board is
+  exactly when a player cannot tell where anything will land. Measured against a
+  full-depth wall, with the piece bound for lane 7:
+
+  | Sampled cell            | Buried, before | Buried, after | Open board |
+  | ----------------------- | -------------- | ------------- | ---------- |
+  | Landing footprint       | 134 / peak 135 | 112 / 115     | 109 / 112  |
+  | Contact mark            | 170 / 180      | 191 / 213     | 203 / 227  |
+  | Channel above them      | **93 / 119**   | 22 / 73       | 11 / 36    |
+  | Untouched cube, no aids | 107            | 107           | —          |
+
+  Translucency accumulates. Seven panes at 0.12 leave 0.88⁷ = 41% of the light
+  behind them, so the channel came back to 59% coverage — luminance 93 against an
+  untouched cube's 107, which is to say the x-ray had turned back into a wall.
+  The footprint behind it peaked at 135 against glass peaking at 119: a 13%
+  separation where an open board gives fourteen times. **The aid dissolved as the
+  board got harder**, which is backwards, and no amount of re-tuning the marks
+  could have fixed it because the marks were never the problem.
+
+  Dropping the fill's opacity cannot fix it either — one number has to serve both
+  a single pane and eight, and faint enough for eight is invisible for one. Nor
+  can per-instance alpha: instance colour multiplies the fragment, not its alpha,
+  so dimming a rear pane darkens the stack without making it any more
+  transparent.
+
+  So the pane count is capped instead: **one pane of glass per screen cell, the
+  nearest**. How many cubes are stacked in the way is not something a player acts
+  on; where the region is, how deep it starts, and where the piece will land are,
+  and those come from the outline, the outline's colour and the two marks.
+  `EdgeLayer` already collapsed the region to one depth per screen cell for
+  exactly that reason, so this makes the fill agree with the border drawn around
+  it. Buried and open now read within a tenth of each other.
+
+  One existing test had to change its yardstick, not its claim: the interior of
+  the x-rayed region was checked by scaling its peak against its own mean, and
+  with the fill faint by design that mean sits near the background, turning two
+  luminance levels of antialiasing into a 55% swing. It compares the interior
+  cell against the border cell in the same frame now, which is what the claim
+  was always about.
+
+- ✅ **Gave the page a favicon.** Unrelated to the above and found by the same
+  suite: there was no icon at all, so every boot logged a 404 for the browser's
+  default `/favicon.ico` probe. One voxel wearing the whole ramp, in the
+  palette's own seven bands.
+
+**Exit criteria, met:** the ghost is findable at a glance on a full board — three
+tests hold the buried case specifically — and no cube is dimmed unless it sits
+behind the falling piece. Peek and the turning preview each carry their own
+tests, including that Peek moves the camera and nothing else.
+
+The onboarding bullet moved out to M13, which is where "a new player reaches
+their first turn without instructions" is now answered.
 
 ---
 

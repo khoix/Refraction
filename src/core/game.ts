@@ -87,6 +87,13 @@ export interface GameOptions {
 const TURN_PROMPT_TIMEOUT_MS = 5000;
 export const DEFAULT_TURN_DURATION_MS = 750;
 export const DEFAULT_CLEAR_FLASH_MS = 170;
+/**
+ * The stage from which Peek stops being offered.
+ *
+ * Six rather than seven: the last authored stage should be played on the
+ * spectrum alone, not be the first one where that is true.
+ */
+export const PEEK_LOCKED_FROM_STAGE = 6;
 const MAX_LOCK_RESETS = 15;
 const SOFT_DROP_MULTIPLIER = 20;
 
@@ -181,6 +188,27 @@ export class Game {
 
   get depthNudgeAllowed(): boolean {
     return this.options.forceDepthNudge === true || this.stage.depthNudge;
+  }
+
+  /**
+   * Whether Peek is available: hold to tilt the camera and read depth from
+   * parallax instead of from colour.
+   *
+   * A comprehension tool, and one that has to withdraw, because it supplements
+   * the spectrum rather than replacing it.
+   *
+   * **Off in a mode with no depth colour.** In Blind Spectrum there is no colour
+   * to supplement, so Peek would not be an aid to reading depth -- it would be
+   * the only way to read it, and the mode's entire premise is that there isn't
+   * one. The rule keys off `depthColour` rather than naming the mode, because
+   * that is the actual reason.
+   *
+   * **Off from Stage 6.** By then the spectrum has to carry it alone; that is
+   * the skill the arc exists to teach, and a tool that never withdraws teaches
+   * the player to lean on it instead.
+   */
+  get peekAllowed(): boolean {
+    return this.mode.depthColour && this.stage.index < PEEK_LOCKED_FROM_STAGE;
   }
 
   get held(): PieceId | null {

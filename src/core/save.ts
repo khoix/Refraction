@@ -30,6 +30,8 @@ export interface Settings {
   readonly reducedMotion: boolean;
   readonly screenShake: boolean;
   readonly bloom: boolean;
+  /** Turn the next-piece preview. Off is the harder option. */
+  readonly spinPreview: boolean;
 }
 
 export interface ModeRecord {
@@ -84,6 +86,7 @@ export const DEFAULT_SETTINGS: Settings = {
   reducedMotion: false,
   screenShake: true,
   bloom: true,
+  spinPreview: true,
 };
 
 const EMPTY_RECORD: ModeRecord = { bestScore: 0, bestLines: 0, bestStage: 0, runs: 0 };
@@ -130,6 +133,7 @@ function readSettings(raw: unknown): Settings {
     reducedMotion: bool(raw['reducedMotion'], DEFAULT_SETTINGS.reducedMotion),
     screenShake: bool(raw['screenShake'], DEFAULT_SETTINGS.screenShake),
     bloom: bool(raw['bloom'], DEFAULT_SETTINGS.bloom),
+    spinPreview: bool(raw['spinPreview'], DEFAULT_SETTINGS.spinPreview),
   };
 }
 
