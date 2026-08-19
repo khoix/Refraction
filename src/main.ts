@@ -374,6 +374,11 @@ function boot(root: HTMLElement): void {
 
   applyStripReserve();
   screens.setMode(mode);
+  // Touch's half of the collapse trigger. The engine decides whether it happens.
+  hud.onCollapseTap(() => {
+    audio.resume();
+    game.triggerCollapse();
+  });
 
   window.addEventListener('resize', () => {
     applyStripReserve();
@@ -435,6 +440,13 @@ function boot(root: HTMLElement): void {
         case 'stage':
           hud.showStageBanner(stageLabel(game.stage));
           break;
+        case 'collapse':
+          // The event fires the moment the stack gives way, before the clears
+          // it produces resolve -- so the shake lands with the fall rather than
+          // with whatever the fall happens to complete.
+          hud.showBanner('SPECTRAL COLLAPSE');
+          renderer.shake(0.9);
+          break;
         case 'rescue':
           // Zen took the top of the stack off instead of ending the run. Say
           // so, or the rows appear to vanish for no reason.
@@ -490,6 +502,7 @@ function boot(root: HTMLElement): void {
     // through every resize.
     // The title screen is the board, not the HUD.
     hud.setHidden(screens.screen === 'title');
+    hud.setHeat(game.spectralAllowed ? game.heat : null, game.spectralReady);
     hud.update(game, elapsed);
     hud.layoutWell(
       renderer.wellScreenRect(),

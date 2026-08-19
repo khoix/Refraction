@@ -132,6 +132,24 @@ function fragmentField(): THREE.Group {
   return group;
 }
 
+/**
+ * A flat grid on the ground, seen only while the board turns.
+ *
+ * It has to be gated on the turn, and not because a floor is a spatial cue --
+ * though it is one, and §2.1 rules those out of the still frame anyway. A
+ * horizontal plane viewed from zero elevation is **edge-on**, so every line in
+ * it projects onto the same row of pixels. Under additive blending eighteen
+ * lines at 0.085 sum past 1 and clip: what the player saw was not a grid, it was
+ * a hard white rule across the bottom of the screen, measured at luminance 194
+ * against a room that reads under 30.
+ *
+ * Holding Peek is what proved it -- eight degrees of elevation dropped the peak
+ * to 35 and spread it over a hundred rows, which is a grid.
+ *
+ * So it fades with `flatness`, exactly as the well's corner posts do: absent
+ * when the board is settled, arriving as the camera lifts into the turn, gone
+ * again on the other side.
+ */
 function floorLattice(): THREE.LineSegments {
   const half = 34;
   const step = 4;
@@ -239,6 +257,8 @@ export class Environment {
 
   private pulse = 0;
   private tension = 0;
+  /** 1 while the board is settled and dead-on, 0 at the midpoint of a turn. */
+  private flatness = 1;
   private turnDrive = 0;
   /** Free-running clock for the beams' individual breathing. */
   private phase = 0;
@@ -269,6 +289,17 @@ export class Environment {
       this.beams,
       ...this.ripples.map((ripple) => ripple.ring)
     );
+  }
+
+  /**
+   * How dead-on the camera currently is.
+   *
+   * Only the floor lattice reads it, and only because a horizontal plane has no
+   * thickness from zero elevation -- see `floorLattice`. Everything else in the
+   * room stands up in the frame and is unaffected by the camera's elevation.
+   */
+  setFlatness(flatness: number): void {
+    this.flatness = Math.min(1, Math.max(0, flatness));
   }
 
   react(strength: number): void {
@@ -320,7 +351,11 @@ export class Environment {
       fragment.scale.setScalar(1 + this.pulse * 0.1);
     });
 
-    (this.lattice.material as THREE.LineBasicMaterial).color.copy(light(0.085 + glow * 0.11));
+    // Nothing at all when the board is dead-on, where this would be a hard white
+    // rule rather than a floor. See `floorLattice`.
+    (this.lattice.material as THREE.LineBasicMaterial).color.copy(
+      light((0.085 + glow * 0.11) * (1 - this.flatness))
+    );
 
     this.beams.children.forEach((child) => {
       const beam = child as THREE.Mesh;

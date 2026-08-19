@@ -214,3 +214,85 @@ describe('ascii rendering', () => {
     expect(renderLane(board, 'front', 4, { height: 2 })).toBe('#..#....\n........');
   });
 });
+
+/**
+ * Spectral Collapse's half of gravity.
+ *
+ * The board has two gravity rules and they must not be confused. `clearLines`
+ * deletes cleared rows and slides the remainder down, deliberately leaving
+ * suspended cells suspended -- a piece bridging two columns legitimately leaves
+ * a cell with nothing under it, and compacting would silently destroy that.
+ * `compactAll` is the exception the mechanic exists to sell: everything falls.
+ */
+describe('compactAll', () => {
+  it('drops a suspended cell to the floor', () => {
+    const board = new Board();
+    board.fill({ x: 2, y: 9, z: 3 });
+    expect(board.compactAll()).toBe(true);
+    expect(board.isFilled({ x: 2, y: 0, z: 3 })).toBe(true);
+    expect(board.isFilled({ x: 2, y: 9, z: 3 })).toBe(false);
+  });
+
+  it('closes gaps without reordering what is above them', () => {
+    const board = new Board();
+    // Three cells with holes between: the order from the bottom up must survive.
+    for (const y of [0, 4, 9]) board.fill({ x: 1, y, z: 1 });
+    board.compactAll();
+    for (const y of [0, 1, 2]) expect(board.isFilled({ x: 1, y, z: 1 })).toBe(true);
+    expect(board.isFilled({ x: 1, y: 3, z: 1 })).toBe(false);
+  });
+
+  it('treats every column independently, in depth as well as width', () => {
+    const board = new Board();
+    board.fill({ x: 0, y: 7, z: 0 });
+    board.fill({ x: 0, y: 7, z: 5 });
+    board.fill({ x: 6, y: 2, z: 5 });
+    board.compactAll();
+    expect(board.isFilled({ x: 0, y: 0, z: 0 })).toBe(true);
+    expect(board.isFilled({ x: 0, y: 0, z: 5 })).toBe(true);
+    expect(board.isFilled({ x: 6, y: 0, z: 5 })).toBe(true);
+    expect(board.filledCells()).toHaveLength(3);
+  });
+
+  it('says whether anything moved, so a spent trigger can tell', () => {
+    const board = new Board();
+    board.fill({ x: 3, y: 0, z: 3 });
+    board.fill({ x: 3, y: 1, z: 3 });
+    expect(board.compactAll()).toBe(false);
+  });
+
+  it('never destroys or duplicates a cell', () => {
+    const board = new Board();
+    let placed = 0;
+    for (let x = 0; x < 8; x += 1) {
+      for (let z = 0; z < 8; z += 1) {
+        for (const y of [1, 5, 11]) {
+          if ((x + z + y) % 3 === 0) {
+            board.fill({ x, y, z });
+            placed += 1;
+          }
+        }
+      }
+    }
+    board.compactAll();
+    expect(board.filledCells()).toHaveLength(placed);
+  });
+
+  it('is what `clearLines` is careful not to do', () => {
+    // The contrast, stated as a test so the distinction cannot quietly erode.
+    // One cell suspended above a cleared row: ordinary gravity moves it down by
+    // the row that went and no further, leaving the gap under it intact.
+    const board = new Board();
+    for (let x = 0; x < 8; x += 1) board.fill({ x, y: 0, z: 4 });
+    board.fill({ x: 2, y: 6, z: 4 });
+
+    const lines = board.findCompleteLines('front');
+    expect(lines).toHaveLength(1);
+    board.clearLines('front', lines);
+    // Slid down one, and still suspended five rows above nothing.
+    expect(board.isFilled({ x: 2, y: 5, z: 4 })).toBe(true);
+
+    board.compactAll();
+    expect(board.isFilled({ x: 2, y: 0, z: 4 })).toBe(true);
+  });
+});

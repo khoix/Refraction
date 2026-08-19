@@ -30,6 +30,41 @@ import type { ModeConfig } from './modes';
 import { AUTHORED_MODE_ID, modeById, modeGravity, modeStage } from './modes';
 import type { Cell, Face, TurnDirection } from './types';
 
+/**
+ * Spectral Collapse: how the hot bar fills and how it cools.
+ *
+ * The bar is bought with **rate**, not with a total. It is always draining, so
+ * what matters is whether a player is clearing faster than it cools -- which is
+ * the whole shape of the mechanic, and the reason it cannot simply be saved up.
+ *
+ * The numbers come from a model rather than from taste, and the model is worth
+ * writing down because the obvious way to check it does not work:
+ *
+ * - The greedy agent in `playability.test.ts` clears about **0.3 lines per
+ *   piece**, which is measured.
+ * - Seconds per piece is a human number and the agent has none: it hard-drops
+ *   every piece and only runs the clock while a clear or a turn resolves. So the
+ *   agent can settle the *line* rate and cannot settle this, and pretending
+ *   otherwise would produce a confident number with nothing behind it.
+ * - Taking a brisk player at roughly one piece a second, 0.3 lines per second
+ *   gains `0.3 * HEAT_PER_LINE` and loses `1000 * HEAT_DECAY_PER_MS`. At the
+ *   values below that is a net 0.022 per second -- a collapse earned in about
+ *   forty-five seconds of sustained good play.
+ * - At half that clearing rate the bar loses ground and never fills, which is
+ *   the pressure the mechanic exists to create.
+ *
+ * `heatModel` in the tests pins those two cases, so the intent is checkable even
+ * though the pace behind it is an assumption. It wants playtesting to confirm.
+ *
+ * Cooling is per *tick*, not per wall-clock millisecond. A run is determined by
+ * `(seed, input log)` and the engine steps on a fixed timestep, so this is free
+ * if it reads `deltaMs` and silently breaks every replay and challenge code if
+ * it ever reads a clock.
+ */
+export const HEAT_PER_LINE = 0.2;
+/** Full to empty in twenty-six seconds of clearing nothing. */
+export const HEAT_DECAY_PER_MS = 1 / 26_000;
+
 export type GameStatus =
   'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'paused' | 'gameOver';
 
@@ -46,7 +81,7 @@ export interface ActivePiece {
 }
 
 export interface GameEvent {
-  readonly type: 'lock' | 'clear' | 'turn' | 'stage' | 'gameOver' | 'hold' | 'rescue';
+  readonly type: 'lock' | 'clear' | 'turn' | 'stage' | 'gameOver' | 'hold' | 'rescue' | 'collapse';
   readonly lines?: number;
   readonly label?: string;
   readonly score?: number;
@@ -139,6 +174,13 @@ export class Game {
    * Lines that are complete and are being held, lit, before removal. The
    * renderer glows these; the engine removes them when the flash elapses.
    */
+  /**
+   * The hot bar, 0 to 1. Rises with cleared lines, falls on its own.
+   *
+   * Public because the gauge reads it every frame and because the tests assert
+   * on it directly; nothing outside the engine writes it.
+   */
+  heat = 0;
   clearingLines: readonly Line[] = [];
   /**
    * Lines that will be eligible the moment the board finishes turning.
@@ -156,6 +198,15 @@ export class Game {
   private grounded = false;
   private turnPromptTimer = 0;
   private turnTimer = 0;
+  /**
+   * Set while a collapse's own clears are resolving.
+   *
+   * The bar must not refill from the lines the collapse itself produced, or a
+   * large enough stack pays for the next collapse and the mechanic loops. The
+   * lines still score and still count -- they are real lines -- they just do not
+   * feed the thing that made them.
+   */
+  private collapsing = false;
   private resolveTimer = 0;
   private resolveRefraction = false;
   private cascadeIndex = 0;
@@ -188,6 +239,52 @@ export class Game {
 
   get depthNudgeAllowed(): boolean {
     return this.options.forceDepthNudge === true || this.stage.depthNudge;
+  }
+
+  /**
+   * Whether the bar is full and a collapse can be triggered.
+   *
+   * Cooling suspends here rather than the bar merely sitting at the top: once it
+   * is earned it stays earned until it is spent, so a player is never punished
+   * for taking a moment to choose where to spend it.
+   */
+  get spectralReady(): boolean {
+    return this.spectralAllowed && this.heat >= 1;
+  }
+
+  /** Whether the mode offers the mechanic at all. */
+  get spectralAllowed(): boolean {
+    return this.mode.spectralCollapse;
+  }
+
+  /**
+   * Collapse the stack.
+   *
+   * Everything falls to the floor of its own column, and whatever completes as a
+   * result clears through the ordinary resolution cycle -- so the clears glow,
+   * score, cascade and feed the Shift meter exactly as any other clear does.
+   * Reusing that machinery rather than writing a second one is what keeps a
+   * collapse a *lot of clears* rather than a special case with its own rules.
+   *
+   * **The piece in hand comes down with everything else.** It is a group of
+   * voxels in the air when the floor gives way, and leaving it hovering over a
+   * newly-collapsed stack would be both odd to look at and a second state to
+   * reason about. It settles where it stands and then falls with the rest.
+   *
+   * Returns false if the mechanic is unavailable, the bar is not full, or the
+   * board is not in a state where the question makes sense.
+   */
+  triggerCollapse(): boolean {
+    if (!this.spectralReady || this.status !== 'falling') return false;
+
+    this.heat = 0;
+    if (this.active) this.settlePiece();
+    this.board.compactAll();
+    this.events.push({ type: 'collapse' });
+
+    this.collapsing = true;
+    this.beginResolve(false);
+    return true;
   }
 
   /**
@@ -450,6 +547,14 @@ export class Game {
   tick(deltaMs: number): void {
     if (this.status === 'gameOver' || this.status === 'paused') return;
 
+    // Cooling runs in every live state, not only while a piece is falling: the
+    // bar is a rate, and a player who spends ten seconds choosing a face should
+    // lose the same ground as one who spends it placing badly. It suspends only
+    // once the bar is full, which is what makes the reward keepable.
+    if (this.spectralAllowed && this.heat > 0 && this.heat < 1) {
+      this.heat = Math.max(0, this.heat - deltaMs * HEAT_DECAY_PER_MS);
+    }
+
     if (this.status === 'awaitingTurn') {
       this.turnPromptTimer += deltaMs;
       const timeout = this.options.turnPromptTimeoutMs ?? TURN_PROMPT_TIMEOUT_MS;
@@ -589,13 +694,24 @@ export class Game {
 
   private lock(): void {
     if (!this.active) return;
+    this.settlePiece();
+    this.beginResolve(false);
+  }
+
+  /**
+   * Put the active piece into the board, without deciding what happens next.
+   *
+   * Split out of `lock` for Spectral Collapse, which settles the piece, compacts
+   * the whole board and only then resolves -- so the piece's own cells fall with
+   * everything else instead of resolving where they landed.
+   */
+  private settlePiece(): void {
+    if (!this.active) return;
     const cells = this.worldCells(this.active);
     for (const cell of cells) this.board.fill(cell);
     this.events.push({ type: 'lock', cells });
     this.active = null;
     this.holdUsed = false;
-
-    this.beginResolve(false);
   }
 
   /**
@@ -668,6 +784,10 @@ export class Game {
     this.lines += complete.length;
     this.shiftMeter += complete.length;
     this.linesThisResolve += complete.length;
+    // A collapse's own clears do not pay for the next one -- see `collapsing`.
+    if (this.spectralAllowed && !this.collapsing) {
+      this.heat = Math.min(1, this.heat + complete.length * HEAT_PER_LINE);
+    }
 
     let prism = false;
     if (this.resolveRefraction) {
@@ -748,6 +868,7 @@ export class Game {
   /** Board is stable. Decide what happens next. */
   private finishResolve(): void {
     this.clearingLines = [];
+    this.collapsing = false;
 
     if (this.resolveRefraction) {
       if (this.linesThisResolve > 0) {

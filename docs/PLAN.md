@@ -530,6 +530,27 @@ their first turn without instructions" is now answered.
 - Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake
   controls, audio accessibility, screen-reader board summaries, focus
   management.
+- **Bring the floor back at a brightness that reads as floor** _(play notes)_.
+  The room's lattice is currently absent whenever the board is settled, which is
+  an over-correction: it was removed because it clipped to white, not because a
+  floor is unwelcome.
+
+  A horizontal plane viewed from zero elevation is edge-on, so all eighteen of
+  its grid lines land on the same row of pixels and the additive blend sums them
+  past full — luminance 194 against a room that otherwise reads under 30. That
+  brightness is what made it read as a UI divider rather than as ground; the play
+  note that reported it took it for a touch-area demarcation.
+
+  The fix is to scale the lattice by how _concentrated_ it currently is: full
+  strength when a turn spreads it across a hundred rows, and roughly the
+  reciprocal of the line count when it collapses onto one. Measured at about
+  0.16, and it belongs here rather than in the room's own milestone because it is
+  the same question as every other item on this list — how much visual intensity
+  is right, and for whom.
+
+  Worth checking against the reduced-motion and photosensitivity settings while
+  it is being tuned, since a bright horizontal edge is exactly the kind of thing
+  those exist to moderate.
 
 Touch controls and the responsive layout were one-line bullets here — "touch
 controls with swipe and tap", "responsive layout from 390 px to ultrawide" — and
@@ -934,9 +955,14 @@ and can then say, unprompted, what the colours mean and what turning does.
 
 ---
 
-## M14 — The Look ✅
+## M14 — The Look
 
 **Goal:** the game looks like itself.
+
+Both original items shipped — gel voxels and the title screen. **M14b below is
+open**, which is why this heading no longer carries a tick: a play note arrived
+after the milestone closed and belongs here rather than in a milestone of its
+own.
 
 - ✅ **A stylised title screen** _(play notes)_. It was plain DOM type on a live
   board, which was right for getting the front door working and is not a title
@@ -1029,6 +1055,47 @@ and can then say, unprompted, what the colours mean and what turning does.
 nothing else, and the colour-fidelity tests pass unchanged. Five new end-to-end
 tests; the depth-independence one was confirmed to fail on a violation confined
 to the Fresnel rim alone, which is the narrowest form it could take.
+
+### M14b — The last look _(play notes)_
+
+**On game over the camera eases into a slow, continuous orbit of the board.**
+
+This is the one moment the game is allowed to break its own central rule, and it
+should. §2.1 keeps the settled board dead-on so that no spatial cue competes with
+colour — but that rule exists to protect a player who is _reading_ the board. The
+run is over. There is nothing left to read, no decision left to make, and the
+flat discipline of the whole run has been building an object nobody has ever
+seen. The orbit is the payoff for it: you spend a run reading a field of colour
+and at the end you are shown the solid you actually built.
+
+**The recolour comes free, and is the reason this is the right final image.**
+`VoxelLayer.update` computes every cube's colour from the _live_ camera yaw, so
+an orbit sweeps the entire stack through the spectrum continuously — the same
+mechanism that makes a turn a transformation rather than a crossfade. Nothing has
+to be written for it. The board simply becomes the demonstration of its own rule.
+
+Four things it touches:
+
+- **The game-over panel currently hides the thing this exists to show.** It sits
+  under the same 86%-opaque scrim as every other screen. It needs the title
+  screen's treatment — a gradient that is opaque behind the type and clears over
+  the board — which is most of the actual work here.
+- **The camera has to ease in from wherever it is.** A run can end mid-anything,
+  including mid-turn. `snapToFace` handles the inverse case (starting a run from
+  a turning title) and this is the same problem in reverse.
+- **A continuous orbit is not the 90-degree turn.** `startTurn` eases between two
+  faces and stops; this never arrives. Closer to the title's attract cycle, but
+  without the dwell — and it should keep the turn's elevation, since a dead-on
+  orbit would be a board spinning edge-on rather than an object being examined.
+- **Reduced motion.** Same call as the title's attract turn: an unattended,
+  unstoppable animation is exactly what that setting is for. Hold the board
+  still, or orbit slowly enough that it reads as drift.
+
+Zen never ends, so it never orbits. Restart already snaps the camera back to the
+front face, so no work there.
+
+**Exit criteria:** the board is legible under the game-over panel, turning, and
+the colours are visibly cycling as it goes.
 
 ---
 
@@ -1136,6 +1203,172 @@ it does everywhere else, and a player who never turns has played Flatland.
 
 **Exit criteria:** every budget in §12 of the design spec met on integrated
 graphics; visual regression suite green.
+
+---
+
+## M17 — Spectral Collapse ✅ _(play notes)_
+
+**Goal:** a rare, earned, board-wide event — the one thing that destroys
+structure the ordinary rules preserve.
+
+**Sequencing: this must land before M16, not after it.** It is numbered later
+because it arrived later, but M16 is the release-candidate pass — profiling,
+visual regression baselines, final difficulty tuning — and none of that means
+anything with a core mechanic still to come.
+
+### The mechanic
+
+A **hot bar** fills as lines are cleared and cools on its own, so it only rises
+if the player keeps clearing. Full, it glows and flickers, cooling suspends, and
+**Spectral Collapse** becomes available. Triggering it collapses the stack: every
+voxel falls independently to the floor of its column, any lines completed by the
+settling clear immediately, the bar empties and cooling begins again.
+
+### Why it is worth a milestone: it is the operation the rules refuse
+
+This is not "gravity, but bigger". `Board.clearLines` runs per-column naive
+gravity and is deliberately careful _not_ to do this, in its own words:
+
+> Suspended cells stay suspended — a piece bridging two columns can legitimately
+> leave a cell with nothing beneath it, and compacting the whole column would
+> silently destroy that structure.
+
+So overhangs accumulate for the whole run and nothing removes them. A piece that
+does not fit its footprint locks with a gap under it — that is the entire subject
+of M10's landing marks — and those gaps are most of what makes a board hard.
+
+Spectral Collapse is a new, explicit `Board` operation: full per-column
+compaction, applied to the whole board, on demand. It leaves §3.1 untouched,
+which matters — the clear-time rule is what keeps a face you cannot see
+predictable, and this must not quietly become the general behaviour.
+
+That framing also settles why it has to be rare and earned: it is the only thing
+in the game that erases accumulated structure wholesale.
+
+### The colour rule, stated first because it is the easiest thing to get wrong
+
+A heat gauge conventionally runs blue to red. **That is forbidden here**, and not
+mildly: red means _near_ and violet means _far_, and a bar that reddens as it
+fills would teach a player that colour means intensity — the exact false
+inference §2.2 exists to prevent, and precisely what the standing amendment rules
+out (no spectrum for scoring tiers, difficulty or progression).
+
+The gauge is achromatic. It expresses heat the way the room already expresses
+everything: **as brightness and agitation, not as temperature.** The shimmer
+growing wilder toward full is the right instinct and is already the game's
+language — see §2.4, "the room answers the board by getting brighter, not by
+changing colour."
+
+### Two meters fed by the same action
+
+The Shift meter already fills as lines are cleared. A second gauge on the same
+input is a real risk: a player who sees two bars move together will not know
+which one is about to do something, and one of them freezes the game to ask a
+question.
+
+They have to differ in kind, not only in position:
+
+|           | Shift meter                  | Hot bar                      |
+| --------- | ---------------------------- | ---------------------------- |
+| Fills on  | lines, cumulative            | lines, against a decay       |
+| Shape     | discrete pips                | continuous column            |
+| Placement | horizontal, below the board  | vertical, on the wall        |
+| Fires     | automatically, freezing play | only when the player chooses |
+
+The decay is what makes them legible as different things: the Shift meter never
+falls, and this one always is. A player who stops clearing watches one hold and
+the other drain, which teaches the distinction without a word.
+
+### Decisions, as made
+
+- ✅ **The bar lives in screen space**, pinned to the right edge of the well's
+  silhouette and spanning its height. World space would have turned it with the
+  board — sweeping away and sometimes sitting behind the stack, which is unusable
+  for a gauge read under pressure.
+- ✅ **Cooling is tick-driven**, off `deltaMs`, so replays and challenge codes
+  survive.
+- ✅ **A collapse does not refill its own bar.** Its clears are real lines: they
+  score, they count, they feed the Shift meter. They just do not feed the thing
+  that made them, or a large enough stack buys the next collapse outright.
+- ✅ **It scores through the ordinary resolution cycle.** `triggerCollapse`
+  compacts and then calls `beginResolve`, so the clears glow, cascade and score
+  exactly as any other clear does. Reusing that is what keeps a collapse _a lot
+  of clears_ rather than a special case with its own rules.
+- ✅ **Off in Flatland**, through a mode-table field. Both controls panels drop
+  the row there through the same `appliesToMode` predicate the rotation gates
+  use, and the gauge is absent entirely.
+- ✅ **The piece in hand comes down with everything else.** It is a group of
+  voxels in the air when the floor gives way; leaving it hovering would be both
+  odd to look at and a second state to reason about. `lock` was split so the
+  collapse can settle a piece without starting a resolution.
+- ✅ **Trigger:** `V` on a keyboard — chosen for where it sits, next to `Z`, `X`
+  and `C`, rather than for what it spells; `W` was free and left alone for M11c.
+  On touch, a tap on the gauge, which is only interactive while it is ready.
+
+### Decisions that were open
+
+- **Where the bar lives.** "Attached to the right wall" reads as world space, and
+  in world space it turns with the board — so it would sweep away and sometimes
+  sit behind the stack, which is unusable for a gauge you need to read under
+  pressure. Recommendation: screen space, pinned to the right edge of the well's
+  silhouette and drawn as part of the frame, so it reads as attached without
+  rotating away. Worth deciding explicitly.
+- **Cooling must be tick-driven, not wall-clock.** A run is determined by
+  `(seed, input log)`; the engine already steps on a fixed timestep, so this is
+  free if done right and silently breaks every replay and challenge code if it
+  reads `Date.now()`.
+- **The collapse must not refill its own bar.** Lines cleared by the settling are
+  real lines and should score, but feeding them back into the hot bar is a loop.
+  Whether they feed the _Shift_ meter is a separate question with a real
+  consequence: a large collapse could fill it and force a turn immediately, which
+  might be a good moment or a confusing one.
+- **How it scores.** The cascade machinery already exists and a collapse is
+  structurally a cascade — several lines resolving at once, possibly in waves.
+  Reusing it is likely right and needs checking rather than assuming.
+- **Which modes have it**, as a field in the mode table like everything else.
+  Almost certainly not Flatland, which is the mode a new player starts in and
+  already carries the game's one strange idea on its own.
+- **What happens to the falling piece**, and which states allow a trigger —
+  falling, awaiting a turn, mid-turn, resolving. Probably falling only.
+- **Input.** Unassigned on both keyboard and touch. Touch is the harder half: in
+  a roll-only mode there is no strip to put it in, and tapping the gauge itself
+  is the obvious answer since it is already the thing announcing readiness.
+
+### The balance risk, and why the agent could not settle it
+
+It removes most of what makes a board hard, so the earn rate is the only control.
+This entry said to tune it against the greedy agent, **and that turned out not to
+work.** The agent hard-drops every piece and only runs the clock while a clear or
+a turn resolves, so it spends no thinking time at all — and this mechanic is
+priced in time. An agent with none reports that the bar fills instantly.
+
+What the agent _can_ give is the line rate, which is measured: about 0.3 lines
+per piece. The rest is a model, written out in `game.ts` and pinned by
+`heatModel` in the tests:
+
+| Clearing at       | Result                    |
+| ----------------- | ------------------------- |
+| 0.3 lines/second  | fills in about 45 seconds |
+| 0.15 lines/second | loses ground, never fills |
+
+The pace behind that — roughly a piece a second — is an assumption, and it is
+labelled as one. It wants playtesting to confirm, which is the honest state for a
+number that depends on how fast a person actually plays.
+
+It also rescues a player from an imminent top-out, which is the point, but means
+the mechanic is at its most valuable exactly when the run is least under control.
+
+**Exit criteria, met:** the gauge reads its level and carries no hue at any fill
+(held by test against the same threshold as the room and the masthead); a
+collapse resolves through the ordinary clear cycle rather than as a special case;
+the mechanic is absent — gauge, key row and gesture row — in a mode without it.
+Seventeen unit tests and seven end-to-end.
+
+**Still open:** whether the collapse's clears should feed the Shift meter is
+answered "yes" by reusing the resolution cycle, and that has a consequence worth
+watching in play — a large collapse can fill the meter and force a turn
+immediately. That may be a good moment or a confusing one, and only playing it
+will say.
 
 ---
 

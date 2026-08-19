@@ -883,6 +883,7 @@ export class GameRenderer {
     this.environment.setTension(
       game.status === 'awaitingTurn' ? 1 : game.shiftMeter / game.stage.linesPerTurn
     );
+    this.environment.setFlatness(flatness);
     this.environment.update(deltaMs, yaw, this.isTurning);
 
     // The post-process chain runs only while something can actually bloom --

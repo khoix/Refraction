@@ -35,6 +35,7 @@ export type Action =
   | 'nudgeNearer'
   | 'nudgeDeeper'
   | 'peek'
+  | 'collapse'
   | 'hold'
   | 'pause'
   | 'mute'
@@ -69,12 +70,21 @@ export interface Binding {
  * tables here are read by both a keyboard panel and a touch panel and neither
  * should have to know how a mode stores its policy.
  */
-export type Capability = 'depthRotation' | 'depthNudge';
+export type Capability = 'depthRotation' | 'depthNudge' | 'spectralCollapse';
 
 export type BindingGroup = 'Move' | 'Rotate' | 'Depth' | 'Game';
 
 export const BINDING_GROUPS: readonly BindingGroup[] = ['Move', 'Rotate', 'Depth', 'Game'];
 
+/*
+ * `V` for Spectral Collapse.
+ *
+ * Chosen for where it sits rather than for what it spells: the left hand already
+ * covers `Z` and `X` for roll and `C` for hold, and `V` is the next key along.
+ * The alternative was a mnemonic somewhere the hand is not, which is the wrong
+ * trade for an action taken under pressure. `W` was free and is deliberately
+ * left alone -- M11c has it becoming half the depth cluster.
+ */
 export const BINDINGS: readonly Binding[] = [
   { action: 'moveLeft', codes: ['ArrowLeft', 'KeyA'], label: 'Left', group: 'Move' },
   { action: 'moveRight', codes: ['ArrowRight', 'KeyD'], label: 'Right', group: 'Move' },
@@ -125,6 +135,14 @@ export const BINDINGS: readonly Binding[] = [
     note: 'Until stage 6',
   },
 
+  {
+    action: 'collapse',
+    codes: ['KeyV'],
+    label: 'Spectral Collapse',
+    group: 'Game',
+    note: 'When the bar is full',
+    needs: 'spectralCollapse',
+  },
   { action: 'hold', codes: ['KeyC', 'ShiftLeft'], label: 'Hold', group: 'Game' },
   { action: 'pause', codes: ['Escape'], label: 'Pause', group: 'Game' },
   { action: 'mute', codes: ['KeyM'], label: 'Mute', group: 'Game' },
@@ -253,6 +271,14 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
   },
 
   { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6' },
+
+  {
+    gesture: 'Tap the gauge',
+    label: 'Spectral Collapse',
+    group: 'Game',
+    note: 'When it is full',
+    needs: 'spectralCollapse',
+  },
 ];
 
 /**
@@ -263,10 +289,15 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
  */
 export function appliesToMode(
   row: { readonly needs?: Capability },
-  mode: { readonly rotation: RotationPolicy; readonly depthNudge: DepthNudgePolicy }
+  mode: {
+    readonly rotation: RotationPolicy;
+    readonly depthNudge: DepthNudgePolicy;
+    readonly spectralCollapse: boolean;
+  }
 ): boolean {
   if (row.needs === 'depthRotation') return mode.rotation === 'all';
   if (row.needs === 'depthNudge') return mode.depthNudge !== 'never';
+  if (row.needs === 'spectralCollapse') return mode.spectralCollapse;
   return true;
 }
 
