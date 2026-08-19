@@ -3524,3 +3524,181 @@ test.describe('on a phone', () => {
     expect(stats.x + stats.width).toBeLessThanOrEqual(well.left);
   });
 });
+
+/**
+ * Spectral Collapse.
+ *
+ * A hot bar bought with cleared lines, spent on one board-wide compaction. The
+ * engine's half is unit-tested without a browser; what needs a canvas is the
+ * gauge — that it is there in a mode that has the mechanic and absent in one
+ * that does not, that it reads the level, that a tap on it works, and above all
+ * that it carries no hue.
+ */
+test.describe('Spectral Collapse', () => {
+  async function play(page: Page, mode: string): Promise<void> {
+    await page.goto('/?debug=1&seed=collapse');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate((id) => window.__refraction?.play(id as never, 'collapse'), mode);
+    await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
+    await page.waitForTimeout(250);
+  }
+
+  const setHeat = (page: Page, heat: number): Promise<void> =>
+    page.evaluate((value) => {
+      const game = window.__refraction?.game;
+      if (game) game.heat = value;
+    }, heat);
+
+  test('the gauge is there in a mode that has it, and gone in one that does not', async ({
+    page,
+  }) => {
+    await play(page, 'ascent');
+    await setHeat(page, 0.5);
+    await page.waitForTimeout(150);
+    await expect(page.locator('.gauge')).toBeVisible();
+
+    await play(page, 'flatland');
+    await page.waitForTimeout(150);
+    await expect(page.locator('.gauge')).toBeHidden();
+  });
+
+  test('stands against the well rather than over the board', async ({ page }) => {
+    // The board is the one thing nothing may cover.
+    await play(page, 'ascent');
+    await setHeat(page, 0.5);
+    await page.waitForTimeout(150);
+
+    const gauge = await page.locator('.gauge').boundingBox();
+    const well = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
+    if (!gauge || !well) throw new Error('no geometry');
+    expect(gauge.x).toBeGreaterThanOrEqual(well.left + well.width);
+    // And it spans the board's height, so the level reads against the stack.
+    expect(Math.abs(gauge.height - well.height)).toBeLessThan(4);
+  });
+
+  test('reads the level', async ({ page }) => {
+    await play(page, 'ascent');
+    const fillAt = async (heat: number): Promise<number> => {
+      await setHeat(page, heat);
+      await page.waitForTimeout(300);
+      const box = await page.locator('.gauge__fill').boundingBox();
+      return box?.height ?? -1;
+    };
+    const low = await fillAt(0.2);
+    const high = await fillAt(0.9);
+    expect(low).toBeGreaterThan(0);
+    expect(high).toBeGreaterThan(low * 2);
+  });
+
+  test('carries no hue, at any level', async ({ page }) => {
+    // §2.2 partitions the palette absolutely: the only hue on screen belongs to
+    // a cube. A heat gauge conventionally runs blue to red, and here red means
+    // *near* — a bar that reddened as it filled would teach that colour means
+    // intensity, which is the exact false inference the rule exists to prevent.
+    await play(page, 'ascent');
+    for (const heat of [0.15, 0.6, 1]) {
+      await setHeat(page, heat);
+      await page.waitForTimeout(300);
+      const box = await page.locator('.gauge').boundingBox();
+      if (!box) throw new Error('no gauge');
+      const shot = await page.screenshot({ clip: box });
+      const chroma = await page.evaluate(
+        async (bytes) => {
+          const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+          const bitmap = await createImageBitmap(blob);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('no 2d context');
+          context.drawImage(bitmap, 0, 0);
+          const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+          let worst = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            const r = data[i] as number;
+            const g = data[i + 1] as number;
+            const b = data[i + 2] as number;
+            worst = Math.max(worst, Math.max(r, g, b) - Math.min(r, g, b));
+          }
+          return worst;
+        },
+        [...shot]
+      );
+      // Forty, the same bar the room and the masthead are held to. A cube at
+      // full chroma spans about 170 between its channels.
+      expect(chroma, `heat ${heat}`).toBeLessThan(40);
+    }
+  });
+
+  test('the key collapses the stack when the bar is full, and not before', async ({ page }) => {
+    await play(page, 'ascent');
+
+    // A cell suspended high with nothing under it: only a collapse moves it.
+    const suspend = (): Promise<void> =>
+      page.evaluate(() => {
+        const game = window.__refraction?.game;
+        if (!game) throw new Error('no hook');
+        game.active = null;
+        game.board.fill({ x: 2, y: 9, z: 3 });
+      });
+    const suspended = (): Promise<boolean> =>
+      page.evaluate(() => window.__refraction?.game.board.isFilled({ x: 2, y: 9, z: 3 }) ?? false);
+
+    await suspend();
+    await setHeat(page, 0.9);
+    await page.keyboard.press('KeyV');
+    await page.waitForTimeout(200);
+    expect(await suspended()).toBe(true);
+
+    await setHeat(page, 1);
+    await page.keyboard.press('KeyV');
+    await page.waitForTimeout(400);
+    expect(await suspended()).toBe(false);
+    expect(await page.evaluate(() => window.__refraction?.game.heat)).toBe(0);
+  });
+
+  test('a tap on the gauge triggers it, and only while it is ready', async ({ page }) => {
+    // The touch half. The controls panel advertises "tap the gauge", so the
+    // gauge has to answer — and only in the state where a tap means anything.
+    await play(page, 'ascent');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('no hook');
+      game.active = null;
+      game.board.fill({ x: 4, y: 8, z: 2 });
+    });
+
+    await setHeat(page, 0.5);
+    await page.waitForTimeout(200);
+    // Not ready: the element does not take pointer events at all.
+    expect(
+      await page.evaluate(
+        () => getComputedStyle(document.querySelector('.gauge') as Element).pointerEvents
+      )
+    ).toBe('none');
+
+    await setHeat(page, 1);
+    await page.waitForTimeout(200);
+    await page.locator('.gauge').dispatchEvent('pointerdown');
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => window.__refraction?.game.board.isFilled({ x: 4, y: 8, z: 2 }))
+    ).toBe(false);
+  });
+
+  test('the controls panel lists it only where the mode has it', async ({ page }) => {
+    await play(page, 'ascent');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(
+      page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
+    ).toBeVisible();
+
+    await play(page, 'flatland');
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(
+      page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
+    ).toHaveCount(0);
+  });
+});

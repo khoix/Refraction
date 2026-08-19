@@ -31,6 +31,7 @@ const ALL_ACTIONS: readonly Action[] = [
   'nudgeNearer',
   'nudgeDeeper',
   'peek',
+  'collapse',
   'hold',
   'pause',
   'mute',

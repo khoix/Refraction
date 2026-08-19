@@ -103,6 +103,15 @@ export interface ModeConfig {
    * flag and the policy lives here.
    */
   readonly depthNudge: DepthNudgePolicy;
+  /**
+   * Whether the mode offers Spectral Collapse.
+   *
+   * Off in Flatland, which is the mode a new player starts in and already
+   * carries the game's one strange idea on its own. A second meter fed by the
+   * same action as the Shift meter is a lot to hand someone still working out
+   * what colour means.
+   */
+  readonly spectralCollapse: boolean;
   /** Whether the run can end. False only for Zen. */
   readonly canFail: boolean;
   /** Whether cubes are drawn in depth colour at all. False for Blind Spectrum. */
@@ -132,6 +141,7 @@ const base = {
   maxTier: null,
   rotation: 'all',
   depthNudge: 'byStage',
+  spectralCollapse: true,
   canFail: true,
   depthColour: true,
   refractionScale: 1,
@@ -194,6 +204,9 @@ export const MODES: readonly ModeConfig[] = [
     // cannot offer either.
     rotation: 'roll',
     depthNudge: 'never',
+    // No hot bar either. The mode's job is to teach that colour is depth, and a
+    // second gauge on the same input as the Shift meter is noise against that.
+    spectralCollapse: false,
   },
   {
     ...base,

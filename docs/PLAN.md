@@ -530,6 +530,27 @@ their first turn without instructions" is now answered.
 - Reduced motion, bloom/intensity controls, lane-focus intensity, screen-shake
   controls, audio accessibility, screen-reader board summaries, focus
   management.
+- **Bring the floor back at a brightness that reads as floor** _(play notes)_.
+  The room's lattice is currently absent whenever the board is settled, which is
+  an over-correction: it was removed because it clipped to white, not because a
+  floor is unwelcome.
+
+  A horizontal plane viewed from zero elevation is edge-on, so all eighteen of
+  its grid lines land on the same row of pixels and the additive blend sums them
+  past full — luminance 194 against a room that otherwise reads under 30. That
+  brightness is what made it read as a UI divider rather than as ground; the play
+  note that reported it took it for a touch-area demarcation.
+
+  The fix is to scale the lattice by how _concentrated_ it currently is: full
+  strength when a turn spreads it across a hundred rows, and roughly the
+  reciprocal of the line count when it collapses onto one. Measured at about
+  0.16, and it belongs here rather than in the room's own milestone because it is
+  the same question as every other item on this list — how much visual intensity
+  is right, and for whom.
+
+  Worth checking against the reduced-motion and photosensitivity settings while
+  it is being tuned, since a bright horizontal edge is exactly the kind of thing
+  those exist to moderate.
 
 Touch controls and the responsive layout were one-line bullets here — "touch
 controls with swipe and tap", "responsive layout from 390 px to ultrawide" — and
@@ -1185,7 +1206,7 @@ graphics; visual regression suite green.
 
 ---
 
-## M17 — Spectral Collapse _(play notes)_
+## M17 — Spectral Collapse ✅ _(play notes)_
 
 **Goal:** a rare, earned, board-wide event — the one thing that destroys
 structure the ordinary rules preserve.
@@ -1258,7 +1279,33 @@ The decay is what makes them legible as different things: the Shift meter never
 falls, and this one always is. A player who stops clearing watches one hold and
 the other drain, which teaches the distinction without a word.
 
-### Decisions to make rather than assume
+### Decisions, as made
+
+- ✅ **The bar lives in screen space**, pinned to the right edge of the well's
+  silhouette and spanning its height. World space would have turned it with the
+  board — sweeping away and sometimes sitting behind the stack, which is unusable
+  for a gauge read under pressure.
+- ✅ **Cooling is tick-driven**, off `deltaMs`, so replays and challenge codes
+  survive.
+- ✅ **A collapse does not refill its own bar.** Its clears are real lines: they
+  score, they count, they feed the Shift meter. They just do not feed the thing
+  that made them, or a large enough stack buys the next collapse outright.
+- ✅ **It scores through the ordinary resolution cycle.** `triggerCollapse`
+  compacts and then calls `beginResolve`, so the clears glow, cascade and score
+  exactly as any other clear does. Reusing that is what keeps a collapse _a lot
+  of clears_ rather than a special case with its own rules.
+- ✅ **Off in Flatland**, through a mode-table field. Both controls panels drop
+  the row there through the same `appliesToMode` predicate the rotation gates
+  use, and the gauge is absent entirely.
+- ✅ **The piece in hand comes down with everything else.** It is a group of
+  voxels in the air when the floor gives way; leaving it hovering would be both
+  odd to look at and a second state to reason about. `lock` was split so the
+  collapse can settle a piece without starting a resolution.
+- ✅ **Trigger:** `V` on a keyboard — chosen for where it sits, next to `Z`, `X`
+  and `C`, rather than for what it spells; `W` was free and left alone for M11c.
+  On touch, a tap on the gauge, which is only interactive while it is ready.
+
+### Decisions that were open
 
 - **Where the bar lives.** "Attached to the right wall" reads as world space, and
   in world space it turns with the board — so it would sweep away and sometimes
@@ -1287,22 +1334,41 @@ the other drain, which teaches the distinction without a word.
   a roll-only mode there is no strip to put it in, and tapping the gauge itself
   is the obvious answer since it is already the thing announcing readiness.
 
-### The balance risk, named
+### The balance risk, and why the agent could not settle it
 
-It removes most of what makes a board hard, and a player who can earn it often
-enough never has to manage structure at all. The earn rate is the only control,
-and it should be tuned against the greedy agent in `playability.test.ts` rather
-than by feel — the same instrument that moved `LINES_PER_STAGE` from 10 to 15
-when the agent walked the whole arc in one game.
+It removes most of what makes a board hard, so the earn rate is the only control.
+This entry said to tune it against the greedy agent, **and that turned out not to
+work.** The agent hard-drops every piece and only runs the clock while a clear or
+a turn resolves, so it spends no thinking time at all — and this mechanic is
+priced in time. An agent with none reports that the bar fills instantly.
 
-It also rescues a player from an imminent top-out, which is presumably the point,
-but means the mechanic is at its most valuable exactly when the run is least
-under control.
+What the agent _can_ give is the line rate, which is measured: about 0.3 lines
+per piece. The rest is a model, written out in `game.ts` and pinned by
+`heatModel` in the tests:
 
-**Exit criteria:** a player can see the bar rising and falling and knows what it
-is for without being told; a collapse reads as one event rather than as a
-stutter of clears; the gauge carries no hue at any fill level; and the agent's
-line rate with the mechanic on is a deliberate number rather than a surprise.
+| Clearing at       | Result                    |
+| ----------------- | ------------------------- |
+| 0.3 lines/second  | fills in about 45 seconds |
+| 0.15 lines/second | loses ground, never fills |
+
+The pace behind that — roughly a piece a second — is an assumption, and it is
+labelled as one. It wants playtesting to confirm, which is the honest state for a
+number that depends on how fast a person actually plays.
+
+It also rescues a player from an imminent top-out, which is the point, but means
+the mechanic is at its most valuable exactly when the run is least under control.
+
+**Exit criteria, met:** the gauge reads its level and carries no hue at any fill
+(held by test against the same threshold as the room and the masthead); a
+collapse resolves through the ordinary clear cycle rather than as a special case;
+the mechanic is absent — gauge, key row and gesture row — in a mode without it.
+Seventeen unit tests and seven end-to-end.
+
+**Still open:** whether the collapse's clears should feed the Shift meter is
+answered "yes" by reusing the resolution cycle, and that has a consequence worth
+watching in play — a large collapse can fill the meter and force a turn
+immediately. That may be a good moment or a confusing one, and only playing it
+will say.
 
 ---
 

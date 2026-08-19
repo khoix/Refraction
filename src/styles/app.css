@@ -227,6 +227,111 @@ input,
   box-shadow: 0 0 12px rgb(var(--accent-ui-glow) / 0.45);
 }
 
+/* ------------------------------------------------------------- the hot bar */
+
+/*
+ * The Spectral Collapse gauge.
+ *
+ * A pressure instrument on the wall: it fills from the bottom, drains on its
+ * own, and shakes harder the closer it gets to full.
+ *
+ * **Achromatic, at every fill level.** A heat gauge conventionally runs blue to
+ * red and that is forbidden here — red means *near*, and a bar that reddened as
+ * it filled would teach that colour means intensity, which is the exact false
+ * inference §2.2 exists to prevent. Heat is expressed the way the room expresses
+ * everything: as brightness and agitation, never as temperature. Drawn from the
+ * same neutral ink ramp as the Shift meter, deliberately, since the two are
+ * siblings.
+ *
+ * Positioned in JavaScript from the well's own rectangle — see `layoutWell` —
+ * because the well is a projection of a 3D board and CSS has no way to find its
+ * edge.
+ */
+.gauge {
+  position: absolute;
+  width: 0.42rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  background: rgb(10 12 20 / 0.7);
+  overflow: hidden;
+  pointer-events: none;
+  /* Layer 1, with the Shift meter: over the board, under the panels. */
+  z-index: 1;
+  /* Set per frame from the fill level; 0 is dead still. */
+  --gauge-agitation: 0;
+}
+
+/*
+ * Fills from the bottom, which is the only direction a pressure gauge reads.
+ *
+ * The glow scales with the fill rather than being constant, so the bar is
+ * visibly gathering rather than merely getting longer — and it is white light,
+ * not warm light.
+ */
+.gauge__fill {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 0;
+  border-radius: 999px;
+  background: var(--accent-ui);
+  opacity: calc(0.55 + 0.45 * var(--gauge-agitation));
+  box-shadow: 0 0 calc(4px + 10px * var(--gauge-agitation))
+    rgb(var(--accent-ui-glow) / calc(0.25 + 0.5 * var(--gauge-agitation)));
+  transition: height 160ms linear;
+  animation: gauge-shimmer 900ms ease-in-out infinite;
+  /* Still when cold, wild when nearly full. */
+  animation-duration: calc(1100ms - 700ms * var(--gauge-agitation));
+}
+
+@keyframes gauge-shimmer {
+  0%,
+  100% {
+    filter: brightness(1);
+  }
+  50% {
+    filter: brightness(calc(1 + 0.35 * var(--gauge-agitation)));
+  }
+}
+
+/*
+ * Full. The number has stopped moving, so the gauge stops reporting a level and
+ * starts saying "now" — a faster, harder flicker and a lit border.
+ */
+.gauge--ready {
+  border-color: var(--accent-ui);
+  box-shadow: 0 0 14px rgb(var(--accent-ui-glow) / 0.5);
+  /* The touch trigger, live only while it can do something. The HUD is
+     `pointer-events: none` throughout; this is the one thing that opts back in,
+     and only in the state where a tap means anything. */
+  pointer-events: auto;
+}
+
+.gauge--ready .gauge__fill {
+  transition: none;
+  animation: gauge-ready 420ms steps(2, end) infinite;
+}
+
+@keyframes gauge-ready {
+  0%,
+  100% {
+    filter: brightness(1.35);
+  }
+  50% {
+    filter: brightness(0.75);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The flicker is the photosensitivity risk here, so it goes entirely. The bar
+     still fills, still glows, and still lights its border when ready. */
+  .gauge__fill,
+  .gauge--ready .gauge__fill {
+    animation: none;
+  }
+}
+
 /* --------------------------------------------------------- face and previews */
 
 .hud__face {

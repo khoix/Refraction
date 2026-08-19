@@ -158,6 +158,13 @@ export class InputController {
       case 'hold':
         game.hold();
         break;
+      case 'collapse':
+        // Gated in the engine, not here: whether the bar is full and whether the
+        // mode offers the mechanic at all are rules, and rules live in core.
+        // No callback either -- a successful collapse pushes its own event, and
+        // two paths announcing one thing is how they drift apart.
+        game.triggerCollapse();
+        break;
       case 'restart':
         if (game.status === 'gameOver') this.handlers.onRestart();
         break;

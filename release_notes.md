@@ -7,6 +7,104 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M17 — Spectral Collapse
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+A hot bar bought with cleared lines, spent on one board-wide collapse: every
+voxel falls to the floor of its column and whatever completes clears
+immediately.
+
+### It is the operation the ordinary rules refuse
+
+Not "gravity, but bigger". `Board.clearLines` runs per-column gravity and is
+deliberately careful _not_ to compact — its own comment says a piece bridging two
+columns legitimately leaves a cell with nothing beneath it, and flattening the
+column would silently destroy that. So overhangs accumulate for a whole run and
+nothing removes them, which is most of what makes a board hard.
+
+`Board.compactAll` is a new, explicit operation, kept separate rather than added
+as a flag on the clear path — the clear-time rule is what keeps a face the player
+cannot currently see predictable, and this must not become the general behaviour
+by accident. A unit test asserts the contrast directly, so the distinction cannot
+quietly erode.
+
+The clears resolve through the ordinary cycle: `triggerCollapse` compacts and
+then calls `beginResolve`, so they glow, cascade and score exactly as any other
+clear does. That is what keeps a collapse _a lot of clears_ rather than a second
+set of rules.
+
+### The gauge
+
+A thin vertical bar pinned to the right edge of the well, filling from the
+bottom, shimmering faster as it rises and flickering hard when ready.
+
+**Screen space, not world space.** "Attached to the right wall" reads as part of
+the board, and in world space it would turn with it — sweeping away and sometimes
+sitting behind the stack, which is unusable for a gauge read under pressure.
+
+**Achromatic at every fill level**, and this is the thing the mechanic was most
+likely to get wrong. A heat gauge conventionally runs blue to red; here red means
+_near_, and a bar that reddened as it filled would teach that colour means
+intensity — the exact false inference §2.2 exists to prevent. Heat is brightness
+and agitation, never temperature. Held by test against the same chroma threshold
+as the room and the masthead, and sabotage-verified by making the bar redden.
+
+### Rules, not tuning
+
+- **Cooling suspends once the bar is full.** Earned is earned; a player choosing
+  where to spend it must not lose it for thinking.
+- **A collapse does not refill its own bar.** Its clears are real lines — they
+  score, they count, they feed the Shift meter — but feeding them back would let
+  a large enough stack buy the next collapse outright. Sabotage-verified.
+- **The piece in hand comes down with everything else.** It is a group of voxels
+  in the air when the floor gives way. `lock` was split so a collapse can settle
+  a piece without starting a resolution.
+- **Off in Flatland**, through a mode-table field — gauge, key row and gesture
+  row all absent, through the same `appliesToMode` predicate the rotation gates
+  already use.
+- **Cooling is tick-driven**, so replays and challenge codes survive.
+
+Trigger: `V` on a keyboard, chosen for where it sits — next to `Z`, `X` and `C` —
+rather than for what it spells. `W` was free and left alone, since M11c has it
+becoming half the depth cluster. On touch, a tap on the gauge, which takes
+pointer events only while it is ready.
+
+### The balance number, and why the agent could not settle it
+
+The plan said to tune the earn rate against the greedy agent, the way
+`LINES_PER_STAGE` was tuned. **That does not work here.** The agent hard-drops
+every piece and only runs the clock while a clear or a turn resolves, so it
+spends no thinking time at all — and this mechanic is priced in time. An agent
+with none reports that the bar fills instantly.
+
+What the agent gives is the line rate, which is measured: about 0.3 lines per
+piece. The rest is a model, written out in `game.ts` and pinned by `heatModel`:
+
+| Clearing at       | Result                    |
+| ----------------- | ------------------------- |
+| 0.3 lines/second  | fills in about 45 seconds |
+| 0.15 lines/second | loses ground, never fills |
+
+The pace behind it — roughly a piece a second — is an assumption and is labelled
+as one. It wants playtesting, which is the honest state for a number that depends
+on how fast a person actually plays.
+
+### Tests
+
+**361 unit, 130 end-to-end, all passing.** Seventeen new unit tests (compaction,
+the bar, the collapse, the balance model) and seven end-to-end (the gauge's
+presence, placement, level, hue, both triggers, and the controls panel).
+
+### Worth revisiting
+
+Reusing the resolution cycle means a collapse's clears feed the Shift meter,
+which answers a question the plan left open — and has a consequence worth
+watching: a large collapse can fill the meter and force a turn immediately. That
+may be a good moment or a confusing one, and only playing it will say.
+
+---
+
 ## Fix — the white line across the bottom of the screen
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

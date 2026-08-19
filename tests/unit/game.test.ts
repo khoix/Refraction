@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { Game, facePreview } from '@core/game';
+import { Game, HEAT_DECAY_PER_MS, HEAT_PER_LINE, facePreview } from '@core/game';
+import { modeById } from '@core/modes';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { fromView, lineCells } from '@core/projection';
 import { LINES_PER_STAGE, stageForLines } from '@core/stages';
@@ -625,5 +626,239 @@ describe('determinism', () => {
       }
     }
     expect(game.status).toBe('gameOver');
+  });
+});
+
+/**
+ * Spectral Collapse.
+ *
+ * A hot bar that fills on cleared lines and drains on its own, and — full — buys
+ * one board-wide compaction. The mechanic's whole shape is that it is bought
+ * with *rate* rather than with a total: the bar is always draining, so it is
+ * reachable by clearing steadily and unreachable by placing slowly.
+ */
+describe('the hot bar', () => {
+  /** A run with the mechanic on, and a board under the caller's control. */
+  const hot = (): Game => new Game({ seed: 'heat', mode: modeById('ascent') });
+
+  /** Fill one line on the front face at the given row and lane. */
+  const fillLine = (game: Game, y: number, lane: number): void => {
+    for (const cell of lineCells(game.face, y, lane)) game.board.fill(cell);
+  };
+
+  it('starts cold, and the mechanic is available in a mode that has it', () => {
+    const game = hot();
+    expect(game.heat).toBe(0);
+    expect(game.spectralAllowed).toBe(true);
+    expect(game.spectralReady).toBe(false);
+  });
+
+  it('rises with cleared lines', () => {
+    const game = hot();
+    fillLine(game, 0, 0);
+    game.hardDrop();
+    // Resolve the clear the drop produced.
+    game.tick(1000);
+    expect(game.heat).toBeGreaterThan(0);
+    // One line's worth at most: the bar is bought a line at a time, and the
+    // second is what stops a single clear from being worth more than it is.
+    expect(game.heat).toBeLessThanOrEqual(HEAT_PER_LINE);
+  });
+
+  it('drains when nothing is being cleared', () => {
+    const game = hot();
+    game.heat = 0.5;
+    game.tick(1000);
+    expect(game.heat).toBeCloseTo(0.5 - 1000 * HEAT_DECAY_PER_MS, 5);
+  });
+
+  it('never drains below empty', () => {
+    const game = hot();
+    game.heat = 0.001;
+    game.tick(5000);
+    expect(game.heat).toBe(0);
+  });
+
+  it('stops cooling once it is full, so the reward can be kept', () => {
+    // Earned is earned. A player who takes a moment to choose where to spend it
+    // must not lose it for thinking.
+    const game = hot();
+    game.heat = 1;
+    game.tick(60_000);
+    expect(game.heat).toBe(1);
+    expect(game.spectralReady).toBe(true);
+  });
+
+  it('is absent entirely in a mode without it', () => {
+    const flat = new Game({ seed: 'heat', mode: modeById('flatland') });
+    expect(flat.spectralAllowed).toBe(false);
+    flat.heat = 1;
+    expect(flat.spectralReady).toBe(false);
+    expect(flat.triggerCollapse()).toBe(false);
+
+    // And it never gains any, so the gauge has nothing to draw. Reset first --
+    // the line above forced it high to prove `spectralReady` ignores it, and
+    // nothing in a mode without the mechanic will bring it back down.
+    flat.heat = 0;
+    fillLine(flat, 0, 0);
+    flat.hardDrop();
+    flat.tick(1000);
+    expect(flat.heat).toBe(0);
+  });
+});
+
+describe('Spectral Collapse', () => {
+  const ready = (): Game => {
+    const game = new Game({ seed: 'collapse', mode: modeById('ascent') });
+    game.heat = 1;
+    return game;
+  };
+
+  it('refuses until the bar is full', () => {
+    const game = new Game({ seed: 'collapse', mode: modeById('ascent') });
+    game.heat = 0.9;
+    expect(game.triggerCollapse()).toBe(false);
+  });
+
+  it('drops every suspended cell to the floor of its column', () => {
+    const game = ready();
+    game.board.fill({ x: 2, y: 9, z: 3 });
+    game.board.fill({ x: 5, y: 4, z: 1 });
+
+    expect(game.triggerCollapse()).toBe(true);
+    game.tick(1000);
+
+    expect(game.board.isFilled({ x: 2, y: 0, z: 3 })).toBe(true);
+    expect(game.board.isFilled({ x: 5, y: 0, z: 1 })).toBe(true);
+  });
+
+  it('clears whatever the settling completes, through the ordinary cycle', () => {
+    // Eight cells of one line, each suspended at a different height, so nothing
+    // is a line until everything falls. The clear has to happen by itself.
+    //
+    // No piece in hand: it settles before the compaction and lands in the floor
+    // row of its own columns, which is exactly where the line being tested for
+    // is going to be. That is correct behaviour and it makes this measurement
+    // ambiguous, so the piece is taken out of the picture.
+    const game = ready();
+    game.active = null;
+    for (let x = 0; x < BOARD_WIDTH; x += 1) {
+      game.board.fill(fromView(game.face, { u: x, y: 3 + x, lane: 2 }));
+    }
+    const before = game.lines;
+
+    game.triggerCollapse();
+    game.tick(2000);
+
+    expect(game.lines).toBe(before + 1);
+    expect(game.board.filledCells()).toHaveLength(0);
+  });
+
+  it('spends the bar, and starts it cooling again', () => {
+    const game = ready();
+    game.board.fill({ x: 1, y: 6, z: 1 });
+    game.triggerCollapse();
+    expect(game.heat).toBe(0);
+  });
+
+  it('does not pay for itself', () => {
+    // The loop that has to be closed: if a collapse's own clears refilled the
+    // bar, a large enough stack would buy the next one outright.
+    const game = ready();
+    for (let lane = 0; lane < 3; lane += 1) {
+      for (let x = 0; x < BOARD_WIDTH; x += 1) {
+        game.board.fill(fromView(game.face, { u: x, y: 4 + lane * 3 + x, lane }));
+      }
+    }
+    game.triggerCollapse();
+    game.tick(4000);
+
+    expect(game.lines).toBeGreaterThanOrEqual(3);
+    // Whatever it cleared, none of it went back into the bar.
+    expect(game.heat).toBe(0);
+  });
+
+  it('brings the piece in hand down with everything else', () => {
+    // It is a group of voxels in the air when the floor gives way. Leaving it
+    // hovering over a collapsed stack would be a second state to reason about.
+    const game = ready();
+    expect(game.active).not.toBeNull();
+    game.triggerCollapse();
+    game.tick(1000);
+
+    // Settled into the board, and the board holds only cells on the floor.
+    const cells = game.board.filledCells();
+    expect(cells.length).toBeGreaterThan(0);
+    for (const cell of cells) {
+      expect(game.board.isFilled({ ...cell, y: 0 })).toBe(true);
+    }
+  });
+
+  it('only answers while a piece is falling', () => {
+    const game = ready();
+    game.status = 'awaitingTurn';
+    expect(game.triggerCollapse()).toBe(false);
+    expect(game.heat).toBe(1);
+  });
+
+  it('announces itself, so the room and the audio can answer', () => {
+    const game = ready();
+    game.board.fill({ x: 4, y: 8, z: 4 });
+    game.triggerCollapse();
+    expect(game.drainEvents().some((event) => event.type === 'collapse')).toBe(true);
+  });
+});
+
+/**
+ * The hot bar's balance, as a model rather than as a feeling.
+ *
+ * The greedy agent cannot settle this one. It clears about 0.3 lines per piece,
+ * which is measured and useful — but it hard-drops every piece and only runs the
+ * clock while a clear resolves, so it spends no thinking time at all. This
+ * mechanic is priced in time, so an agent with none would report that the bar
+ * fills instantly.
+ *
+ * What can be pinned is the arithmetic: at a stated clearing rate, does the bar
+ * gain or lose ground, and how long does it take? Those are the two claims the
+ * tuning actually rests on.
+ */
+describe('the hot bar is reachable by good play and not by mediocre play', () => {
+  /**
+   * Run the bar's own arithmetic at a given clearing rate.
+   *
+   * Deliberately not a `Game`: this is about the two constants and how they
+   * interact over time, and driving a real board would put piece luck and stage
+   * gravity between the question and the answer.
+   */
+  function heatModel(linesPerSecond: number, seconds: number): number {
+    const stepMs = 100;
+    let heat = 0;
+    for (let t = 0; t < seconds * 1000; t += stepMs) {
+      heat = Math.min(1, heat + ((linesPerSecond * stepMs) / 1000) * HEAT_PER_LINE);
+      if (heat < 1) heat = Math.max(0, heat - stepMs * HEAT_DECAY_PER_MS);
+      if (heat >= 1) return t / 1000;
+    }
+    return Infinity;
+  }
+
+  it('fills in about forty-five seconds of sustained good clearing', () => {
+    // 0.3 lines per second: the agent's measured 0.3 lines per piece at roughly
+    // a piece a second.
+    const seconds = heatModel(0.3, 300);
+    expect(seconds).toBeGreaterThan(30);
+    expect(seconds).toBeLessThan(60);
+  });
+
+  it('never fills at half that rate, however long the run lasts', () => {
+    // The pressure the mechanic exists to create: it is not a stopwatch, it is a
+    // question about whether you are clearing faster than it cools.
+    expect(heatModel(0.15, 600)).toBe(Infinity);
+  });
+
+  it('is reachable at all, which a decay set too high would quietly prevent', () => {
+    // The failure this guards is a change to either constant that makes the bar
+    // unreachable for everyone — which would look like the feature simply not
+    // working rather than like a balance change.
+    expect(heatModel(0.5, 300)).toBeLessThan(30);
   });
 });

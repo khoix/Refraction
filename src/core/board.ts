@@ -140,6 +140,47 @@ export class Board {
     }
   }
 
+  /**
+   * Let every column fall to the floor, everywhere on the board.
+   *
+   * **This is the operation `clearLines` deliberately refuses to perform**, and
+   * the two must not be confused. Ordinary gravity deletes the cleared rows and
+   * slides the remainder down; it leaves suspended cells suspended, because a
+   * piece bridging two columns can legitimately leave a cell with nothing
+   * beneath it and compacting would silently destroy that structure. Overhangs
+   * are therefore permanent, and most of what makes a board hard.
+   *
+   * Spectral Collapse is the exception, and it is an exception on purpose: a
+   * rare, earned event that erases accumulated structure wholesale. Keeping it a
+   * separate method rather than a flag on `clearLines` is what stops it becoming
+   * the general behaviour by accident -- the clear-time rule is what keeps a face
+   * the player cannot currently see predictable.
+   *
+   * Orientation-independent: gravity is along Y whatever face is being played,
+   * so this needs no `Face` and behaves identically from all four.
+   *
+   * Returns true if anything actually moved, so a trigger on an already-settled
+   * board can be reported as such rather than spending the bar for nothing.
+   */
+  compactAll(): boolean {
+    let moved = false;
+    for (let x = 0; x < BOARD_WIDTH; x += 1) {
+      for (let z = 0; z < BOARD_DEPTH; z += 1) {
+        let write = 0;
+        for (let y = 0; y < BOARD_HEIGHT_TOTAL; y += 1) {
+          if (this.cells[Board.index(x, y, z)] !== 1) continue;
+          if (write !== y) {
+            this.cells[Board.index(x, write, z)] = 1;
+            this.cells[Board.index(x, y, z)] = 0;
+            moved = true;
+          }
+          write += 1;
+        }
+      }
+    }
+    return moved;
+  }
+
   /** Highest occupied row, or -1 when the board is empty. */
   highestFilledY(): number {
     for (let y = BOARD_HEIGHT_TOTAL - 1; y >= 0; y -= 1) {

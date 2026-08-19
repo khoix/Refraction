@@ -938,6 +938,43 @@ leave that much clear. A window with room to spare is framed exactly as it was,
 which is every desktop, and a phone in portrait — where the reserve is satisfied
 without shrinking anything.
 
+## 9.4 Spectral Collapse
+
+A hot bar fills as lines are cleared and cools on its own. Full, it glows and
+flickers and can be spent on one board-wide collapse: every voxel falls to the
+floor of its column, and whatever completes clears immediately.
+
+**It is the operation the ordinary rules refuse.** `Board.clearLines` runs
+per-column gravity and is deliberately careful not to compact: a piece bridging
+two columns legitimately leaves a cell with nothing beneath it, and flattening
+the column would silently destroy that structure (§3.1). So overhangs accumulate
+for a whole run and nothing removes them — which is most of what makes a board
+hard, and exactly what this spends its charge on. Keeping it a separate
+`Board.compactAll` rather than a flag on the clear path is what stops it becoming
+the general behaviour by accident.
+
+**The gauge is achromatic at every fill level.** A heat gauge conventionally runs
+blue to red; here red means _near_, and a bar that reddened as it filled would
+teach that colour means intensity — the false inference §2.2 exists to prevent,
+and one the standing amendment rules out by name. Heat is expressed the way the
+room expresses everything (§2.4): as brightness and agitation, never as
+temperature. The shimmer quickens with the level and turns to a hard flicker when
+ready.
+
+**Bought with rate, not with a total.** The bar is always draining, so what
+matters is whether the player is clearing faster than it cools. Two consequences
+follow and both are rules rather than tuning:
+
+- **Cooling suspends once the bar is full.** Earned is earned; a player choosing
+  where to spend it must not lose it for thinking.
+- **A collapse's own clears do not refill it.** They are real lines — they score,
+  they count, they feed the Shift meter — but feeding them back into the bar
+  would let a large enough stack buy the next collapse outright.
+
+The clears resolve through the ordinary cycle, so they glow, cascade and score
+like any others. That is what keeps a collapse _a lot of clears_ rather than a
+second set of rules.
+
 ## 10. Accessibility **[GAP — critical]**
 
 Colour is the primary depth channel, so a colourblind player is not losing

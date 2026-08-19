@@ -21,6 +21,8 @@ const BLIND_FILL_HEX = '#9ea3ad';
 
 /** Gap kept between the Shift meter and the bottom of the window. */
 const SHIFT_EDGE_MARGIN = 8;
+/** Space between the well's right edge and the hot bar. */
+const GAUGE_GAP = 6;
 /** Space between the bottom of the well and the top of the meter. */
 const SHIFT_WELL_GAP = 10;
 
@@ -95,6 +97,18 @@ export class Hud {
   private readonly stage = element('span', 'stat__value', '1');
   private readonly face = element('span', 'hud__face hud__panel', 'FRONT');
   private readonly meter = element('div', 'meter');
+  /**
+   * The hot bar, pinned to the right edge of the well.
+   *
+   * Screen space, not world space. "Attached to the right wall" reads as part of
+   * the board, and in world space it would turn with it -- sweeping away and
+   * sometimes sitting behind the stack, which is unusable for a gauge read under
+   * pressure. Pinned to the well's silhouette it reads as attached to the frame
+   * and never rotates out of sight.
+   */
+  private collapseHandler: (() => void) | null = null;
+  private readonly gauge = element('div', 'gauge');
+  private readonly gaugeFill = element('div', 'gauge__fill');
   private readonly shift = element('div', 'hud__shift');
   private readonly nextSlot = element('div', 'slot__body');
   private nextPanel: HTMLElement = element('div');
@@ -125,6 +139,17 @@ export class Hud {
 
     this.shift.classList.add('hud__panel');
     this.shift.append(element('span', 'hud__label', 'SHIFT'), this.meter);
+
+    this.gauge.append(this.gaugeFill);
+    this.gauge.hidden = true;
+    // Tapping the gauge is the touch trigger, and it is only interactive while
+    // it is ready -- see `.gauge--ready` in the stylesheet, which is what turns
+    // pointer events back on. A target that is live but does nothing teaches a
+    // player it is not a target at all.
+    this.gauge.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      this.collapseHandler?.();
+    });
 
     const left = element('div', 'hud__column hud__column--left');
     left.append(stats);
@@ -158,6 +183,7 @@ export class Hud {
     this.root.append(
       left,
       right,
+      this.gauge,
       this.shift,
       this.chain,
       this.popups,
@@ -305,6 +331,37 @@ export class Hud {
     this.shift.style.left = `${rect.left - origin.left}px`;
     this.shift.style.width = `${rect.width}px`;
     this.shift.style.top = `${Math.max(0, Math.min(desired, limit))}px`;
+
+    // Against the well's right edge, spanning its height. Outside the silhouette
+    // rather than over it: the board is the one thing nothing may cover.
+    this.gauge.style.left = `${rect.left + rect.width - origin.left + GAUGE_GAP}px`;
+    this.gauge.style.top = `${rect.top - origin.top}px`;
+    this.gauge.style.height = `${rect.height}px`;
+  }
+
+  /**
+   * Show the hot bar at `heat`, 0 to 1, or hide it where the mode has no such
+   * mechanic.
+   *
+   * `ready` suspends the fill's transition and hands the element over to the
+   * flicker: at that point the number has stopped moving and what the gauge has
+   * to say is no longer "how full" but "now".
+   */
+  /** What a tap on a ready gauge should do. */
+  onCollapseTap(handler: () => void): void {
+    this.collapseHandler = handler;
+  }
+
+  setHeat(heat: number | null, ready: boolean): void {
+    this.gauge.hidden = heat === null;
+    if (heat === null) return;
+    const level = Math.min(1, Math.max(0, heat));
+    this.gaugeFill.style.height = `${level * 100}%`;
+    // The shimmer is driven from here rather than from a fixed animation so it
+    // can grow with the fill -- a gauge that shakes hardest just before it is
+    // earned is doing the job the play note asked for.
+    this.gauge.style.setProperty('--gauge-agitation', level.toFixed(3));
+    this.gauge.classList.toggle('gauge--ready', ready);
   }
 
   update(game: Game, deltaMs: number): void {
