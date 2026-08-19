@@ -825,16 +825,23 @@ nothing else, and the colour-fidelity tests still pass unchanged.
 **Goal:** a mode that inverts the turn economy — you buy turns instead of earning
 them.
 
-Every mode so far earns its turns: cleared lines fill the Shift meter, and when
-it is full the board demands a direction. This one hands the player the button
-and charges for it. **`A` and `D` turn the board left or right at any moment, and
-each turn costs one line off the total.**
+**Flatland's rules, with the turn set free.** Planar pieces only, roll the sole
+rotation, no depth nudge — and on top of that, **`A` and `D` turn the board left
+or right at any moment, each turn costing one line off the total.**
 
 That is a real inversion rather than a variation. The existing loop is _place →
 anticipate → rotate → reveal_, with the rotation arriving on the game's schedule
 and the skill being preparation. Here the rotation arrives on the player's
 schedule and the skill is knowing when a turn is worth what it costs — a line
 spent to reveal a line, or two, or nothing.
+
+Building it on Flatland is what makes it legible rather than merely permissive.
+In Flatland the piece never leaves the screen plane, so depth is purely a
+property of _where you put things_ — and the board turning is the only
+three-dimensional idea in the mode. Handing the player that one lever, and
+charging for it, gives them direct control of the single thing Flatland is about.
+It is the natural next mode after the one a new player starts in, and a candidate
+for an unlock earned there rather than an option offered from the first screen.
 
 ### What it costs, and what that touches
 
@@ -867,28 +874,31 @@ side effect of subtraction.
   already exists to tune that balance without touching the engine.
 - **`linesPerTurn` changes meaning** from a threshold to a price. Worth a
   distinct field rather than reusing one whose name would then lie.
+- **Inherits from Flatland**, so `maxTier: 1` and `startStage: 2` come with it,
+  along with the roll-only and no-nudge fields M12 adds. The "no two modes with
+  identical rules" test is satisfied by the turn economy alone, which is exactly
+  the difference the mode exists for.
 - **The mode still needs a name.** The modes are Ascent, Endless, Prism,
   Flatland, Blind Spectrum and Zen — each says something about what it is. This
-  one is about paying for the reveal.
+  one is Flatland with the reveal for sale.
 
-### The binding, which conflicts with M11c
+### The binding resolves itself
 
-M11c gives `A` and `D` to yaw. This mode wants them for the turn, and a key that
-means "yaw the piece" in five modes and "turn the board" in the sixth is exactly
-the mode-dependent meaning M11c argued against — it teaches a reflex that is
-wrong everywhere else.
+M11c gives `A` and `D` to yaw, which looked like a conflict: a key meaning "yaw
+the piece" in most modes and "turn the board" in this one is the mode-dependent
+meaning M11c argued against.
 
-Two clean ways out, and it should be one of them rather than a special case:
-
-- **This mode does not offer yaw**, which frees `A` and `D` honestly. Defensible:
-  a mode built around turning the board may not want the piece turning about the
-  same axis as well.
-- **Turning on demand takes the freed `Q` and `E`**, and `A` / `D` keep meaning
-  yaw everywhere.
+Inheriting Flatland's rules settles it without a special case. Roll is the only
+rotation there and the depth nudge never unlocks, so `A`, `D`, `W` and `S` are
+**unbound in this mode already**. `A` and `D` are free to take the turn, and they
+take it in the shape the game has always used them for: left and right choosing
+which face comes forward, exactly as they do at the turn prompt everywhere else.
+The key does not change meaning — it stops being conditional on the meter.
 
 **Exit criteria:** a run in which the player turns the board when they choose,
 can see what it costs before they commit, and can be caught out by spending their
-last line. The stage arc still climbs at the same rate it does everywhere else.
+last line. Pieces stay planar throughout, the stage arc climbs at the same rate
+it does everywhere else, and a player who never turns has played Flatland.
 
 ---
 
