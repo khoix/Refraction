@@ -934,9 +934,14 @@ and can then say, unprompted, what the colours mean and what turning does.
 
 ---
 
-## M14 — The Look ✅
+## M14 — The Look
 
 **Goal:** the game looks like itself.
+
+Both original items shipped — gel voxels and the title screen. **M14b below is
+open**, which is why this heading no longer carries a tick: a play note arrived
+after the milestone closed and belongs here rather than in a milestone of its
+own.
 
 - ✅ **A stylised title screen** _(play notes)_. It was plain DOM type on a live
   board, which was right for getting the front door working and is not a title
@@ -1029,6 +1034,47 @@ and can then say, unprompted, what the colours mean and what turning does.
 nothing else, and the colour-fidelity tests pass unchanged. Five new end-to-end
 tests; the depth-independence one was confirmed to fail on a violation confined
 to the Fresnel rim alone, which is the narrowest form it could take.
+
+### M14b — The last look _(play notes)_
+
+**On game over the camera eases into a slow, continuous orbit of the board.**
+
+This is the one moment the game is allowed to break its own central rule, and it
+should. §2.1 keeps the settled board dead-on so that no spatial cue competes with
+colour — but that rule exists to protect a player who is _reading_ the board. The
+run is over. There is nothing left to read, no decision left to make, and the
+flat discipline of the whole run has been building an object nobody has ever
+seen. The orbit is the payoff for it: you spend a run reading a field of colour
+and at the end you are shown the solid you actually built.
+
+**The recolour comes free, and is the reason this is the right final image.**
+`VoxelLayer.update` computes every cube's colour from the _live_ camera yaw, so
+an orbit sweeps the entire stack through the spectrum continuously — the same
+mechanism that makes a turn a transformation rather than a crossfade. Nothing has
+to be written for it. The board simply becomes the demonstration of its own rule.
+
+Four things it touches:
+
+- **The game-over panel currently hides the thing this exists to show.** It sits
+  under the same 86%-opaque scrim as every other screen. It needs the title
+  screen's treatment — a gradient that is opaque behind the type and clears over
+  the board — which is most of the actual work here.
+- **The camera has to ease in from wherever it is.** A run can end mid-anything,
+  including mid-turn. `snapToFace` handles the inverse case (starting a run from
+  a turning title) and this is the same problem in reverse.
+- **A continuous orbit is not the 90-degree turn.** `startTurn` eases between two
+  faces and stops; this never arrives. Closer to the title's attract cycle, but
+  without the dwell — and it should keep the turn's elevation, since a dead-on
+  orbit would be a board spinning edge-on rather than an object being examined.
+- **Reduced motion.** Same call as the title's attract turn: an unattended,
+  unstoppable animation is exactly what that setting is for. Hold the board
+  still, or orbit slowly enough that it reads as drift.
+
+Zen never ends, so it never orbits. Restart already snaps the camera back to the
+front face, so no work there.
+
+**Exit criteria:** the board is legible under the game-over panel, turning, and
+the colours are visibly cycling as it goes.
 
 ---
 
@@ -1136,6 +1182,127 @@ it does everywhere else, and a player who never turns has played Flatland.
 
 **Exit criteria:** every budget in §12 of the design spec met on integrated
 graphics; visual regression suite green.
+
+---
+
+## M17 — Spectral Collapse _(play notes)_
+
+**Goal:** a rare, earned, board-wide event — the one thing that destroys
+structure the ordinary rules preserve.
+
+**Sequencing: this must land before M16, not after it.** It is numbered later
+because it arrived later, but M16 is the release-candidate pass — profiling,
+visual regression baselines, final difficulty tuning — and none of that means
+anything with a core mechanic still to come.
+
+### The mechanic
+
+A **hot bar** fills as lines are cleared and cools on its own, so it only rises
+if the player keeps clearing. Full, it glows and flickers, cooling suspends, and
+**Spectral Collapse** becomes available. Triggering it collapses the stack: every
+voxel falls independently to the floor of its column, any lines completed by the
+settling clear immediately, the bar empties and cooling begins again.
+
+### Why it is worth a milestone: it is the operation the rules refuse
+
+This is not "gravity, but bigger". `Board.clearLines` runs per-column naive
+gravity and is deliberately careful _not_ to do this, in its own words:
+
+> Suspended cells stay suspended — a piece bridging two columns can legitimately
+> leave a cell with nothing beneath it, and compacting the whole column would
+> silently destroy that structure.
+
+So overhangs accumulate for the whole run and nothing removes them. A piece that
+does not fit its footprint locks with a gap under it — that is the entire subject
+of M10's landing marks — and those gaps are most of what makes a board hard.
+
+Spectral Collapse is a new, explicit `Board` operation: full per-column
+compaction, applied to the whole board, on demand. It leaves §3.1 untouched,
+which matters — the clear-time rule is what keeps a face you cannot see
+predictable, and this must not quietly become the general behaviour.
+
+That framing also settles why it has to be rare and earned: it is the only thing
+in the game that erases accumulated structure wholesale.
+
+### The colour rule, stated first because it is the easiest thing to get wrong
+
+A heat gauge conventionally runs blue to red. **That is forbidden here**, and not
+mildly: red means _near_ and violet means _far_, and a bar that reddens as it
+fills would teach a player that colour means intensity — the exact false
+inference §2.2 exists to prevent, and precisely what the standing amendment rules
+out (no spectrum for scoring tiers, difficulty or progression).
+
+The gauge is achromatic. It expresses heat the way the room already expresses
+everything: **as brightness and agitation, not as temperature.** The shimmer
+growing wilder toward full is the right instinct and is already the game's
+language — see §2.4, "the room answers the board by getting brighter, not by
+changing colour."
+
+### Two meters fed by the same action
+
+The Shift meter already fills as lines are cleared. A second gauge on the same
+input is a real risk: a player who sees two bars move together will not know
+which one is about to do something, and one of them freezes the game to ask a
+question.
+
+They have to differ in kind, not only in position:
+
+|           | Shift meter                  | Hot bar                      |
+| --------- | ---------------------------- | ---------------------------- |
+| Fills on  | lines, cumulative            | lines, against a decay       |
+| Shape     | discrete pips                | continuous column            |
+| Placement | horizontal, below the board  | vertical, on the wall        |
+| Fires     | automatically, freezing play | only when the player chooses |
+
+The decay is what makes them legible as different things: the Shift meter never
+falls, and this one always is. A player who stops clearing watches one hold and
+the other drain, which teaches the distinction without a word.
+
+### Decisions to make rather than assume
+
+- **Where the bar lives.** "Attached to the right wall" reads as world space, and
+  in world space it turns with the board — so it would sweep away and sometimes
+  sit behind the stack, which is unusable for a gauge you need to read under
+  pressure. Recommendation: screen space, pinned to the right edge of the well's
+  silhouette and drawn as part of the frame, so it reads as attached without
+  rotating away. Worth deciding explicitly.
+- **Cooling must be tick-driven, not wall-clock.** A run is determined by
+  `(seed, input log)`; the engine already steps on a fixed timestep, so this is
+  free if done right and silently breaks every replay and challenge code if it
+  reads `Date.now()`.
+- **The collapse must not refill its own bar.** Lines cleared by the settling are
+  real lines and should score, but feeding them back into the hot bar is a loop.
+  Whether they feed the _Shift_ meter is a separate question with a real
+  consequence: a large collapse could fill it and force a turn immediately, which
+  might be a good moment or a confusing one.
+- **How it scores.** The cascade machinery already exists and a collapse is
+  structurally a cascade — several lines resolving at once, possibly in waves.
+  Reusing it is likely right and needs checking rather than assuming.
+- **Which modes have it**, as a field in the mode table like everything else.
+  Almost certainly not Flatland, which is the mode a new player starts in and
+  already carries the game's one strange idea on its own.
+- **What happens to the falling piece**, and which states allow a trigger —
+  falling, awaiting a turn, mid-turn, resolving. Probably falling only.
+- **Input.** Unassigned on both keyboard and touch. Touch is the harder half: in
+  a roll-only mode there is no strip to put it in, and tapping the gauge itself
+  is the obvious answer since it is already the thing announcing readiness.
+
+### The balance risk, named
+
+It removes most of what makes a board hard, and a player who can earn it often
+enough never has to manage structure at all. The earn rate is the only control,
+and it should be tuned against the greedy agent in `playability.test.ts` rather
+than by feel — the same instrument that moved `LINES_PER_STAGE` from 10 to 15
+when the agent walked the whole arc in one game.
+
+It also rescues a player from an imminent top-out, which is presumably the point,
+but means the mechanic is at its most valuable exactly when the run is least
+under control.
+
+**Exit criteria:** a player can see the bar rising and falling and knows what it
+is for without being told; a collapse reads as one event rather than as a
+stutter of clears; the gauge carries no hue at any fill level; and the agent's
+line rate with the mechanic on is a deliberate number rather than a surprise.
 
 ---
 
