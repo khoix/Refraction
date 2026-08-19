@@ -473,6 +473,59 @@ Four small ones, unrelated to each other except that they are all interface.
   anyone sees, Flatland is roll-only with no depth nudge, so a new player meets
   exactly one new idea — the board turning — rather than four at once.
 
+### Remapping, and the WASD cluster — M11c _(play notes)_
+
+**New defaults.** The depth nudge moves to `W` / `S` — deeper and nearer — and
+yaw moves to `A` / `D`. The WASD block stops being a movement alias and becomes a
+**depth manipulator**: `W` and `S` push the piece into and out of the screen,
+`A` and `D` spin it about the vertical axis. That reads like handling a solid
+object, and it leaves the arrows to do the flat game on their own.
+
+What it costs, stated plainly because it changes something already advertised:
+
+| Key       | Today                  | After          |
+| --------- | ---------------------- | -------------- |
+| `W`       | unbound                | Push deeper    |
+| `S`       | Soft drop _(alias)_    | Pull nearer    |
+| `A` / `D` | Left / Right _(alias)_ | Yaw back / Yaw |
+| `Q` / `E` | Yaw back / Yaw         | **freed**      |
+| `T` / `G` | Push deeper / nearer   | **freed**      |
+
+**Arrows become the only movement keys**, and the README's "arrows or WASD to
+move" stops being true. That is the trade, and it is worth taking: WASD as a
+depth cluster is a better use of the best-placed keys on the board than a second
+way to do what the arrows already do.
+
+**`src/keymap.ts` currently argues against this in its own header**, and the
+argument has to go with the change. It says `W` / `S` "cannot work, because `S`
+is half of the WASD movement cluster the README advertises and is already the
+soft drop" — which was true when the only way to free `S` was to break an
+advertised binding. That is now the deliberate choice, so the module doc should
+record the reversal rather than be quietly deleted; the reasoning was sound and
+the premise changed.
+
+**Configurable in settings.** This is the "full key remapping" bullet above,
+pulled up and given a concrete driver. What it needs beyond a UI:
+
+- A field in the save schema, and a migration — `save.ts` is at `SAVE_VERSION 3`
+  and `migrate()` never throws, so an old save must land on the new defaults
+  rather than on nothing.
+- Conflict detection. `BINDINGS` already has a unit test asserting no key carries
+  two meanings; a remapping UI has to enforce the same rule live, and this
+  proposal would have tripped it three times over.
+- The key map reads the player's bindings, not the defaults. It is built from the
+  table, so this follows for free — provided the table becomes the _resolved_
+  bindings rather than the constant.
+- Reset to defaults, which is the only escape from a mapping typed by accident.
+
+**Open, and worth deciding before building:** in a roll-only mode with no depth
+nudge — Flatland, per M12 — `W`, `A`, `S` and `D` all do nothing. They could
+revert to movement there, which would give a new player the familiar cluster in
+the mode they meet first. I would not: a key that means "move left" in one mode
+and "yaw" in another teaches a reflex that is wrong everywhere else, and Flatland
+is precisely where the arrows should be learned. Inert is better than
+inconsistent.
+
 **Exit criteria:** the game is completable with depth colour fully disabled and
 by keyboard alone.
 
