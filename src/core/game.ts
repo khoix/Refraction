@@ -191,6 +191,30 @@ export class Game {
   }
 
   /**
+   * Whether this rotation is available at all, right now.
+   *
+   * The mode's policy first, then the stage's schedule. Public because two other
+   * places need the same answer and must not compute it themselves: the key map,
+   * which would otherwise advertise keys the engine ignores, and the touch
+   * layer, which drops its movement strip when only one axis is reachable.
+   */
+  allowsRotation(kind: RotationKind): boolean {
+    if (this.mode.rotation === 'roll') return kind === 'roll';
+    if (kind === 'roll') return true;
+    return this.stageAllowsRotation(kind);
+  }
+
+  /**
+   * True when the screen plane is the only rotation the mode offers.
+   *
+   * Named for what it means to the player rather than for the enum value, since
+   * this is what the interface branches on.
+   */
+  get rollOnly(): boolean {
+    return this.mode.rotation === 'roll';
+  }
+
+  /**
    * Whether Peek is available: hold to tilt the camera and read depth from
    * parallax instead of from colour.
    *
@@ -328,7 +352,7 @@ export class Game {
    */
   rotatePiece(kind: RotationKind, clockwise = true): boolean {
     if (this.status !== 'falling' || !this.active) return false;
-    if (kind !== 'roll' && !this.stageAllowsRotation(kind)) return false;
+    if (!this.allowsRotation(kind)) return false;
 
     const axis: RotationAxis = kind === 'roll' ? 'z' : kind === 'yaw' ? 'y' : 'x';
     const rotated = rotate([...this.active.offsets], axis, clockwise);

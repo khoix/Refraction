@@ -24,6 +24,25 @@ import type { Sample, TouchIntent, TouchLayout } from './gestures';
  */
 export const STRIP_HEIGHT_PX = 84;
 
+/**
+ * Where the movement strip starts, in viewport coordinates.
+ *
+ * **Anchored to the bottom of the window, not to the bottom of the well.** It
+ * used to sit directly under the board, which is where the Shift meter also
+ * wants to be -- measured on a Pixel 7 the meter ran 679 to 723 and the strip
+ * 669 to 753, so the thumb rested squarely on the one readout that says when the
+ * board is about to turn. The bottom of the window is where a thumb goes anyway,
+ * and it leaves the space under the board free for the meter.
+ *
+ * Exported because the HUD needs the same number to keep the meter clear of it.
+ * Two places computing "where the strip starts" from the same inputs is how they
+ * end up disagreeing by a few pixels and nobody notices until a thumb covers
+ * something.
+ */
+export function stripTopPx(viewportHeight: number): number {
+  return viewportHeight - STRIP_HEIGHT_PX;
+}
+
 export interface TouchHandlers {
   /** Whether the engine should see this at all. False while a menu is up. */
   readonly accepts: () => boolean;
@@ -32,6 +51,13 @@ export interface TouchHandlers {
   readonly onTurn: (direction: 'left' | 'right') => void;
   /** Where the well currently is on screen, in CSS pixels. */
   readonly wellRect: () => { left: number; top: number; width: number; height: number };
+  /**
+   * Whether the mode in play needs the field/strip split.
+   *
+   * A function rather than a flag because the mode changes with the run, and the
+   * controller outlives it.
+   */
+  readonly hasStrip: () => boolean;
 }
 
 export class TouchController {
@@ -74,16 +100,10 @@ export class TouchController {
 
   private layout(): TouchLayout {
     const well = this.handlers.wellRect();
-    // The strip prefers the space below the well, so the hand never covers the
-    // board. Where the window is too short for that -- a phone in landscape --
-    // it overlaps the bottom of the well rather than disappearing, because a
-    // game with no way to move the piece is worse than one with an obstructed
-    // view of its floor.
-    const below = window.innerHeight - (well.top + well.height);
-    const stripTop =
-      below >= STRIP_HEIGHT_PX
-        ? well.top + well.height
-        : Math.max(well.top, window.innerHeight - STRIP_HEIGHT_PX);
+    // A mode that permits only roll has nothing for the split to carry, so it
+    // gets no strip at all: drag anywhere to move, tap anywhere to roll. See
+    // `TouchLayout.stripTop`.
+    const stripTop = this.handlers.hasStrip() ? stripTopPx(window.innerHeight) : null;
     return { well, stripTop, columns: 8 };
   }
 

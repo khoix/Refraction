@@ -17,6 +17,13 @@
  * It also keeps the thumb off the board -- movement happens below the well, so
  * the hand is never over the thing being aimed.
  *
+ * **The split is gated by the mode.** It exists to carry three rotation axes,
+ * and a mode that permits only roll has nothing for it to carry -- at which
+ * point the strip is not a convenience, it is dedicated screen space taken out
+ * of an eighteen-row well for a verb the mode does not have. Flatland drops it:
+ * drag anywhere to move, fling anywhere to drop, tap anywhere to roll. See
+ * `TouchLayout.stripTop`.
+ *
  * | Gesture                        | Verb                        |
  * | ------------------------------ | --------------------------- |
  * | Drag sideways, in the strip    | Move -- absolute, per column |
@@ -71,8 +78,22 @@ export interface Rect {
 export interface TouchLayout {
   /** The well's silhouette, in the same coordinates as the samples. */
   readonly well: Rect;
-  /** Pointer y at or below this belongs to the movement strip. */
-  readonly stripTop: number;
+  /**
+   * Pointer y at or below this belongs to the movement strip, or **null when
+   * the mode has no strip at all**.
+   *
+   * The split exists to carry three rotation axes. A mode that permits only roll
+   * has nothing for it to carry, and the strip stops being a free convenience
+   * and starts being dedicated screen space paid for out of an eighteen-row
+   * well. So a roll-only mode drops it: the whole screen moves the piece, and a
+   * tap anywhere rolls.
+   *
+   * Null rather than a stripTop above the viewport, because the two zones do
+   * not merely merge -- a tap means something different in each. In the split
+   * scheme a tap on the strip is a miss, since the strip is where the hand
+   * rests; with no split it is the roll.
+   */
+  readonly stripTop: number | null;
   readonly columns: number;
 }
 
@@ -116,7 +137,9 @@ export class GestureRecogniser {
   private active: Active | null = null;
 
   begin(sample: Sample, layout: TouchLayout): TouchIntent[] {
-    const zone: Zone = sample.y >= layout.stripTop ? 'strip' : 'field';
+    // With no strip every gesture is a movement gesture, and the tap case below
+    // reads `layout.stripTop` again to decide what a tap means.
+    const zone: Zone = layout.stripTop === null || sample.y >= layout.stripTop ? 'strip' : 'field';
     this.active = { start: sample, zone, softDropAnchor: sample.y, moved: false };
     // Deliberately silent. A press is not yet a verb: touching the strip must
     // not jump the piece before the player has moved, or a tap meant for
@@ -157,9 +180,12 @@ export class GestureRecogniser {
     const travelled = Math.abs(dx) > TAP_SLOP_PX || Math.abs(dy) > TAP_SLOP_PX;
 
     if (!travelled) {
-      // A tap. Only the field rotates; a tap on the strip is a miss, not a verb,
-      // because the strip is where the hand rests.
-      if (active.zone !== 'field' || elapsed > TAP_MAX_MS) return [];
+      // A tap. In the split scheme only the field rotates: a tap on the strip is
+      // a miss rather than a verb, because the strip is where the hand rests and
+      // resting a thumb must not roll the piece. With no split there is nowhere
+      // for the hand to rest that is not the playfield, so a tap anywhere rolls.
+      if (elapsed > TAP_MAX_MS) return [];
+      if (layout.stripTop !== null && active.zone !== 'field') return [];
       const centre = layout.well.left + layout.well.width / 2;
       return [{ kind: 'rotate', axis: 'roll', clockwise: sample.x >= centre }];
     }
@@ -171,7 +197,8 @@ export class GestureRecogniser {
     }
 
     // A swipe over the field. The dominant axis wins, so a diagonal resolves
-    // rather than doing both or neither.
+    // rather than doing both or neither. Unreachable with no strip, where every
+    // zone is 'strip' and the branch above has already returned.
     if (Math.abs(dx) >= Math.abs(dy)) {
       if (Math.abs(dx) < SWIPE_MIN_PX) return [];
       return [{ kind: 'rotate', axis: 'yaw', clockwise: dx > 0 }];

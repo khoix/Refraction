@@ -477,6 +477,7 @@ export class GameRenderer {
   /** 0 while dead-on, 1 while fully peeked. Eased, so it is never a step. */
   private peek = 0;
   private peekHeld = false;
+  private bottomReservePx = 0;
   private readonly turnDurationMs: number;
 
   constructor(
@@ -769,7 +770,22 @@ export class GameRenderer {
     this.renderer.setSize(width, height, false);
     this.composer.setSize(width, height);
     this.aspect = width / Math.max(1, height);
-    fitCamera(this.camera, this.aspect);
+    fitCamera(this.camera, this.aspect, this.bottomReservePx, height);
+  }
+
+  /**
+   * Keep this many pixels clear at the bottom of the window.
+   *
+   * Set from the touch strip, which is a region rather than an element -- so
+   * nothing lays out around it and the board has to be told. Takes effect on the
+   * next resize, and triggers one, because the alternative is a frame drawn with
+   * the old framing.
+   */
+  setBottomReserve(px: number): void {
+    const next = Math.max(0, px);
+    if (next === this.bottomReservePx) return;
+    this.bottomReservePx = next;
+    this.resize();
   }
 
   /**

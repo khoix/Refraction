@@ -28,17 +28,23 @@ const LAYOUT: TouchLayout = {
 
 const CENTRE = LAYOUT.well.left + LAYOUT.well.width / 2;
 
+/** The same well in a mode with no strip: roll only, so no split. */
+const NO_STRIP: TouchLayout = { ...LAYOUT, stripTop: null };
+
 /** Play a gesture through the recogniser and collect everything it emits. */
-function play(points: readonly [number, number, number][]): TouchIntent[] {
+function play(
+  points: readonly [number, number, number][],
+  layout: TouchLayout = LAYOUT
+): TouchIntent[] {
   const recogniser = new GestureRecogniser();
   const out: TouchIntent[] = [];
   const [first, ...rest] = points;
   const [x0, y0, t0] = first as [number, number, number];
-  out.push(...recogniser.begin({ x: x0, y: y0, t: t0 }, LAYOUT));
+  out.push(...recogniser.begin({ x: x0, y: y0, t: t0 }, layout));
   const last = rest.pop() as [number, number, number];
-  for (const [x, y, t] of rest) out.push(...recogniser.move({ x, y, t }, LAYOUT));
-  out.push(...recogniser.move({ x: last[0], y: last[1], t: last[2] }, LAYOUT));
-  out.push(...recogniser.end({ x: last[0], y: last[1], t: last[2] }, LAYOUT));
+  for (const [x, y, t] of rest) out.push(...recogniser.move({ x, y, t }, layout));
+  out.push(...recogniser.move({ x: last[0], y: last[1], t: last[2] }, layout));
+  out.push(...recogniser.end({ x: last[0], y: last[1], t: last[2] }, layout));
   return out;
 }
 
@@ -207,5 +213,96 @@ describe('a cancelled gesture', () => {
     recogniser.cancel();
     expect(recogniser.move({ x: 160, y: 640, t: 40 }, LAYOUT)).toEqual([]);
     expect(recogniser.end({ x: 160, y: 640, t: 80 }, LAYOUT)).toEqual([]);
+  });
+});
+
+/**
+ * A mode with no strip.
+ *
+ * The field/strip split exists to carry three rotation axes. A mode that permits
+ * only roll -- Flatland -- has one, and the strip stops being a convenience and
+ * starts being dedicated screen space taken out of an eighteen-row well for a
+ * verb the mode does not have. So it goes: drag anywhere to move, fling anywhere
+ * to drop, tap anywhere to roll.
+ *
+ * The two zones do not merely merge, which is why this is a null rather than a
+ * strip pushed off the top of the screen. A tap means something different in
+ * each: in the split scheme a tap on the strip is a miss, because the strip is
+ * where the hand rests and resting a thumb must not roll the piece. With no
+ * split there is nowhere to rest that is not the playfield, so a tap is the roll.
+ */
+describe('a mode with no strip', () => {
+  it('moves the piece from a drag anywhere, not just along the bottom', () => {
+    // High above where the strip would have been -- in the split scheme this is
+    // the field, and a sideways drag here would have been a yaw.
+    const intents = play(
+      [
+        [140, 200, 0],
+        [200, 202, 40],
+        [380, 204, 90],
+      ],
+      NO_STRIP
+    );
+    const columns = intents.filter((intent) => intent.kind === 'column');
+    expect(columns.length).toBeGreaterThan(0);
+    expect(intents.some((intent) => intent.kind === 'rotate')).toBe(false);
+  });
+
+  it('rolls from a tap anywhere, including where the strip would have been', () => {
+    const low = play(
+      [
+        [400, 640, 0],
+        [401, 641, 60],
+      ],
+      NO_STRIP
+    );
+    expect(low).toEqual([{ kind: 'rotate', axis: 'roll', clockwise: true }]);
+
+    // And the same tap in the split scheme is a miss, which is the behaviour
+    // this must not have quietly changed.
+    const split = play([
+      [400, 640, 0],
+      [401, 641, 60],
+    ]);
+    expect(split).toEqual([]);
+  });
+
+  it('takes its roll direction from which side of the well the tap lands', () => {
+    const left = play(
+      [
+        [CENTRE - 60, 300, 0],
+        [CENTRE - 59, 301, 50],
+      ],
+      NO_STRIP
+    );
+    expect(left).toEqual([{ kind: 'rotate', axis: 'roll', clockwise: false }]);
+  });
+
+  it('drops from a fling anywhere', () => {
+    const intents = play(
+      [
+        [300, 150, 0],
+        [302, 150 + FLING_MIN_PX + 10, 90],
+      ],
+      NO_STRIP
+    );
+    expect(intents.some((intent) => intent.kind === 'hardDrop')).toBe(true);
+  });
+
+  it('never emits the rotations the mode does not have', () => {
+    // A swipe that would be a yaw in the split scheme. The engine would refuse
+    // it anyway -- Flatland permits roll alone -- but a recogniser that emits
+    // intents the engine throws away is a vocabulary the player can feel
+    // reaching for and getting nothing.
+    const sideways = play(
+      [
+        [200, 200, 0],
+        [200 + SWIPE_MIN_PX + 40, 202, 120],
+      ],
+      NO_STRIP
+    );
+    for (const intent of sideways) {
+      expect(intent.kind === 'rotate' && intent.axis !== 'roll').toBe(false);
+    }
   });
 });

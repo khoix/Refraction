@@ -21,6 +21,8 @@ const BLIND_FILL_HEX = '#9ea3ad';
 
 /** Gap kept between the Shift meter and the bottom of the window. */
 const SHIFT_EDGE_MARGIN = 8;
+/** Space between the bottom of the well and the top of the meter. */
+const SHIFT_WELL_GAP = 10;
 
 const FACE_LABEL: Record<Face, string> = {
   front: 'FRONT',
@@ -201,6 +203,18 @@ export class Hud {
    * Opacity rather than `hidden`, so the layout the renderer measures for the
    * preview rectangle does not collapse and spring back on every transition.
    */
+  /**
+   * Vertical space the Shift meter needs below the board, in CSS pixels.
+   *
+   * Measured rather than assumed, because the meter's height comes from its own
+   * type and padding. Read by the camera fit, which reserves this much at the
+   * bottom of the window -- the meter is absolutely positioned, so nothing lays
+   * out around it and the board would otherwise be framed straight through it.
+   */
+  get shiftReservePx(): number {
+    return this.shift.getBoundingClientRect().height + SHIFT_WELL_GAP + SHIFT_EDGE_MARGIN;
+  }
+
   setHidden(hidden: boolean): void {
     this.root.classList.toggle('hud--hidden', hidden);
   }
@@ -260,11 +274,33 @@ export class Hud {
    * is worse than one a few pixels out of place, so it is kept inside the
    * window whatever the camera does.
    */
-  layoutWell(rect: { left: number; top: number; width: number; height: number }): void {
+  layoutWell(
+    rect: { left: number; top: number; width: number; height: number },
+    /**
+     * Viewport y where the touch strip begins, or null when there is no strip.
+     *
+     * The meter has to stay clear of it. The strip is where the thumb rests for
+     * the whole game, and the meter is the one readout that says when the board
+     * is about to turn -- measured on a Pixel 7 they overlapped almost exactly,
+     * so the hand covered it.
+     *
+     * **A guard, not the mechanism.** What actually keeps the two apart is the
+     * camera's bottom reserve, which leaves room for both below the board; by
+     * the time the meter is placed there is already space for it, and removing
+     * this clamp changes nothing measurable. It stays because the reserve is
+     * applied on resize and this runs every frame, so a mode change is one
+     * ordering mistake away from a frame where they disagree -- and because a
+     * function that is handed the strip's position and ignores it invites the
+     * next reader to conclude the two are unrelated.
+     */
+    stripTop: number | null = null
+  ): void {
     const origin = this.root.getBoundingClientRect();
     const own = this.shift.getBoundingClientRect().height;
-    const desired = rect.top + rect.height + 10 - origin.top;
-    const limit = origin.height - own - SHIFT_EDGE_MARGIN;
+    const desired = rect.top + rect.height + SHIFT_WELL_GAP - origin.top;
+    const floor =
+      stripTop === null ? origin.height : Math.min(origin.height, stripTop - origin.top);
+    const limit = floor - own - SHIFT_EDGE_MARGIN;
 
     this.shift.style.left = `${rect.left - origin.left}px`;
     this.shift.style.width = `${rect.width}px`;

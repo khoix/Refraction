@@ -222,14 +222,77 @@ export function createScene(): SceneBundle {
  * scale during a rotation -- which matters, because a scale change would read
  * as the board moving toward or away from the player.
  */
-export function fitCamera(camera: THREE.OrthographicCamera, aspect: number): void {
-  const halfHeight = BOARD_HEIGHT / 2 + FIT_MARGIN + HUD_RESERVE / 2;
+export function fitCamera(
+  camera: THREE.OrthographicCamera,
+  aspect: number,
+  /**
+   * How much clear space the bottom of the window must hold, in CSS pixels.
+   *
+   * **A floor, not an addition.** The board is only pushed up if the framing
+   * does not already leave this much, so a window with room to spare is framed
+   * exactly as it was before this parameter existed -- which is every desktop.
+   *
+   * It exists because `HUD_RESERVE` is measured in *cells*, and cells shrink
+   * with the window. On a phone in landscape 1.6 cells is 27 pixels against a
+   * 44-pixel Shift meter, so the meter had always been drawn over the bottom
+   * rows of the board there. The touch strip made the same arithmetic worse
+   * rather than introducing it: a region of the window that nothing lays out
+   * around, on top of a reserve that was already too small.
+   */
+  bottomReservePx = 0,
+  /** Window height the reserve is measured against. */
+  viewportPx = 0
+): void {
+  const base = BOARD_HEIGHT / 2 + FIT_MARGIN + HUD_RESERVE / 2;
   const widestHalfWidth = (Math.SQRT1_2 * (BOARD_WIDTH + BOARD_DEPTH)) / 2 + FIT_MARGIN;
-  const half = Math.max(halfHeight, widestHalfWidth / Math.max(aspect, 0.0001));
+  const safeAspect = Math.max(aspect, 0.0001);
 
-  // Sliding the window down leaves the gap under the board rather than around
-  // it, so the reserved space is where the meter actually needs it.
-  const drop = HUD_RESERVE / 2;
+  /**
+   * The frustum for a given extra reserve, expressed as a fraction of the
+   * window's height.
+   *
+   * Sliding the window down leaves the gap under the board rather than around
+   * it, so the reserved space is where the meter and the strip actually need it.
+   */
+  const place = (fraction: number): { half: number; drop: number } => {
+    const half = Math.max(base / (1 - fraction), widestHalfWidth / safeAspect);
+    return { half, drop: HUD_RESERVE / 2 + fraction * half };
+  };
+
+  /** Clear space under the board, in CSS pixels, at a given fraction. */
+  const gapPx = (fraction: number): number => {
+    const { half, drop } = place(fraction);
+    return ((half + drop - BOARD_HEIGHT / 2) * viewportPx) / (2 * half);
+  };
+
+  /*
+   * Solved by bisection rather than in closed form.
+   *
+   * The map from fraction to pixels has two regimes -- the fit is limited by
+   * height on a wide window and by width on a narrow one, and a phone in
+   * portrait is the width-limited case -- so the algebra needs a branch and the
+   * branch needs its own boundary handling. `gapPx` is smooth and strictly
+   * increasing in the fraction either way, which is all bisection needs, and
+   * this runs once per resize.
+   */
+  let fraction = 0;
+  if (bottomReservePx > 0 && viewportPx > 0 && gapPx(0) < bottomReservePx) {
+    const target = bottomReservePx;
+    let low = 0;
+    // Capped: past a third of the window the board is too small to play on, and
+    // a reserve that large means the layout is wrong somewhere else.
+    let high = 0.34;
+    if (gapPx(high) > target) {
+      for (let i = 0; i < 24; i += 1) {
+        const mid = (low + high) / 2;
+        if (gapPx(mid) < target) low = mid;
+        else high = mid;
+      }
+    }
+    fraction = high;
+  }
+
+  const { half, drop } = place(fraction);
   camera.top = half - drop;
   camera.bottom = -half - drop;
   camera.left = -half * aspect;

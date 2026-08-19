@@ -38,12 +38,47 @@ body {
   margin: 0;
   padding: 0;
   height: 100%;
+  /*
+   * Neither axis scrolls. `hidden` on both was already here for the vertical
+   * case; naming the horizontal one separately is the point, because the ways a
+   * page starts scrolling sideways are all accidents -- a panel a few pixels
+   * wider than the window, a long unbroken string, a transform that overhangs --
+   * and every one of them turns a game into a page that slides under the thumb.
+   */
   overflow: hidden;
+  overflow-x: hidden;
+  /* No pull-to-refresh, and no rubber-banding into the browser chrome. */
+  overscroll-behavior: none;
   background: var(--surface-void);
   color: var(--text-primary);
   font-family: var(--font-display);
   -webkit-font-smoothing: antialiased;
-  overscroll-behavior: none;
+}
+
+/*
+ * Nothing is selectable, because nothing here is prose.
+ *
+ * A long press on a phone is how a player holds a piece in place; it must not
+ * also raise a text selection and a context menu over the board. This was
+ * scoped to four selectors and to touch-primary devices, which left the title,
+ * the score, the mode blurbs and every panel body selectable -- and on a
+ * touchscreen laptop, which is not touch-primary, all of it.
+ *
+ * The exceptions are the things a player has an actual reason to copy: the
+ * challenge code they are typing, and the one shown after a run.
+ */
+* {
+  -webkit-user-select: none;
+  user-select: none;
+  /* The grey flash on tap belongs to links, not to a game surface. */
+  -webkit-tap-highlight-color: transparent;
+}
+
+input,
+.code,
+.panel__detail {
+  -webkit-user-select: text;
+  user-select: text;
 }
 
 #app {
@@ -482,6 +517,8 @@ body {
   background: rgb(5 6 10 / 0.86);
   backdrop-filter: blur(2px);
   overflow-y: auto;
+  /* A long panel may need to scroll down. It may never scroll sideways. */
+  overflow-x: hidden;
 }
 
 .panel {
@@ -792,6 +829,94 @@ body {
   }
 }
 
+/*
+ * Portrait.
+ *
+ * The board cannot use the full width and never could: the frustum has to hold
+ * the footprint's 45-degree diagonal so the board does not change scale during a
+ * turn, which caps the well at about 62% of the window. The remaining 38% -- two
+ * margins of roughly 80px on a 412px phone -- is permanently empty, and is
+ * exactly where the HUD belongs.
+ *
+ * So the columns stay where they are and stop being too wide for the space. They
+ * were sized for a desktop: `min-width: 8.5rem` on the stats alone is 136px
+ * before padding, in an 80px margin, so the score panel lay across the top-left
+ * of the well and covered the first rows of the board. Nothing here moves an
+ * element; it makes the panels fit the gap that already exists.
+ */
+@media (max-width: 34rem) {
+  .hud {
+    padding: 0.5rem;
+  }
+
+  .hud__column {
+    gap: 0.6rem;
+  }
+
+  .hud__panel {
+    padding: 0.35rem 0.45rem 0.4rem;
+    border-radius: 5px;
+  }
+
+  .hud__stats {
+    min-width: 0;
+    gap: 0.45rem;
+  }
+
+  .stat__label {
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+  }
+
+  .stat__value {
+    font-size: 1rem;
+  }
+
+  .hud__face {
+    font-size: 0.58rem;
+    letter-spacing: 0.18em;
+  }
+
+  .slot__body {
+    min-width: 2.9rem;
+    min-height: 2.7rem;
+  }
+
+  .hud__label {
+    font-size: 0.5rem;
+    letter-spacing: 0.12em;
+  }
+}
+
+/*
+ * Safe areas.
+ *
+ * `viewport-fit=cover` is already on the viewport meta, so the page paints
+ * behind a notch and a home indicator -- which is what makes the room reach the
+ * edges, and what would otherwise put the score under the notch and the Shift
+ * meter under the indicator.
+ *
+ * Applied as padding on the two full-bleed layers rather than on the page, so
+ * the canvas still fills the display and only the things that have to be read
+ * move inward. The Shift meter is positioned inside `.hud`'s content box, so it
+ * follows this without knowing about it.
+ */
+@supports (padding: env(safe-area-inset-top)) {
+  .hud {
+    padding-top: max(0.5rem, env(safe-area-inset-top));
+    padding-right: max(0.5rem, env(safe-area-inset-right));
+    padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+    padding-left: max(0.5rem, env(safe-area-inset-left));
+  }
+
+  .screens {
+    padding-top: max(2rem, env(safe-area-inset-top));
+    padding-right: max(1.25rem, env(safe-area-inset-right));
+    padding-bottom: max(2rem, env(safe-area-inset-bottom));
+    padding-left: max(1.25rem, env(safe-area-inset-left));
+  }
+}
+
 /* ------------------------------------------------- challenge and session log */
 
 .panel__entry {
@@ -1017,28 +1142,8 @@ body {
  * browser claims vertical drags for scrolling and the soft drop never fires,
  * because the gesture is gone before the game sees the second sample.
  */
-html,
-body {
-  overscroll-behavior: none;
-}
 
 .stage,
 .hud {
   touch-action: none;
-}
-
-@media (hover: none) and (pointer: coarse) {
-  /* A long press on a label should hold the piece's attention, not the text's. */
-  .hud,
-  .keymap,
-  .panel__title,
-  .mode {
-    -webkit-user-select: none;
-    user-select: none;
-  }
-
-  /* The grey flash on tap belongs to links, not to a game surface. */
-  * {
-    -webkit-tap-highlight-color: transparent;
-  }
 }
