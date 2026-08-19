@@ -17,7 +17,6 @@ import { Audio } from './audio/audio';
 import { THEME, playableSource } from './audio/tracks';
 import { preload } from './assets/preload';
 import { Screens } from '@ui/screens';
-import { composeAttract } from '@ui/attract';
 import type { ScreenName } from '@ui/screens';
 import { toView } from '@core/projection';
 import { stageLabel } from '@core/stages';
@@ -160,6 +159,23 @@ function boot(root: HTMLElement): void {
   };
 
   let game = newGame(startingSeed, mode);
+
+  /**
+   * Nothing hovering over the front door.
+   *
+   * A new `Game` spawns a piece immediately, and on a screen nobody is playing
+   * that piece is a cube hanging in mid-air with a ghost, a landing mark and a
+   * drop channel cut through the well beneath it -- all of it describing a move
+   * nobody is making. The composed arrangement used to clear it as a side effect;
+   * with that gone this has to say so itself.
+   *
+   * Only the piece in hand. Settled cells are left alone, so a player who quits
+   * part-way through still finds their own board behind the menu.
+   */
+  const stillTheTitle = (): void => {
+    game.active = null;
+  };
+  stillTheTitle();
   /**
    * How long the title holds a face before turning to the next.
    *
@@ -293,9 +309,7 @@ function boot(root: HTMLElement): void {
       // From settings this is "back"; from pause it is "leave the run".
       if (screens.screen === 'settings') screens.show(settingsReturn);
       else {
-        // Quitting a run before anything landed would otherwise drop the title
-        // back to an empty well.
-        composeAttract(game);
+        stillTheTitle();
         screens.show('title');
       }
     },
@@ -306,10 +320,6 @@ function boot(root: HTMLElement): void {
       screens.show(screen);
     },
   });
-
-  // Something behind the title on a cold boot. Returning from a run the board
-  // still holds what the player built, and `composeAttract` leaves that alone.
-  composeAttract(game);
 
   root.replaceChildren(canvas, hud.root, screens.root);
   if (!storageAvailable()) screens.warnUnwritableStorage();
@@ -609,6 +619,9 @@ function boot(root: HTMLElement): void {
     // framing as the menu arrives, which is half of what makes that handover
     // feel like one screen settling instead of two screens swapping.
     renderer.setBackdrop(screen === 'boot');
+    // The room shows the ramp while nobody is reading a board, and goes neutral
+    // for a run. §2.2, and the reason `setAmbientChroma` exists at all.
+    renderer.setAmbientChroma(menu || screen === 'boot');
 
     // The title screen is the board, not the HUD. Nor is the gate in front of it.
     hud.setHidden(screen === 'title' || screen === 'boot');

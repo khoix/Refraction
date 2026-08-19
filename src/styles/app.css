@@ -855,17 +855,32 @@ input,
  * centring in the whole viewport does not achieve -- it puts the button on top
  * of the cubes.
  */
+/*
+ * An even wash, not the title's masthead gradient.
+ *
+ * The gradient was shaped for a composition that no longer exists: opaque across
+ * the top where a masthead sat, clearing at the bottom where the stack was. With
+ * the block centred and the room carrying the whole picture, that shape darkens
+ * the wrong half -- it hides the drifting voxels above the type and leaves them
+ * brightest where the type is.
+ *
+ * So: a light flat wash to hold contrast everywhere, and a soft pool centred on
+ * the block so the wordmark and the button have their own ground without walling
+ * the room off. Deliberately gentle -- an earlier attempt at a centred vignette
+ * ran to 0.93 and drained the cubes to grey, which on the screen whose job is to
+ * say what this game looks like is the most expensive possible mistake.
+ */
 .screens[data-screen='boot'] {
-  background: linear-gradient(
-    to bottom,
-    rgb(5 6 10 / 0.94) 0%,
-    rgb(5 6 10 / 0.88) 32%,
-    rgb(5 6 10 / 0.58) 52%,
-    rgb(5 6 10 / 0.16) 74%,
-    rgb(5 6 10 / 0.04) 100%
-  );
+  background:
+    radial-gradient(
+      ellipse 62% 34% at 50% 47%,
+      rgb(5 6 10 / 0.82) 0%,
+      rgb(5 6 10 / 0.62) 45%,
+      rgb(5 6 10 / 0.18) 78%,
+      rgb(5 6 10 / 0) 100%
+    ),
+    rgb(5 6 10 / 0.42);
   backdrop-filter: none;
-  padding-bottom: 30vh;
 }
 
 /* Same measure as the title, since it holds the same wordmark. */

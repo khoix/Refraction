@@ -165,15 +165,6 @@ const MUTED_DIM = 0.74;
 const PEEK_ELEVATION_DEG = 8;
 const PEEK_EASE_MS = 180;
 
-/**
- * How far in the front door's framing pushes.
- *
- * Enough that the arrangement runs past the edges of the frame -- the point is
- * that no boundary of the board is visible, because a visible boundary is what
- * makes it read as an object sitting behind the type rather than as the room the
- * type is printed on.
- */
-const BACKDROP_ZOOM = 0.85;
 /** Slow: this is a scene changing, not a control responding. */
 const BACKDROP_EASE_MS = 900;
 
@@ -634,25 +625,33 @@ export class GameRenderer {
   }
 
   /**
-   * Push the board back into a backdrop, or bring it forward again.
+   * Take the well away for the front door, or bring it back.
    *
-   * The front door needs the arrangement to be *scenery*, not an object sitting
-   * under the wordmark. Zooming in until it bleeds past the frame is what does
-   * that: with no edges visible there is nothing to read as "a board", and what
-   * is left is colour and structure behind the type.
+   * The gate shows no board at all now -- there is no composed arrangement in it,
+   * and an empty box drawn in outline behind the wordmark is worse than nothing.
+   * So the frame and the corner posts fade out and the room carries the picture
+   * on its own.
    *
-   * `camera.zoom` rather than a different frustum, so `fitCamera`'s guarantee is
-   * untouched -- the board still never changes scale during a turn, because the
-   * zoom is constant for as long as the door is open. It also composes through
-   * the projection matrix, so `wellScreenRect` stays correct without knowing
-   * this exists.
-   *
-   * Eased rather than switched, and that easing is doing double duty: it is also
-   * the transition out of the front door, the board drawing back as the menu
-   * arrives.
+   * This used to zoom the camera as well, back when there *was* a stack to push
+   * past the edges of the frame. With the stack gone the zoom was magnifying an
+   * empty well and throwing the room's drifting voxels outside the viewport, so
+   * it is gone too. Eased rather than switched, so the well arrives with the menu
+   * rather than appearing on the same frame as it.
    */
   setBackdrop(on: boolean): void {
     this.backdropHeld = on;
+  }
+
+  /**
+   * Whether the room's drifting voxels may carry the spectrum.
+   *
+   * Separate from `setBackdrop` on purpose, even though the menus turn both on:
+   * one is a camera framing and the other is a palette permission, and the
+   * screens they belong to are not guaranteed to stay the same. Folding them
+   * into one flag would make the next change to either a change to both.
+   */
+  setAmbientChroma(on: boolean): void {
+    this.environment.setChroma(on);
   }
 
   /** Begin the Full Spectrum bloom. */
@@ -869,19 +868,14 @@ export class GameRenderer {
       TURN_ELEVATION_DEG * dimensional + PEEK_ELEVATION_DEG * easeInOutCubic(this.peek);
     positionCamera(this.camera, yaw, elevation, this.shakeOffset);
 
-    // The front door's framing. Eased on the same principle as Peek, and slower,
-    // because this one is a scene change rather than a held look.
+    // The front door takes the well away. Eased on the same principle as Peek,
+    // and slower, because this one is a scene change rather than a held look.
     const backdropStep = deltaMs / BACKDROP_EASE_MS;
     this.backdrop = THREE.MathUtils.clamp(
       this.backdrop + (this.backdropHeld ? backdropStep : -backdropStep),
       0,
       1
     );
-    const zoom = 1 + BACKDROP_ZOOM * easeInOutCubic(this.backdrop);
-    if (this.camera.zoom !== zoom) {
-      this.camera.zoom = zoom;
-      this.camera.updateProjectionMatrix();
-    }
     orientLights(this.lights, yaw);
     // The gel's own light travels with them, for the same reason they travel
     // with the camera: otherwise the material's highlight lands somewhere

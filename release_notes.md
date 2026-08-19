@@ -7,6 +7,91 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M20 — The room becomes the title screen
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The composed stack is gone from the title, and the room's wireframe blocks are
+solid voxels: assorted sizes, colours from the game's own ramp, each drifting and
+bobbing on its own phase.
+
+### What the removal exposed
+
+`composeAttract` is deleted. It had a second job nobody had written down — it
+cleared the spawned piece as a side effect of composing. Without it a cube hung
+in mid-air over the gate with a ghost, a landing mark and a drop channel cut
+through the well beneath it, all describing a move nobody was making. The title
+state now says so explicitly.
+
+### One ring cannot serve both screens
+
+The wireframes sat at radius 26–48, which put nearly all of them off screen —
+fine for sparse debris, useless for the thing carrying the front door. The
+projection is orthographic, so the visible width is _fixed_, and fixed at very
+different values by aspect: about **±19** units on a laptop and about **±7** on a
+phone in portrait, which is inside the well.
+
+So the field is two bands. Beside the well for wide windows; above and below it
+for tall ones. Both keep out of the board's own volume.
+
+M19's backdrop zoom is also gone. It existed to push the stack past the frame
+edges; with no stack it magnified an empty well and threw the voxel field outside
+the viewport.
+
+### Colour is gated, and so is the field itself
+
+§2.2 reserves hue: a colour on screen means depth from the current camera and
+nothing else. Coloured cubes drifting past during a run would be exactly the
+second colour language that rule exists to prevent, so the voxels carry the ramp
+**on the menus only**.
+
+The first pass gated colour but kept the solid field during play, and it was
+plainly worse than what it replaced: bright grey slabs crowding the stack. The
+second pass dimmed them, and the end-to-end suite caught what dimming could not
+fix — three pixel measurements of the landing marks swung by **70 to 80 levels**
+depending on where the randomly-placed field happened to land. That reported as
+flakiness and was not.
+
+The geometry says why, and says it is unfixable by tuning: with an orthographic
+projection and an orbiting camera, a floater's horizontal screen position is
+`r·cos(angle − yaw)`, which sweeps the full ±r as the board turns. **No radius
+keeps a floater out of the well's column.** A wireframe surviving that is fine —
+a few thin lines at a twentieth of full brightness. A solid cube behind the
+playfield shows through every empty cell.
+
+So both fields exist. The wireframes are the room a board is read against, tuned
+and measured for that job and now restored unchanged; the solid voxels belong to
+the screens with no board on them. Their _visibility_ rides the chroma target
+rather than the eased value, so they stop drawing the instant a run begins rather
+than lingering through the fade — half a second of a board that cannot be trusted
+is half a second too many. The wireframes fading up cover the swap.
+
+### The scrim test had to be rewritten, not retuned
+
+"The title shows the board rather than covering it" measured hue in the well,
+which no longer holds anything. Two attempts were wrong before the third worked,
+and both are worth recording:
+
+- Measuring luminance over the well **inverted** the result — the settings panel's
+  own text lands in that rectangle, so the scrimmed screen read as _brighter_.
+  Panels are centred and bounded, so the measurement moved to a strip down the
+  side, which carries the room and nothing else on every screen.
+- The old 0.55 ratio was easy to meet because a lit stack sat in frame. The room
+  alone reads under ten and the scrim's own colour has a luminance near six, so
+  no opacity can push far below that floor. The threshold is 0.8 now, with the
+  arithmetic written next to it — and giving the title the heavy scrim still
+  collapses the two and fails it.
+
+### Tested
+
+- **Front door (11 e2e)** — the room carries the ramp on the menus and drops it
+  for a run, measured outside the well so the board's own cubes cannot be
+  mistaken for the room's; the gate holds no piece nobody is playing.
+- Sabotages: forgetting the chroma gate, leaving the spawned piece, and giving
+  the title the heavy scrim each fail exactly one test.
+
+---
+
 ## M19 — The music actually plays, and the door settles
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

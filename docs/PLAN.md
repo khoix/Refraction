@@ -1421,6 +1421,27 @@ cutting.
 one has to be encoded. The command is in `tracks.ts`, and `?debug=1` reports
 `music().error` and `music().source` to tell the two apart.
 
+## M20 — The room becomes the title screen ✅
+
+The composed stack is gone from the title; the room carries the picture. The
+wireframe blocks are solid voxels of assorted sizes, coloured from the ramp on
+the menus and absent during a run.
+
+Two constraints shaped it, both from the orthographic projection:
+
+- **Visible width is fixed and aspect-dependent** — about ±19 units on a laptop,
+  about ±7 on a phone in portrait, which is inside the well. One ring cannot fill
+  both, so the field is two bands: beside the well, and above and below it.
+- **No radius keeps a floater out of the well's column**, since screen-x is
+  `r·cos(angle − yaw)` and the camera orbits. A solid cube behind the playfield
+  shows through every empty cell, which is why the wireframe field is kept for
+  play rather than replaced.
+
+Colour is gated by §2.2: hue means depth from the current camera, so the room
+shows the ramp only when no board is being read.
+
+---
+
 ### M18a — The rest of the music _(next)_
 
 Five more tracks sit in `src/audio/tracks/` unreferenced, and the interesting

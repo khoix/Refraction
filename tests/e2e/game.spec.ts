@@ -18,24 +18,42 @@ async function boot(page: Page): Promise<void> {
  * cube pixel, and the fraction of them is a direct measure of how much of the
  * screen the arrangement occupies.
  */
-async function colouredFraction(page: Page): Promise<number> {
+async function colouredFractionOutsideWell(page: Page): Promise<number> {
   return page.evaluate(() => {
     const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+    const renderer = window.__refraction?.renderer;
+    if (!renderer) return 0;
+    const rect = renderer.wellScreenRect();
+    const box = source.getBoundingClientRect();
     const scratch = document.createElement('canvas');
-    scratch.width = 160;
-    scratch.height = 100;
+    scratch.width = 200;
+    scratch.height = 130;
     const context = scratch.getContext('2d');
     if (!context) return 0;
     context.drawImage(source, 0, 0, scratch.width, scratch.height);
     const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+    // The well's rectangle in the scaled sample, generously margined so a cube at
+    // its edge cannot leak into the count.
+    const sx = ((rect.left - box.left) / box.width) * scratch.width - 4;
+    const sy = ((rect.top - box.top) / box.height) * scratch.height - 4;
+    const sw = (rect.width / box.width) * scratch.width + 8;
+    const sh = (rect.height / box.height) * scratch.height + 8;
+
     let coloured = 0;
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i] as number;
-      const g = data[i + 1] as number;
-      const b = data[i + 2] as number;
-      if (Math.max(r, g, b) - Math.min(r, g, b) > 40) coloured += 1;
+    let counted = 0;
+    for (let y = 0; y < scratch.height; y += 1) {
+      for (let x = 0; x < scratch.width; x += 1) {
+        if (x >= sx && x <= sx + sw && y >= sy && y <= sy + sh) continue;
+        const i = (y * scratch.width + x) * 4;
+        const r = data[i] as number;
+        const g = data[i + 1] as number;
+        const b = data[i + 2] as number;
+        counted += 1;
+        if (Math.max(r, g, b) - Math.min(r, g, b) > 24) coloured += 1;
+      }
     }
-    return coloured / (scratch.width * scratch.height);
+    return counted === 0 ? 0 : coloured / counted;
   });
 }
 
@@ -900,21 +918,40 @@ test.describe('the front door', () => {
     await expect(page.locator('.panel--title .title__rule')).toContainText('Position is absolute');
   });
 
-  test('holds the board back as scenery, and brings it forward for the menu', async ({ page }) => {
-    // The front door frames the arrangement so it runs past the edges: no
-    // boundary visible, so nothing to read as a board in a box. Measured as how
-    // much of the frame carries cube colour, which is what that framing changes.
+  test('the room carries the ramp on the menus and drops it for a run', async ({ page }) => {
+    /*
+     * The one sanctioned exception to §2.2, and its limit.
+     *
+     * The front door has no board on it at all, so the room has to carry the
+     * picture — and it does that with colour, drawn from the same ramp the cubes
+     * use. That is only safe while there is nothing to misread: a player learning
+     * that hue means depth must not have coloured cubes drifting in the corner of
+     * their eye during a run.
+     *
+     * Measured outside the well, so the board's own cubes cannot be mistaken for
+     * the room's. On the menus that region carries hue; during a run it must not.
+     */
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    await page.waitForTimeout(1400);
-    const asScenery = await colouredFraction(page);
+    await page.waitForTimeout(1200);
+    const onTheMenu = await colouredFractionOutsideWell(page);
+    expect(onTheMenu).toBeGreaterThan(0.01);
 
-    await enter(page);
-    // Longer than the camera's own ease, so this is the settled framing.
+    await page.evaluate(() => window.__refraction?.play('ascent'));
+    // Longer than the fade, so this is the settled room rather than the handover.
     await page.waitForTimeout(1600);
-    const asBoard = await colouredFraction(page);
+    const inARun = await colouredFractionOutsideWell(page);
+    expect(inARun).toBeLessThan(onTheMenu * 0.25);
+  });
 
-    expect(asScenery).toBeGreaterThan(asBoard * 1.3);
+  test('keeps the front door clear of the piece nobody is playing', async ({ page }) => {
+    // A new game spawns a piece straight away, and on the gate that is a cube
+    // hanging in mid-air with a ghost and a drop channel under it, describing a
+    // move nobody is making. The composed arrangement used to clear it as a side
+    // effect; nothing does now unless it is asked to.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    expect(await page.evaluate(() => window.__refraction?.game.active)).toBeNull();
   });
 
   test('exposes one screen at a time, even mid-fade', async ({ page }) => {
@@ -3352,46 +3389,60 @@ test.describe('the title screen', () => {
     );
   }
 
-  /** The lower half of the well, where the composed stack sits. */
-  async function stackBox(page: Page): Promise<{
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-  }> {
-    return page.evaluate(() => {
-      const renderer = window.__refraction?.renderer;
-      if (!renderer) throw new Error('debug hook unavailable');
-      const rect = renderer.wellScreenRect();
-      return {
-        x: Math.round(rect.left),
-        y: Math.round(rect.top + rect.height * 0.62),
-        width: Math.round(rect.width),
-        height: Math.round(rect.height * 0.34),
-      };
-    });
-  }
-
-  test('shows the board rather than covering it', async ({ page }) => {
-    // The whole point of the redesign. On a cold boot the well holds a composed
-    // stack, and the scrim over it has to be light enough to let its colour
-    // through -- so there is hue in the well, and plenty of it.
+  test('shows the scene rather than covering it', async ({ page }) => {
+    /*
+     * The whole point of the redesign, restated for a title that no longer
+     * composes a stack.
+     *
+     * It used to be measured on hue in the well: the board held an arrangement
+     * and the scrim had to be light enough to let its colour through. There is
+     * no arrangement now — the room carries the picture — so the surviving claim
+     * is about the scrim itself, which is the part that was ever a decision. The
+     * title lets the scene through; every other screen keeps the heavy blackout,
+     * because there the scene is context rather than the subject.
+     */
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.waitForTimeout(400);
 
-    const box = await stackBox(page);
+    /*
+     * Measured at the edge of the window, not over the well.
+     *
+     * The well was the right place to look when a stack sat in it. It is the
+     * wrong place now, and measuring there does not merely lose signal — it
+     * inverts the result, because a panel's own text lands in that rectangle and
+     * the settings panel is full of it. The first version of this rewrite read
+     * the settings screen as *brighter* than the title for exactly that reason.
+     *
+     * Panels are centred and bounded, so a strip down the side carries the room
+     * and nothing else on every screen.
+     */
+    const box = await page.evaluate(() => ({
+      x: 0,
+      y: Math.round(window.innerHeight * 0.55),
+      width: Math.round(window.innerWidth * 0.12),
+      height: Math.round(window.innerHeight * 0.4),
+    }));
     const title = await patch(page, box);
-    expect(title.chroma).toBeGreaterThan(60);
 
-    // And the contrast that makes it a decision rather than an accident: every
-    // other screen keeps the heavy scrim, because there the board is context
-    // rather than the subject.
     await page.getByRole('button', { name: 'SETTINGS' }).click();
     await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
     const settings = await patch(page, box);
-    expect(settings.luminance).toBeLessThan(title.luminance * 0.55);
+    /*
+     * A looser ratio than this test used to demand, and the reason is worth
+     * writing down rather than quietly retuning.
+     *
+     * The old threshold was 0.55, and it was easy to meet because a lit stack sat
+     * in the measured rectangle: the title read around forty and the scrim had
+     * plenty to take away. The room alone reads under ten, and the scrim's own
+     * colour has a luminance near six — so no opacity can push the result far
+     * below that floor, and the achievable gap is much smaller than it was.
+     *
+     * Still discriminating: giving the title the heavy scrim collapses the two to
+     * the same value, which fails this comfortably. Sabotage-verified.
+     */
+    expect(settings.luminance).toBeLessThan(title.luminance * 0.8);
   });
 
   test('the masthead carries no hue', async ({ page }) => {
