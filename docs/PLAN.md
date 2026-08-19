@@ -1,6 +1,6 @@
 # Refraction — Build Plan
 
-Sixteen milestones. Each one is a self-contained push: source, tests, and a
+Seventeen milestones. Each one is a self-contained push: source, tests, and a
 `release_notes.md` entry. Every milestone leaves `main` in a state that builds,
 passes `npm run verify:full`, and can be played or inspected.
 
@@ -820,7 +820,79 @@ nothing else, and the colour-fidelity tests still pass unchanged.
 
 ---
 
-## M15 — Performance and Release Candidate
+## M15 — Turning on Demand
+
+**Goal:** a mode that inverts the turn economy — you buy turns instead of earning
+them.
+
+Every mode so far earns its turns: cleared lines fill the Shift meter, and when
+it is full the board demands a direction. This one hands the player the button
+and charges for it. **`A` and `D` turn the board left or right at any moment, and
+each turn costs one line off the total.**
+
+That is a real inversion rather than a variation. The existing loop is _place →
+anticipate → rotate → reveal_, with the rotation arriving on the game's schedule
+and the skill being preparation. Here the rotation arrives on the player's
+schedule and the skill is knowing when a turn is worth what it costs — a line
+spent to reveal a line, or two, or nothing.
+
+### What it costs, and what that touches
+
+`lines` is not just a score. It drives stage progression and gravity through
+`modeStage` and `modeGravity`, and it feeds the Shift meter. Subtracting from it
+naively would let a player **buy their way back down the difficulty curve**: turn
+often enough and the stage never climbs, gravity never accelerates, and the arc
+the game is built on is opted out of.
+
+**Recommendation: split earned from spendable.** Progression counts lines _ever
+cleared_ and only ever goes up; the HUD's LINES readout shows the balance, earned
+minus spent, which is what the player is actually deciding with. The note says
+the cost comes off the total, and it does — off the total they can see and spend,
+not off the record of how far they have come.
+
+The alternative is to let the cost reach progression as well, so turning is a
+brake on difficulty as much as a tool. That is a more interesting mode and a
+harder one to keep honest, and it should be a deliberate choice rather than a
+side effect of subtraction.
+
+### The rest of the shape
+
+- **The Shift meter has nothing to do here** and should go, not sit at zero. The
+  HUD gains a price instead: what a turn costs, and whether one is affordable.
+- **Nothing at zero.** A player with no lines cannot turn. That is the whole
+  tension, and it wants to be legible before the last line is spent rather than
+  discovered at it.
+- **Refraction and Prism still pay.** Turning is what makes a line eligible, so
+  the chain scoring is the reward the cost is measured against. `refractionScale`
+  already exists to tune that balance without touching the engine.
+- **`linesPerTurn` changes meaning** from a threshold to a price. Worth a
+  distinct field rather than reusing one whose name would then lie.
+- **The mode still needs a name.** The modes are Ascent, Endless, Prism,
+  Flatland, Blind Spectrum and Zen — each says something about what it is. This
+  one is about paying for the reveal.
+
+### The binding, which conflicts with M11c
+
+M11c gives `A` and `D` to yaw. This mode wants them for the turn, and a key that
+means "yaw the piece" in five modes and "turn the board" in the sixth is exactly
+the mode-dependent meaning M11c argued against — it teaches a reflex that is
+wrong everywhere else.
+
+Two clean ways out, and it should be one of them rather than a special case:
+
+- **This mode does not offer yaw**, which frees `A` and `D` honestly. Defensible:
+  a mode built around turning the board may not want the piece turning about the
+  same axis as well.
+- **Turning on demand takes the freed `Q` and `E`**, and `A` / `D` keep meaning
+  yaw everywhere.
+
+**Exit criteria:** a run in which the player turns the board when they choose,
+can see what it costs before they commit, and can be caught out by spending their
+last line. The stage arc still climbs at the same rate it does everywhere else.
+
+---
+
+## M16 — Performance and Release Candidate
 
 **Goal:** ship quality.
 
