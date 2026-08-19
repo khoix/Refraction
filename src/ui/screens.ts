@@ -28,6 +28,15 @@ import {
 export type ScreenName =
   'boot' | 'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
 
+/**
+ * How long a panel takes to hand over to the next one.
+ *
+ * Must match the CSS, which owns the actual animation -- this only decides when
+ * the outgoing panel stops being on screen at all. Short enough that it never
+ * feels like waiting for the interface.
+ */
+const CROSSFADE_MS = 280;
+
 export interface ScreenHandlers {
   readonly onStart: (mode: ModeId) => void;
   /** The tap that opens the front door: the first gesture, and the only one
@@ -92,7 +101,7 @@ function toggleRow(
  * to the masthead when the door opens, and if it were also a different mark that
  * would read as a second screen rather than as the same one settling.
  */
-function wordmark(): HTMLElement {
+function wordmark(tagline: boolean): HTMLElement {
   const title = element('h1', 'title');
   // Hairlines bracket the wordmark. Presentational, so they are `<hr>` inside
   // the heading rather than borders on it -- the mark needs to breathe between
@@ -100,9 +109,14 @@ function wordmark(): HTMLElement {
   title.append(
     element('hr', 'title__rules'),
     element('span', 'title__word', 'REFRACTION'),
-    element('hr', 'title__rules'),
-    element('span', 'title__rule', 'Position is absolute. Colour is relative.')
+    element('hr', 'title__rules')
   );
+  // The front door goes without it. The line is the game's thesis and it earns
+  // its place over the menu, but the first screen is carrying a loading bar and
+  // a way in already, and the mark reads harder with nothing under it.
+  if (tagline) {
+    title.append(element('span', 'title__rule', 'Position is absolute. Colour is relative.'));
+  }
   return title;
 }
 
@@ -275,6 +289,8 @@ export class Screens {
   );
 
   private current: ScreenName = 'boot';
+  /** Hides the outgoing panel once its fade has run. */
+  private leavingTimer: ReturnType<typeof setTimeout> | undefined;
   private save: SaveData;
 
   constructor(
@@ -334,7 +350,7 @@ export class Screens {
     const actions = element('div', 'panel__actions');
     actions.append(this.enterButton);
 
-    const panel = this.panel('boot', wordmark(), loading, actions);
+    const panel = this.panel('boot', wordmark(false), loading, actions);
     this.setLoading(0);
     this.setReady(false);
     return panel;
@@ -367,7 +383,7 @@ export class Screens {
   }
 
   private buildTitle(): HTMLElement {
-    const title = wordmark();
+    const title = wordmark(true);
 
     const actions = element('div', 'panel__actions');
     actions.append(
@@ -679,9 +695,70 @@ export class Screens {
     this.controls.replaceChildren(buildKeyMap(mode), buildTouchMap(mode));
   }
 
+  /**
+   * Swap panels with a cross-fade rather than a cut.
+   *
+   * `hidden` is `display: none`, which no transition can animate across, so the
+   * outgoing panel is held on screen for the length of the fade and hidden
+   * afterwards. It keeps `hidden` as the end state, so assistive technology and
+   * the end-to-end suite still see exactly one panel -- the fade is a moment, not
+   * a second source of truth about which screen this is.
+   *
+   * It matters most between the front door and the menu, which are the same
+   * picture a moment apart: the wordmark rises to the masthead as the buttons
+   * arrive, and the board draws forward out of its backdrop framing over a
+   * slightly longer beat. Cutting between two near-identical screens read as a
+   * flicker, which is the thing that made it feel abrupt.
+   *
+   * Leaving is skipped on the way into a run: `root.hidden` takes the whole
+   * layer away at once there, and a run should start immediately.
+   */
   show(name: ScreenName): void {
+    const previous = this.current;
     this.current = name;
-    for (const [key, panel] of this.panels) panel.hidden = key !== name;
+
+    if (this.leavingTimer !== undefined) {
+      clearTimeout(this.leavingTimer);
+      this.leavingTimer = undefined;
+    }
+    for (const panel of this.panels.values()) panel.classList.remove('panel--leaving');
+
+    const leaving = previous !== name && name !== 'playing' ? this.panels.get(previous) : undefined;
+    for (const [key, panel] of this.panels) {
+      panel.hidden = key !== name && panel !== leaving;
+      // Cleared unconditionally, including on the panel marked below: one that
+      // was left mid-fade and is now being shown again must not keep the flags
+      // from that fade.
+      panel.removeAttribute('inert');
+      panel.removeAttribute('aria-hidden');
+    }
+    if (leaving) {
+      leaving.classList.add('panel--leaving');
+      /*
+       * Gone from the accessibility tree the instant it starts leaving, not when
+       * it finishes.
+       *
+       * A fading panel is still painted, and without this it is still *present*:
+       * its buttons keep their place in the tab order and a screen reader reads
+       * two screens at once. `pointer-events: none` hides none of that -- it only
+       * stops the mouse.
+       *
+       * The end-to-end suite found it before a person did, and the way it found
+       * it is the argument for fixing it here rather than in the test: for 280 ms
+       * after the door opens there were two buttons whose names contain "play",
+       * which is exactly the ambiguity a player navigating by voice or by screen
+       * reader would have hit.
+       */
+      leaving.setAttribute('inert', '');
+      leaving.setAttribute('aria-hidden', 'true');
+      this.leavingTimer = setTimeout(() => {
+        this.leavingTimer = undefined;
+        leaving.classList.remove('panel--leaving');
+        // Guarded: the player may have come back to it inside the fade.
+        if (this.current !== previous) leaving.hidden = true;
+      }, CROSSFADE_MS);
+    }
+
     // The board stays visible and live behind every screen; only the backdrop
     // changes, so the player never loses sight of what they were doing.
     this.root.hidden = name === 'playing';

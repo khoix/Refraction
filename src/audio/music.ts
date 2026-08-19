@@ -1,37 +1,45 @@
 /**
- * Streamed music, routed through the same master gain as everything else.
+ * Streamed music, played as media rather than through the Web Audio graph.
  *
- * Kept apart from `Audio` because the two have almost nothing in common. The
- * effects are synthesised on demand from `tones.ts` -- an oscillator, a filter,
- * a gain envelope, all of it disposable. Music is one long stream that has to be
- * started, faded, held across screens and stopped again, and it is the only part
- * of the audio system with a lifetime longer than a note.
+ * ## Why this is not a `MediaElementAudioSourceNode`
  *
- * ## Through `master`, never past it
+ * It was one, and on mobile it was silent. The symptom was specific and worth
+ * recording, because it is the kind that looks like nothing is happening: Safari
+ * showed the tab as producing audio -- so something *was* playing -- but nothing
+ * was audible and neither the tab's mute nor the game's volume changed that.
  *
- * The connection is `element -> source -> fade -> master -> destination`, and
- * that ordering is the whole reason this class takes the destination gain
- * instead of the context. Mute and volume are implemented as `master.gain`, so
- * anything that reaches `context.destination` by another route is a channel the
- * player's settings do not control. An `<audio>` element left to play on its own
- * would be exactly that: music that keeps going after the player mutes the game.
- * Its own `volume` is left at 1 throughout; the graph does the work.
+ * Routing an `<audio>` element through `createMediaElementSource` takes its
+ * output off the media path and onto the Web Audio path. Those are not the same
+ * thing on iOS. Web Audio output is treated as *ambient* audio: the hardware
+ * silent switch kills it, while a plain media element plays like a video and is
+ * not affected. The same routing is also the long-standing WebKit bug where a
+ * source node fed from a `blob:` URL yields silence downstream while the element
+ * itself reports playing -- which matches the symptom exactly.
  *
- * ## Why an element and not a buffer
+ * Both failure modes come from the same architectural choice, so the fix is to
+ * stop making it. The element plays itself. Nothing about music touches the
+ * `AudioContext` any more.
+ *
+ * ## Keeping the player's settings in charge
+ *
+ * The rule that mattered was never "music goes through `master`" -- it was that
+ * mute and volume reach the music. That still holds, by a different mechanism:
+ * `Audio` pushes its level here whenever it changes, and this applies it to the
+ * element.
+ *
+ * With one platform caveat that has to be designed around rather than papered
+ * over. **iOS ignores `volume` on a media element** -- it is read-only there,
+ * because volume belongs to the hardware. So the slider genuinely cannot attenuate
+ * music on an iPhone, and pretending otherwise would be a control that lies.
+ * Muting is therefore implemented as a *pause*, not as a zero volume: pausing
+ * works on every platform, so the one setting that must be obeyed always is.
+ *
+ * ## Streamed, not decoded
  *
  * `tracks.ts` has the arithmetic. Short version: decoding the theme costs about
  * fifty megabytes of resident float32 for a 1.8 MB file, and the element streams
  * the compressed bytes instead. The trade is that a `MediaElement` loop is not
  * sample-exact, so there is a small seam at the wrap.
- *
- * ## Ordering is not guaranteed
- *
- * The blob arrives when the network says so and the context exists only once the
- * player has touched something, and neither waits for the other -- a fast
- * connection lands the track before the tap, a slow one after. So `load`,
- * `attach` and `play` may arrive in any order: each records what it knows and
- * asks whether the other two have happened yet. `wanted` is what carries an
- * early `play` across to whichever of the other two completes last.
  */
 
 /** Music sits under the effects; a lock or a clear has to cut through it. */
@@ -39,33 +47,23 @@ const MUSIC_LEVEL = 0.5;
 /** Long enough to read as the room coming up, not as a track being switched on. */
 const FADE_IN_MS = 1200;
 const FADE_OUT_MS = 500;
+/** Fade granularity. Fine enough to be smooth, coarse enough to be free. */
+const FADE_STEP_MS = 40;
+/** Below this the element is paused rather than played very quietly. */
+const SILENT = 0.001;
 
 export class Music {
   private element: HTMLAudioElement | null = null;
   private objectUrl: string | null = null;
-  private context: AudioContext | null = null;
-  private destination: GainNode | null = null;
-  private fade: GainNode | null = null;
-  private source: MediaElementAudioSourceNode | null = null;
   /** Whether the player should be hearing music right now. */
   private wanted = false;
-  /**
-   * Whether the graph has been driven to match `wanted`.
-   *
-   * The host calls `play` and `stop` from the frame loop, off the current screen,
-   * rather than from the events that change screens -- the same choice the
-   * game-over panel makes, and for the same reason: an event can be missed and a
-   * state cannot. That makes both methods run sixty times a second, so they have
-   * to be genuinely idempotent and not merely re-entrant. Without this flag each
-   * call would restart the fade from wherever the last frame's ramp had reached,
-   * and the ramp would converge on the target without ever arriving.
-   *
-   * False also covers "asked for, but not possible yet" -- no track, or no
-   * context -- so the next call retries instead of assuming it succeeded.
-   */
-  private applied = false;
-  /** Pending pause at the end of a fade-out, cancelled if play returns first. */
-  private pauseTimer: ReturnType<typeof setTimeout> | undefined;
+  /** Master level from `Audio`: volume, already folded with mute. */
+  private level = 1;
+  /** Where the fade currently is, 0 to 1. */
+  private fade = 0;
+  private fadeTimer: ReturnType<typeof setInterval> | undefined;
+  /** Set when the element reports it cannot play the source at all. */
+  private failure: string | null = null;
 
   /**
    * Take the fetched bytes.
@@ -73,7 +71,6 @@ export class Music {
    * An object URL rather than the original network URL: the preloader has
    * already spent the bytes, and pointing the element back at the server would
    * risk a second transfer on any cache the browser has decided not to keep.
-   * The blob is the copy we know exists.
    */
   load(blob: Blob): void {
     this.release();
@@ -82,56 +79,41 @@ export class Music {
     element.src = this.objectUrl;
     element.loop = true;
     element.preload = 'auto';
-    // The graph owns the level. See the note above.
-    element.volume = 1;
+    // A source the platform cannot decode fails here rather than silently
+    // playing nothing, which is the difference between a bug we can see and one
+    // we cannot.
+    element.addEventListener('error', () => {
+      const code = element.error?.code;
+      this.failure = `media error ${code ?? 'unknown'}`;
+    });
     this.element = element;
-    this.connect();
-    if (this.wanted) this.play();
+    this.apply();
   }
 
-  /**
-   * Join the graph. Called once the context exists, which is once the player has
-   * made a gesture.
-   */
-  attach(context: AudioContext, destination: GainNode): void {
-    if (this.context === context && this.destination === destination) return;
-    this.context = context;
-    this.destination = destination;
-    this.source = null;
-    this.fade = null;
-    this.connect();
-    if (this.wanted) this.play();
-  }
-
-  /** Wire the element into the context, once both exist. */
-  private connect(): void {
-    const { element, context, destination } = this;
-    if (!element || !context || !destination || this.source) return;
-    // One source node per element for the element's whole life -- a second call
-    // for the same element throws, which is why `load` builds a fresh one.
-    this.source = context.createMediaElementSource(element);
-    this.fade = context.createGain();
-    this.fade.gain.value = 0;
-    this.source.connect(this.fade).connect(destination);
-    // A new graph has none of the old one's scheduled values on it.
-    this.applied = false;
-  }
-
-  /** True once there is a track loaded and a graph to play it through. */
+  /** True once there is a track loaded. */
   get ready(): boolean {
-    return this.element !== null && this.source !== null;
+    return this.element !== null;
   }
 
   /**
    * Whether the element is actually running.
    *
    * Read from the element rather than from `wanted`, so it reports what the
-   * browser is doing and not what this class asked for. A hook that echoed the
-   * intent back would agree with itself in every case, including the ones worth
-   * catching.
+   * browser is doing and not what this class asked for.
    */
   get playing(): boolean {
     return this.element !== null && !this.element.paused;
+  }
+
+  /** What went wrong, if the platform refused the source. */
+  get error(): string | null {
+    return this.failure;
+  }
+
+  /** Master level, already folded with mute, from `Audio`. */
+  setLevel(level: number): void {
+    this.level = Math.min(1, Math.max(0, level));
+    this.applyVolume();
   }
 
   play(): void {
@@ -148,62 +130,74 @@ export class Music {
     this.want(false);
   }
 
+  /**
+   * The host drives this from the frame loop, off the current screen rather than
+   * off the events that change it -- an event can be missed and a state cannot.
+   * So it runs sixty times a second and has to be genuinely idempotent.
+   */
   private want(playing: boolean): void {
-    if (this.wanted === playing && this.applied) return;
+    if (this.wanted === playing) return;
     this.wanted = playing;
     this.apply();
   }
 
-  /** Drive the graph to match `wanted`, if there is a graph yet. */
   private apply(): void {
-    const { element, context, fade } = this;
-    if (!element || !context || !fade) {
-      // Not an error: the track or the context is still on its way. Left
-      // unapplied so the next call tries again.
-      this.applied = false;
-      return;
-    }
+    const element = this.element;
+    if (!element) return;
 
-    if (this.pauseTimer !== undefined) {
-      clearTimeout(this.pauseTimer);
-      this.pauseTimer = undefined;
-    }
+    if (this.fadeTimer !== undefined) clearInterval(this.fadeTimer);
+    const span = this.wanted ? FADE_IN_MS : FADE_OUT_MS;
+    const step = FADE_STEP_MS / span;
+    const target = this.wanted ? 1 : 0;
 
-    const now = context.currentTime;
-    const seconds = (this.wanted ? FADE_IN_MS : FADE_OUT_MS) / 1000;
-    fade.gain.cancelScheduledValues(now);
-    fade.gain.setValueAtTime(fade.gain.value, now);
-    fade.gain.linearRampToValueAtTime(this.wanted ? MUSIC_LEVEL : 0, now + seconds);
+    this.fadeTimer = setInterval(() => {
+      this.fade =
+        target > this.fade
+          ? Math.min(target, this.fade + step)
+          : Math.max(target, this.fade - step);
+      this.applyVolume();
+      if (this.fade === target) {
+        if (this.fadeTimer !== undefined) clearInterval(this.fadeTimer);
+        this.fadeTimer = undefined;
+      }
+    }, FADE_STEP_MS);
 
-    if (this.wanted) {
-      // Rejects when the browser has not accepted a gesture yet. Not worth
-      // reporting -- it stays unapplied, so the next call tries again.
-      void element.play().catch(() => {
-        this.applied = false;
-      });
-    } else {
-      // Pausing on the same frame the ramp starts would cut the fade off at its
-      // first sample, which is a click.
-      this.pauseTimer = setTimeout(() => {
-        this.pauseTimer = undefined;
-        if (!this.wanted) element.pause();
-      }, FADE_OUT_MS + 60);
-    }
-
-    this.applied = true;
+    this.applyVolume();
   }
 
-  /** Drop the element and the object URL, without touching the context. */
-  private release(): void {
-    if (this.pauseTimer !== undefined) {
-      clearTimeout(this.pauseTimer);
-      this.pauseTimer = undefined;
+  /**
+   * Push the level at the element, and start or stop it.
+   *
+   * Pausing at silence is what makes mute work where `volume` does not, and it
+   * also means a muted game is not quietly decoding a track nobody can hear.
+   */
+  private applyVolume(): void {
+    const element = this.element;
+    if (!element) return;
+
+    const target = this.level * MUSIC_LEVEL * this.fade;
+    // Assigning is a no-op on iOS rather than an error; the pause below is what
+    // carries the setting there.
+    element.volume = Math.min(1, Math.max(0, target));
+
+    if (target <= SILENT) {
+      if (!element.paused) element.pause();
+      return;
     }
-    this.source?.disconnect();
-    this.fade?.disconnect();
-    this.source = null;
-    this.fade = null;
-    this.applied = false;
+    if (element.paused) {
+      // Rejects when the browser has not accepted a gesture yet. Not worth
+      // reporting -- the next call tries again.
+      void element.play().catch(() => undefined);
+    }
+  }
+
+  private release(): void {
+    if (this.fadeTimer !== undefined) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = undefined;
+    }
+    this.fade = 0;
+    this.failure = null;
     this.element?.pause();
     this.element = null;
     if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
@@ -213,7 +207,5 @@ export class Music {
   dispose(): void {
     this.release();
     this.wanted = false;
-    this.context = null;
-    this.destination = null;
   }
 }

@@ -7,6 +7,127 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M19 — The music actually plays, and the door settles
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+M18's theme played on a laptop and was silent on a phone. This is that fix, plus
+three corrections to the front door itself.
+
+### The silence
+
+Reported precisely, which is what made it findable: Safari showed the tab as
+producing audio — so _something_ was playing — but nothing was audible, and
+neither the tab's mute nor the game's volume changed that.
+
+The cause was an architectural choice in M18, not a bug in it.
+`createMediaElementSource` takes an `<audio>` element's output off the media path
+and onto the Web Audio path, and on iOS those are not the same thing. Web Audio
+output is treated as **ambient** audio — the hardware silent switch kills it —
+while a plain media element plays like a video and is unaffected. The same
+routing is also the long-standing WebKit bug where a source node fed from a
+`blob:` URL yields silence downstream while the element reports playing, which
+matches the symptom exactly.
+
+So music no longer touches the graph at all. The element plays itself.
+
+**What that costs, and how the rule survived.** The rule was never "music goes
+through `master`" — it was that mute and volume reach the music. `Audio` now
+pushes its level at `Music` whenever it changes. But **iOS ignores `volume` on a
+media element**: it is read-only there, because volume belongs to the hardware.
+A slider that cannot attenuate is a control that lies, so mute is implemented as
+a **pause** rather than as a zero level. Pausing works everywhere, so the one
+setting that must always be obeyed always is. Held by test, and sabotage-verified
+by making mute lower the level instead.
+
+`navigator.audioSession.type = 'playback'` is now declared at boot as well — the
+sanctioned way to tell iOS this page is playing media rather than making ambient
+noise.
+
+### The other candidate, wired but not proven
+
+WebKit's Opus-in-WebM support is recent on the desktop and weaker on mobile, and
+a media element that cannot decode its source does not announce itself — it
+simply never makes a sound. That may also be in play here, and it cannot be ruled
+out from this machine.
+
+A track is therefore a **list of encodings** now, and the browser is asked which
+it can play, honouring `canPlayType`'s three-valued answer: certainty beats the
+manifest's preference order, so a browser sure about MP4 and hedging about WebM
+gets MP4. The choice is made _before_ the fetch — downloading two megabytes and
+then discovering the platform cannot decode them is the same silence, only
+slower.
+
+When nothing is playable the answer is `null` and nothing is fetched, rather than
+the first source and a silent failure. Sabotage-verified.
+
+**No `.m4a` ships yet**, because this machine has no ffmpeg and installing one
+was declined. Drop `Blockfall Skyline (Theme).m4a` beside the `.webm` and it is
+picked up with no code change — a glob finds it, and matches nothing until it
+exists. The command is in `tracks.ts`.
+
+### The front door
+
+- **The tagline is gone from the gate.** It earns its place over the menu; the
+  first screen is already carrying a loading bar and a way in.
+- **The board is scenery there now, not an object under the wordmark.**
+  `camera.zoom` pushes in until the arrangement runs past every edge, and the
+  well's frame and posts fade out — zooming past the edges is wasted while two
+  uprights and a floor line are still drawing the box. `fitCamera`'s guarantee is
+  untouched: the zoom is constant while the door is open, so the board still never
+  changes scale during a turn.
+- **The handover is a cross-fade, not a cut.** The outgoing panel is held on
+  screen for the length of the fade and hidden after, with `hidden` still the end
+  state so assistive technology and the suite see exactly one panel. Both halves
+  move the same way, so the wordmark reads as rising into the masthead rather
+  than as one mark vanishing and another appearing. The board's 900 ms draw
+  forward carries the same beat.
+
+### Two defects the cross-fade introduced, found by the full suite
+
+Both were product bugs rather than test breakage, and both are now covered.
+
+**The outgoing panel stayed in the accessibility tree while it faded.** Its
+buttons kept their place in the tab order and a screen reader would read two
+screens at once — for 280 ms after the door opened there were two buttons whose
+accessible names contain "play", which is exactly the ambiguity someone
+navigating by voice or by screen reader would hit. `pointer-events: none` hid
+none of that; it only stops the mouse. The panel is now `inert` and
+`aria-hidden` the instant it starts leaving.
+
+**The entry animation translated every panel**, which left menu geometry
+unsettled while it was being measured — arrow-key navigation groups controls into
+rows by where they actually land, so a grid still in motion is a grid whose rows
+are read wrong. The rise is now scoped to the front door and the menu, the two
+screens it means something for; every other panel fades in place.
+
+A third was caught by reasoning rather than by the suite: the outgoing animation
+has to be its own keyframes, not the arrival's reversed. Reversing an animation
+that has already finished does not replay it, so the panel would have held full
+opacity for the whole handover and then vanished — passing "is it hidden
+afterwards" while looking exactly like the cut this replaced. Now sabotage-
+verified.
+
+### Tested
+
+- **Encoding choice (6 unit)** — certainty over order, fallback, null when
+  nothing plays, and a guard that every shipped mime declares its codec, since a
+  bare container makes `canPlayType` answer "maybe" to almost anything and
+  silently disables the whole mechanism.
+- **Front door (9 e2e)** — mute pauses and unmute resumes; the gate drops the
+  tagline the menu keeps; the board covers measurably more of the frame as
+  scenery than as a board; the outgoing panel does not stay on screen.
+- Five sabotages, each caught by exactly one test.
+
+### Still unproven
+
+The fix cannot be confirmed from here — there is no iOS device on this machine,
+and Chromium does not reproduce WebKit's audio session behaviour. `?debug=1` now
+reports `music()` with `error` and the chosen `source`, so if it is still silent
+that readout says which of the two causes it is.
+
+---
+
 ## M18 — The Front Door
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

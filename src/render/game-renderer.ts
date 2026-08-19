@@ -165,6 +165,18 @@ const MUTED_DIM = 0.74;
 const PEEK_ELEVATION_DEG = 8;
 const PEEK_EASE_MS = 180;
 
+/**
+ * How far in the front door's framing pushes.
+ *
+ * Enough that the arrangement runs past the edges of the frame -- the point is
+ * that no boundary of the board is visible, because a visible boundary is what
+ * makes it read as an object sitting behind the type rather than as the room the
+ * type is printed on.
+ */
+const BACKDROP_ZOOM = 0.85;
+/** Slow: this is a scene changing, not a control responding. */
+const BACKDROP_EASE_MS = 900;
+
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
@@ -477,6 +489,9 @@ export class GameRenderer {
   /** 0 while dead-on, 1 while fully peeked. Eased, so it is never a step. */
   private peek = 0;
   private peekHeld = false;
+  /** 0 while framed for play, 1 while pushed back as the front door's scenery. */
+  private backdrop = 0;
+  private backdropHeld = false;
   private bottomReservePx = 0;
   private readonly turnDurationMs: number;
 
@@ -616,6 +631,28 @@ export class GameRenderer {
   /** Whether the camera is currently away from dead-on because of Peek. */
   get peeking(): boolean {
     return this.peek > 0;
+  }
+
+  /**
+   * Push the board back into a backdrop, or bring it forward again.
+   *
+   * The front door needs the arrangement to be *scenery*, not an object sitting
+   * under the wordmark. Zooming in until it bleeds past the frame is what does
+   * that: with no edges visible there is nothing to read as "a board", and what
+   * is left is colour and structure behind the type.
+   *
+   * `camera.zoom` rather than a different frustum, so `fitCamera`'s guarantee is
+   * untouched -- the board still never changes scale during a turn, because the
+   * zoom is constant for as long as the door is open. It also composes through
+   * the projection matrix, so `wellScreenRect` stays correct without knowing
+   * this exists.
+   *
+   * Eased rather than switched, and that easing is doing double duty: it is also
+   * the transition out of the front door, the board drawing back as the menu
+   * arrives.
+   */
+  setBackdrop(on: boolean): void {
+    this.backdropHeld = on;
   }
 
   /** Begin the Full Spectrum bloom. */
@@ -831,13 +868,27 @@ export class GameRenderer {
     const elevation =
       TURN_ELEVATION_DEG * dimensional + PEEK_ELEVATION_DEG * easeInOutCubic(this.peek);
     positionCamera(this.camera, yaw, elevation, this.shakeOffset);
+
+    // The front door's framing. Eased on the same principle as Peek, and slower,
+    // because this one is a scene change rather than a held look.
+    const backdropStep = deltaMs / BACKDROP_EASE_MS;
+    this.backdrop = THREE.MathUtils.clamp(
+      this.backdrop + (this.backdropHeld ? backdropStep : -backdropStep),
+      0,
+      1
+    );
+    const zoom = 1 + BACKDROP_ZOOM * easeInOutCubic(this.backdrop);
+    if (this.camera.zoom !== zoom) {
+      this.camera.zoom = zoom;
+      this.camera.updateProjectionMatrix();
+    }
     orientLights(this.lights, yaw);
     // The gel's own light travels with them, for the same reason they travel
     // with the camera: otherwise the material's highlight lands somewhere
     // different on each of the four faces.
     setGelYaw(yaw);
     setLightingFlatness(this.lights, flatness);
-    setWellFlatness(this.well, flatness);
+    setWellFlatness(this.well, flatness, easeInOutCubic(this.backdrop));
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.

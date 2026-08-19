@@ -399,11 +399,29 @@ export function orientWell(well: Well, yawDegrees: number): void {
   well.frame.rotation.y = THREE.MathUtils.degToRad(yawDegrees);
 }
 
-/** Hide the box posts while the board is presenting as flat. */
-export function setWellFlatness(well: Well, flatness: number): void {
+/**
+ * Hide the box posts while the board is presenting as flat, and take the whole
+ * well away as it recedes into the front door's backdrop.
+ *
+ * The two are separate ideas sharing one function because they are the same
+ * property: how much of the well's *structure* is on screen. Flatness governs
+ * the posts alone, since they only mean anything once the board has turned.
+ * `recede` governs everything, including the frame -- and it has to, because the
+ * frame is precisely what makes the arrangement read as a board in a box rather
+ * than as scenery. Zooming past the edges is wasted if two uprights and a floor
+ * line are still drawing the box the player is looking into.
+ */
+export function setWellFlatness(well: Well, flatness: number, recede = 0): void {
+  const shown = 1 - THREE.MathUtils.clamp(recede, 0, 1);
   const dimensional = 1 - THREE.MathUtils.clamp(flatness, 0, 1);
-  const material = well.posts.material as THREE.LineBasicMaterial;
-  const base = (material.userData.baseOpacity as number | undefined) ?? 1;
-  material.opacity = base * dimensional;
-  well.posts.visible = dimensional > 0.01;
+
+  const posts = well.posts.material as THREE.LineBasicMaterial;
+  const postBase = (posts.userData.baseOpacity as number | undefined) ?? 1;
+  posts.opacity = postBase * dimensional * shown;
+  well.posts.visible = dimensional * shown > 0.01;
+
+  const frame = well.frame.material as THREE.LineBasicMaterial;
+  const frameBase = (frame.userData.baseOpacity as number | undefined) ?? 1;
+  frame.opacity = frameBase * shown;
+  well.frame.visible = shown > 0.01;
 }

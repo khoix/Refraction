@@ -1402,6 +1402,25 @@ job was to collect one, menu music was not a thing this game could have.
 - **A missing track cannot jam the door.** The bar completes and the button
   appears regardless; the game is playable without music.
 
+---
+
+## M19 — Audible on a phone, and a door that settles ✅
+
+The theme played on a laptop and was silent on mobile. Music no longer goes
+through the Web Audio graph — `createMediaElementSource` moves output onto a path
+iOS treats as ambient and silences — so the element plays itself, mute is a pause
+rather than a zero level, and the page declares `audioSession.type = 'playback'`.
+A track is now a list of encodings chosen by `canPlayType` before the fetch, so a
+device that cannot decode WebM/Opus can be given an `.m4a` by dropping the file in.
+
+Also: the tagline is off the gate, the board is pushed into a true backdrop there
+(zoomed past its own edges, well frame faded), and panels cross-fade instead of
+cutting.
+
+**Open:** no `.m4a` ships, so if the cause is the codec rather than the routing,
+one has to be encoded. The command is in `tracks.ts`, and `?debug=1` reports
+`music().error` and `music().source` to tell the two apart.
+
 ### M18a — The rest of the music _(next)_
 
 Five more tracks sit in `src/audio/tracks/` unreferenced, and the interesting

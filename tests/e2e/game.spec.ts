@@ -10,6 +10,36 @@ async function boot(page: Page): Promise<void> {
 }
 
 /**
+ * How much of the frame carries cube colour.
+ *
+ * Chroma rather than brightness, because the room behind the board is lit and
+ * the wordmark is bright white -- both would swamp a luminance count, and
+ * neither is a cube. Only a cube has hue (DESIGN 2.2), so a saturated pixel is a
+ * cube pixel, and the fraction of them is a direct measure of how much of the
+ * screen the arrangement occupies.
+ */
+async function colouredFraction(page: Page): Promise<number> {
+  return page.evaluate(() => {
+    const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+    const scratch = document.createElement('canvas');
+    scratch.width = 160;
+    scratch.height = 100;
+    const context = scratch.getContext('2d');
+    if (!context) return 0;
+    context.drawImage(source, 0, 0, scratch.width, scratch.height);
+    const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+    let coloured = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i] as number;
+      const g = data[i + 1] as number;
+      const b = data[i + 2] as number;
+      if (Math.max(r, g, b) - Math.min(r, g, b) > 40) coloured += 1;
+    }
+    return coloured / (scratch.width * scratch.height);
+  });
+}
+
+/**
  * Through the front door.
  *
  * A run reached by a deep link skips the boot gate, so most of this suite never
@@ -827,6 +857,137 @@ test.describe('the front door', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('.panel--boot')).toBeHidden();
     await expect(page.locator('.hud')).toBeVisible();
+  });
+
+  test('mute stops the music outright, rather than turning it down', async ({ page }) => {
+    /*
+     * The one control that has to work on every platform.
+     *
+     * iOS ignores `volume` on a media element -- it is the hardware's business
+     * there -- so a mute implemented as "set the gain to zero" is a mute that
+     * does nothing on a phone. Implemented as a pause it works everywhere, and
+     * this asserts the pause rather than the level, because the level is exactly
+     * the thing that silently fails on the platform that matters.
+     */
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(true);
+
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.locator('[data-field="sound"] input').uncheck();
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(false);
+
+    await page.locator('[data-field="sound"] input').check();
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(true);
+  });
+
+  test('the gate drops the tagline the menu keeps', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    // The mark is the same on both; the line under it is not. The front door is
+    // already carrying a loading bar and a way in.
+    await expect(page.locator('.panel--boot .title__word')).toHaveText('REFRACTION');
+    await expect(page.locator('.panel--boot .title__rule')).toHaveCount(0);
+
+    await enter(page);
+    await expect(page.locator('.panel--title .title__rule')).toContainText('Position is absolute');
+  });
+
+  test('holds the board back as scenery, and brings it forward for the menu', async ({ page }) => {
+    // The front door frames the arrangement so it runs past the edges: no
+    // boundary visible, so nothing to read as a board in a box. Measured as how
+    // much of the frame carries cube colour, which is what that framing changes.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(1400);
+    const asScenery = await colouredFraction(page);
+
+    await enter(page);
+    // Longer than the camera's own ease, so this is the settled framing.
+    await page.waitForTimeout(1600);
+    const asBoard = await colouredFraction(page);
+
+    expect(asScenery).toBeGreaterThan(asBoard * 1.3);
+  });
+
+  test('exposes one screen at a time, even mid-fade', async ({ page }) => {
+    /*
+     * The cross-fade keeps the outgoing panel painted, and for a while it kept
+     * it *reachable* too: its buttons held their place in the tab order and a
+     * screen reader read two screens at once. For 280 ms after the door opened
+     * there were two buttons whose names contain "play" -- the gate's "TAP TO
+     * PLAY" and the menu's "PLAY" -- which is precisely the ambiguity someone
+     * navigating by voice or by screen reader would have hit.
+     *
+     * Sampled across the fade rather than after it, because after it the bug is
+     * gone on its own.
+     */
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const way = page.getByRole('button', { name: 'TAP TO PLAY' });
+    await expect(way).toBeVisible();
+
+    /*
+     * Sampled from inside the page, on `requestAnimationFrame`.
+     *
+     * Driving this from the test instead was the obvious approach and does not
+     * work: each round trip costs more than a frame, and under the ease the
+     * outgoing panel passes through its middle opacities in about two of them.
+     * The first attempt sampled every 50 ms from outside and saw only the ends,
+     * which reads exactly like a cut -- a test that fails on working code.
+     */
+    await page.evaluate(() => {
+      const store = window as unknown as { __fade?: number[] };
+      store.__fade = [];
+      const tick = (): void => {
+        const leaving = document.querySelector('.panel--leaving');
+        store.__fade?.push(leaving ? Number(getComputedStyle(leaving).opacity) : -1);
+        if ((store.__fade?.length ?? 0) < 60) requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+
+    await way.click();
+    for (let i = 0; i < 6; i += 1) {
+      expect(await page.getByRole('button', { name: 'PLAY' }).count()).toBeLessThanOrEqual(1);
+      await page.waitForTimeout(50);
+    }
+
+    /*
+     * And it is genuinely a fade, not a delayed cut.
+     *
+     * Worth asserting separately, because the difference is invisible to every
+     * other test here and easy to reintroduce: the outgoing panel's animation has
+     * to be its own keyframes rather than the arrival's reversed, since reversing
+     * an animation that has already finished does not replay it. That mistake
+     * leaves the panel at full opacity for the whole handover and then removes
+     * it -- passing "is it hidden afterwards" while looking exactly like the cut
+     * this replaced.
+     */
+    const opacities = await page.evaluate(
+      () => (window as unknown as { __fade?: number[] }).__fade ?? []
+    );
+    expect(opacities.some((value) => value > 0.02 && value < 0.98)).toBe(true);
+  });
+
+  test('does not leave the outgoing panel on screen', async ({ page }) => {
+    // The cross-fade keeps the panel it is leaving displayed for the length of
+    // the fade. If that hand-off ever fails to complete, two screens are stacked
+    // on top of each other and the game looks broken rather than smooth.
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    await expect(page.locator('.panel--boot')).toBeHidden();
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.panel--title')).toBeHidden();
+    await expect(page.locator('.panel--modes')).toBeVisible();
   });
 
   test('a missing track does not jam the door shut', async ({ page }) => {
