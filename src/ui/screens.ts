@@ -416,6 +416,13 @@ export class Screens {
         (on) => this.handlers.onSettings({ screenShake: on })
       ),
       toggleRow(
+        'spinPreview',
+        'Turning preview',
+        'Shows the next piece in three dimensions. Off is harder',
+        () => this.save.settings.spinPreview,
+        (on) => this.handlers.onSettings({ spinPreview: on })
+      ),
+      toggleRow(
         'bloom',
         'Bloom',
         'Glow on clears and Prism events',

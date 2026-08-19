@@ -33,6 +33,13 @@ export interface InputHandlers {
   /** Any key at all. Browsers refuse to start audio outside a user gesture. */
   readonly onInteract: () => void;
   readonly onToggleMute: () => void;
+  /**
+   * Hold to tilt the camera. Passed as a held state rather than as an event,
+   * because Peek is a thing you do *while* you are doing it -- the renderer
+   * eases toward the tilt and back, and a press/release pair is the only honest
+   * shape for that.
+   */
+  readonly onPeek: (held: boolean) => void;
 }
 
 interface RepeatState {
@@ -45,6 +52,7 @@ export class InputController {
   private readonly left: RepeatState = { held: false, elapsed: 0, repeating: false };
   private readonly right: RepeatState = { held: false, elapsed: 0, repeating: false };
   private softDropHeld = false;
+  private peekHeld = false;
   private softDropElapsed = 0;
   private readonly onKeyDown: (event: KeyboardEvent) => void;
   private readonly onKeyUp: (event: KeyboardEvent) => void;
@@ -140,6 +148,13 @@ export class InputController {
       case 'nudgeDeeper':
         game.nudgeDepth(1);
         break;
+      case 'peek':
+        // Held, so a key repeat must not re-announce it.
+        if (!this.peekHeld) {
+          this.peekHeld = true;
+          this.handlers.onPeek(true);
+        }
+        break;
       case 'hold':
         game.hold();
         break;
@@ -172,9 +187,19 @@ export class InputController {
       case 'softDrop':
         this.softDropHeld = false;
         break;
+      case 'peek':
+        this.releasePeek();
+        break;
       default:
         break;
     }
+  }
+
+  /** Let the camera back down. Idempotent, so a lost keyup cannot strand it. */
+  private releasePeek(): void {
+    if (!this.peekHeld) return;
+    this.peekHeld = false;
+    this.handlers.onPeek(false);
   }
 
   /** Forget every held key. Used when a menu takes the keyboard. */
@@ -182,6 +207,9 @@ export class InputController {
     this.left.held = false;
     this.right.held = false;
     this.softDropHeld = false;
+    // A menu opening while Peek is held would otherwise leave the board tilted
+    // behind the panel, with no keyup coming to put it back.
+    this.releasePeek();
   }
 
   /** Drive key repeat. Called once per simulation step. */

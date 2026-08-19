@@ -13,7 +13,9 @@
 import { describe, expect, it } from 'vitest';
 import { ACTION_BY_CODE, BINDINGS, BINDING_GROUPS, keyLabel } from '../../src/keymap';
 import type { Action } from '../../src/keymap';
-import { Game } from '@core/game';
+import { Game, PEEK_LOCKED_FROM_STAGE } from '@core/game';
+import { modeById } from '@core/modes';
+import { LINES_PER_STAGE } from '@core/stages';
 
 const ALL_ACTIONS: readonly Action[] = [
   'moveLeft',
@@ -28,6 +30,7 @@ const ALL_ACTIONS: readonly Action[] = [
   'pitchDown',
   'nudgeNearer',
   'nudgeDeeper',
+  'peek',
   'hold',
   'pause',
   'mute',
@@ -104,5 +107,33 @@ describe('the depth nudge', () => {
     const game = new Game({ seed: 'nudge' });
     expect(game.depthNudgeAllowed).toBe(false);
     expect(game.nudgeDepth(1)).toBe(false);
+  });
+});
+
+describe('Peek', () => {
+  it('is offered while the spectrum is still being learned', () => {
+    const game = new Game({ seed: 'peek' });
+    expect(game.stage.index).toBe(1);
+    expect(game.peekAllowed).toBe(true);
+  });
+
+  it('withdraws at the stage the spectrum has to carry alone', () => {
+    // A tool that never withdraws teaches the player to lean on it. By Stage 6
+    // reading depth from colour is the skill, and parallax would be a way round
+    // it rather than a way into it.
+    const game = new Game({ seed: 'peek' });
+    game.lines = LINES_PER_STAGE * (PEEK_LOCKED_FROM_STAGE - 1);
+    expect(game.stage.index).toBe(PEEK_LOCKED_FROM_STAGE);
+    expect(game.peekAllowed).toBe(false);
+  });
+
+  it('is off entirely where there is no colour to supplement', () => {
+    // In Blind Spectrum, Peek would not be an aid to reading depth — it would be
+    // the only way to read it, and the mode's whole premise is that there isn't
+    // one. Keyed off `depthColour` rather than the mode's name, because that is
+    // the actual reason.
+    const blind = new Game({ seed: 'peek', mode: modeById('blindSpectrum') });
+    expect(blind.stage.index).toBeLessThan(PEEK_LOCKED_FROM_STAGE);
+    expect(blind.peekAllowed).toBe(false);
   });
 });

@@ -150,12 +150,14 @@ function boot(root: HTMLElement): void {
       reducedMotion: settings.reducedMotion,
       screenShake: settings.screenShake,
       bloom: settings.bloom,
+      spinPreview: settings.spinPreview,
       depthColour: mode.depthColour,
     });
     audio.setMuted(settings.muted);
     audio.setVolume(settings.volume);
     hud.setMuted(settings.muted);
     hud.setDepthColour(mode.depthColour);
+    hud.setSpinPreview(settings.spinPreview);
   };
 
   const commit = (next: SaveData): void => {
@@ -296,6 +298,9 @@ function boot(root: HTMLElement): void {
     // press is what brings the sound up.
     onInteract: () => audio.resume(),
     onToggleMute: () => commit(withSettings(save, { muted: !save.settings.muted })),
+    // Gated in the engine, not here: when Peek is available is a rule about the
+    // mode and the stage, and rules live in core.
+    onPeek: (held: boolean) => renderer.setPeek(held && game.peekAllowed),
   });
 
   // Touch and pen only. A mouse keeps the keyboard game: dragging a piece with
@@ -393,9 +398,18 @@ function boot(root: HTMLElement): void {
     // under the pause panel, which is the whole point of it. Skipping frames
     // there would save a little power and kill the thing that makes the space
     // feel inhabited.
-    renderer.render(game, elapsed);
+    // The HUD lays out first so the preview's rectangle is this frame's, not
+    // last frame's -- otherwise the turning piece lags the panel by a frame
+    // through every resize.
     hud.update(game, elapsed);
     hud.layoutWell(renderer.wellScreenRect());
+    const next = game.preview[0];
+    renderer.setPreview(
+      save.settings.spinPreview && next && screens.screen === 'playing' ? hud.nextSlotRect() : null,
+      next?.def.cells ?? [],
+      next?.lane ?? 0
+    );
+    renderer.render(game, elapsed);
     requestAnimationFrame(frame);
   };
 

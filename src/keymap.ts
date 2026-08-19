@@ -32,6 +32,7 @@ export type Action =
   | 'pitchDown'
   | 'nudgeNearer'
   | 'nudgeDeeper'
+  | 'peek'
   | 'hold'
   | 'pause'
   | 'mute'
@@ -80,6 +81,14 @@ export const BINDINGS: readonly Binding[] = [
     label: 'Pull nearer',
     group: 'Depth',
     note: 'From stage 4',
+  },
+
+  {
+    action: 'peek',
+    codes: ['KeyP'],
+    label: 'Peek — hold to tilt',
+    group: 'Depth',
+    note: 'Until stage 6',
   },
 
   { action: 'hold', codes: ['KeyC', 'ShiftLeft'], label: 'Hold', group: 'Game' },
@@ -153,6 +162,8 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
   { gesture: 'Tap right', label: 'Roll', group: 'Rotate', note: 'Above the strip' },
   { gesture: 'Swipe left / right', label: 'Yaw', group: 'Rotate', note: 'Above the strip' },
   { gesture: 'Swipe up / down', label: 'Pitch', group: 'Rotate', note: 'Above the strip' },
+
+  { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6' },
 ];
 
 /** The touch counterpart of `TURN_PROMPT_NOTE`. */

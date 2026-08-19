@@ -7,6 +7,161 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M10 — Reading the board, closed out
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The three items M10 had left: Peek, the turning next-piece preview, and the ghost
+and contact clarity pass.
+
+### Peek
+
+Hold `P` and the camera tilts eight degrees; let go and it comes back. It changes
+no game state at all — no piece moves, no lock timer runs, no line resolves —
+which is what makes it safe to hand a player in the middle of a run.
+
+Eight degrees is small on purpose. It has to be enough to separate a settled
+stack along the depth axis, which is the whole point since a dead-on board offers
+no parallax whatsoever, without becoming a second way to read depth competing
+with the spectrum. The board stays orthographic throughout, so a far cube is
+still exactly the size of a near one; only the angle changes. Eased over 180ms
+rather than snapped, in both directions, because the movement is what carries the
+reading — it is the cubes sliding past each other that says which is in front, and
+a hard cut arrives at the same camera position showing none of it.
+
+It is a comprehension aid with a deadline. Offered while the spectrum is still
+being learned and **withdrawn at Stage 6**, where reading depth from colour is
+the skill rather than the tutorial; a tool that never withdraws teaches a player
+to lean on it. And off entirely in Blind Spectrum — keyed off the mode's
+`depthColour` flag rather than off its name, because that is the actual reason:
+there, Peek would not supplement the depth channel, it would be it.
+
+The rule lives in `Game.peekAllowed`, not in the renderer, so it is unit-testable
+without a canvas. The camera side releases explicitly when input is dropped, so
+opening pause with the key held cannot strand the board off-axis for the rest of
+the run.
+
+### The turning preview
+
+The next piece is a 3D render now, turning once every seven seconds. A flat
+preview shows only what the board shows — one projection — and for a piece with
+cubes at two depths that is not enough to know its shape: a screw and its mirror
+project identically from one face, so the player was being asked to plan a
+placement for a solid they had only seen flattened. A still preview is still
+available in settings, as the _harder_ option rather than the plainer one.
+
+It turns; its colour does not. Each cube wears the colour of the lane it will
+arrive in, exactly as on the board, because the preview's job is to say what is
+coming and where — not to invent a second way of describing depth.
+
+It is drawn into a scissored corner of the board's own canvas rather than into a
+canvas of its own. A second `WebGLRenderer` means a second GL context, a second
+copy of every shader and a second frame to keep in step; a scissor rectangle
+costs a viewport change. The rectangle is taken from the DOM panel that frames
+it, so the two stay aligned through every layout change without either knowing
+about the other.
+
+**Which is also what made it hard.** The canvas sits _behind_ the HUD, so the
+panel's own 82%-opacity fill and backdrop blur were being painted over the
+render. It looked like a black preview, and the camera position, the frustum, the
+instance count, the material and the light were all verified correct before the
+panel sitting on top of it was suspected. The panel is a window now, and its fill
+moved into the preview scene's own background, where it is behind the piece
+instead of in front of it.
+
+Two more came out of that hunt:
+
+- **`setViewport` and `setScissor` multiply by the renderer's pixel ratio
+  internally.** The rect was being pre-multiplied as well — correct at ratio 1,
+  and off by a factor of two on every other display.
+- **The frustum is sized for the longest piece at any yaw**, not fitted per
+  piece, so a compact piece looks small. Pieces keep their true relative size
+  rather than each being scaled to fill the panel.
+
+### The clarity pass, which turned out not to be about the marks
+
+Measured before re-tuning anything, and the measurement is why nothing was
+re-tuned. Every previous measurement had put three lanes of wall in front of the
+piece, and three is not the hard case: the well is eight deep, and a stack that
+has filled the front of the board is exactly when a player cannot tell where
+anything will land.
+
+Against a full-depth wall, with the piece bound for lane 7:
+
+| Sampled cell            | Buried, before | Buried, after | Open board |
+| ----------------------- | -------------- | ------------- | ---------- |
+| Landing footprint       | 134 / peak 135 | 112 / 115     | 109 / 112  |
+| Contact mark            | 170 / 180      | 191 / 213     | 203 / 227  |
+| Channel above them      | **93 / 119**   | 22 / 73       | 11 / 36    |
+| Untouched cube, no aids | 107            | 107           | —          |
+
+Translucency accumulates. Seven panes at 0.12 each leave 0.88⁷ = 41% of the light
+behind them, so the channel came back at 59% coverage — luminance 93 against an
+untouched cube's 107, which is to say **the x-ray had turned back into a wall.**
+The landing footprint behind it peaked at 135 against glass peaking at 119: a 13%
+separation, where an open board gives fourteen times. The aid dissolved as the
+board got harder, which is backwards, and no amount of re-tuning the marks could
+have fixed it, because the marks were never the problem.
+
+Lowering the fill's opacity cannot fix it — one number has to serve both a single
+pane and eight, and faint enough for eight is invisible for one. Per-instance
+alpha cannot either: instance colour multiplies the fragment, not its alpha, so
+dimming a rear pane darkens the stack without making it any more transparent.
+
+So the pane count is capped: **one pane of glass per screen cell, the nearest
+one.** How many cubes are stacked in the way is not something a player acts on;
+where the region is, how deep it starts and where the piece will land are, and
+those come from the region's outline, the outline's colour and the two marks.
+`EdgeLayer` already collapsed the region to one depth per screen cell for exactly
+that reason, so this makes the fill agree with the border drawn around it. Buried
+and open now read within a tenth of each other.
+
+### A favicon
+
+Unrelated, and found by the same suite: the page had no icon at all, so every
+boot logged a 404 for the browser's default `/favicon.ico` probe — a pre-existing
+red test on this branch. It is one voxel wearing the whole ramp, using the
+palette's own seven bands from `depthColor` rather than colours picked to look
+like a rainbow.
+
+### Tests
+
+**325 unit, 102 end-to-end, all passing.** New this milestone:
+
+- Three unit tests for `peekAllowed`: offered at Stage 1, withdrawn at the stage
+  the spectrum has to carry alone, off where there is no depth colour.
+- Six end-to-end tests for Peek — the tilt holds and returns, it is eased rather
+  than snapped, it moves the camera and nothing else, it is withdrawn at Stage 6
+  and in Blind Spectrum, and a menu opening cannot strand it.
+- Three for the turning preview: it turns rather than holding one projection, it
+  holds still when the player asks, and its colour does not drift as it turns.
+- Three for the buried board — both marks stand clear of seven lanes of glass,
+  a wall in front costs them almost nothing, and a column the piece does not
+  cover keeps its full colour.
+
+Four existing tests had to move rather than change what they claim. The preview
+is not DOM any more, so "shows the next piece" reads the canvas; the grid-spacing
+test reads the hold slot, which still uses the DOM grid; Blind Spectrum's
+no-colour-leak check reads both. The colour-fidelity test moved to the hold slot
+too, and that one mattered most: NEXT was its independent reference precisely
+_because_ it was DOM painted straight from the palette, and comparing the board
+to a WebGL preview would have been comparing the pipeline against itself, with
+every fault it exists to catch cancelling out.
+
+One changed its yardstick without changing its claim. The interior of the x-rayed
+region was checked by scaling its peak against its own mean; with the fill now
+faint by design, that mean sits near the background and two luminance levels of
+antialiasing become a 55% swing. It compares the interior cell against the border
+cell in the same frame now, which is what the claim was always about.
+
+### Worth revisiting
+
+The hold slot is still a flat DOM preview. It is the fidelity suite's independent
+reference now, so if it ever becomes a 3D render the reference has to be replaced
+first — with a plain palette swatch in the DOM — not simply moved again.
+
+---
+
 ## M11b — Interface corrections
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

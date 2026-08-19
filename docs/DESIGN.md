@@ -123,7 +123,7 @@ looking flat. The whole weight sits on the spectrum ramp.
 as the proposal's occlusion section describes. The information is not lost: a
 tile's colour is the depth of the _nearest_ cube in that screen cell, so a
 violet tile proves every lane in front of it is empty. Everything else is
-recovered by turning, and later by Peek.
+recovered by turning, or by Peek (§9).
 
 ### 2.2 The spectrum is reserved
 
@@ -711,13 +711,59 @@ at least two of:
   it sits on already states the depth, so the mark is chrome, and chrome here is
   achromatic.
 
-- **Peek** _(future, M10)_ — hold to tilt the camera 8° for parallax. Changes no
-  game state. Limited or disabled at Stage 6+ and in Blind Spectrum.
-- **Preview** _(2D today; rotating 3D render is M10)_ — the incoming piece, in
-  the depth colours it will arrive wearing.
+- **Peek** — hold to tilt the camera 8° for parallax, eased over 180ms in both
+  directions. Changes no game state at all: the camera moves and nothing else
+  does, which is what makes it safe to offer. Withdrawn from Stage 6, where
+  reading depth from colour is the skill rather than the tutorial, and off
+  entirely where the mode carries no depth colour — in Blind Spectrum it would
+  not supplement the depth channel, it would _be_ it.
+
+  Eight degrees is small on purpose. It has to be enough to separate a settled
+  stack along the depth axis, which is the whole point since a dead-on board
+  offers no parallax at all, without becoming a second way to read depth that
+  competes with the spectrum. The board stays orthographic throughout, so a far
+  cube is still exactly the size of a near one — only the angle changes, and it
+  is the cubes sliding past each other that carries the reading.
+
+- **Preview** — the incoming piece, turning slowly, in the depth colours it will
+  arrive wearing. A flat preview shows only what the board shows: one projection,
+  which for a piece with cubes at two depths is not enough to know its shape, as
+  a screw and its mirror project identically from one face. The turn resolves
+  that; the colour does not change while it turns, because depth is the board's
+  statement about where the piece is going, not a property of the diagram.
+
+  A still preview is offered as the _harder_ option rather than the plainer one:
+  it shows the piece the way the board shows everything and leaves the player to
+  infer the rest.
 
 The visual hierarchy when these overlap, strongest to weakest: **active piece →
 landing ghost → untouched board → x-rayed channel → muted band behind it.**
+
+### 9.1 One pane of glass per screen cell
+
+The x-ray draws only the **nearest** cube in each screen cell. The ones behind it
+are not drawn at all.
+
+Translucency accumulates, and that is what made the x-ray fail on exactly the
+boards it exists for. Seven panes at 0.12 each leave 41% of the light behind
+them, so a channel seen through a full-depth wall came back to 59% coverage —
+measured at luminance 93 where an untouched cube reads 107. The landing footprint
+behind it peaked at 135 against glass peaking at 119: a 13% separation, where an
+open board gives fourteen times. The aid dissolved as the board got harder.
+
+Lowering the fill's opacity cannot fix this, because one number has to serve both
+a single pane and eight of them, and faint enough for eight is invisible for one.
+Per-instance alpha cannot either: instance colour multiplies the fragment, not
+its alpha, so dimming a rear pane darkens the stack without making it any more
+transparent.
+
+Capping the pane count is the fix, and one is the right cap. **The number of
+cubes stacked in the way is not something a player acts on.** Where the region
+is, how deep it starts, and where the piece will land are — and those are carried
+by the region's outline, the outline's colour and the two landing marks
+respectively. `EdgeLayer` already collapses the region to one depth per screen
+cell for that reason, so this makes the fill agree with the border drawn around
+it.
 
 ## 10. Accessibility **[GAP — critical]**
 

@@ -95,6 +95,8 @@ export class Hud {
   private readonly meter = element('div', 'meter');
   private readonly shift = element('div', 'hud__shift');
   private readonly nextSlot = element('div', 'slot__body');
+  private nextPanel: HTMLElement = element('div');
+  private spinPreview = true;
   private readonly holdSlot = element('div', 'slot__body');
   private readonly chain = element('div', 'chain');
   private readonly popups = element('div', 'popups');
@@ -126,6 +128,7 @@ export class Hud {
     left.append(stats);
 
     const next = element('div', 'slot hud__panel');
+    this.nextPanel = next;
     next.append(element('span', 'hud__label', 'NEXT'), this.nextSlot);
     const hold = element('div', 'slot hud__panel');
     hold.append(element('span', 'hud__label', 'HOLD'), this.holdSlot);
@@ -175,6 +178,21 @@ export class Hud {
     const popup = element('span', 'popup', `+${amount.toLocaleString('en-US')}`);
     this.popups.append(popup);
     popup.addEventListener('animationend', () => popup.remove());
+  }
+
+  /**
+   * Where the next-piece panel is on screen, in CSS pixels, for the renderer to
+   * draw the turning preview into. Null while there is nothing to show.
+   */
+  nextSlotRect(): { left: number; top: number; width: number; height: number } | null {
+    const box = this.nextSlot.getBoundingClientRect();
+    if (box.width <= 0 || box.height <= 0) return null;
+    return { left: box.left, top: box.top, width: box.width, height: box.height };
+  }
+
+  setSpinPreview(spinning: boolean): void {
+    this.spinPreview = spinning;
+    this.nextPanel.classList.toggle('slot--window', spinning);
   }
 
   /** Off in Blind Spectrum, so the previews match the board. */
@@ -289,8 +307,13 @@ export class Hud {
 
   private renderSlots(game: Game): void {
     const next = game.preview[0];
+    // The 3D preview is drawn into this slot by the renderer, through a scissor
+    // rectangle taken from `nextSlotRect()`. The DOM cells stay as the fallback
+    // for the still preview, so the panel is never empty while a piece is known.
     this.nextSlot.replaceChildren(
-      next ? renderPiecePreview(next.cells, next.lane, this.depthColour) : element('div', 'piece')
+      next && !this.spinPreview
+        ? renderPiecePreview(next.cells, next.lane, this.depthColour)
+        : element('div', 'piece')
     );
 
     const held = game.held;

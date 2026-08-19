@@ -34,6 +34,8 @@ import {
   toSceneY,
   toSceneZ,
 } from './scene';
+import { PiecePreview } from './preview';
+import type { PreviewRect } from './preview';
 import { EdgeLayer, VoxelLayer } from './voxels';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
@@ -96,6 +98,15 @@ export interface RenderPreferences {
   readonly showGhost: boolean;
   /** False in Blind Spectrum: cubes are drawn in one neutral fill. */
   readonly depthColour: boolean;
+  /**
+   * Turn the next-piece preview in three dimensions.
+   *
+   * Off is the *harder* option, not the plainer one: a still preview shows the
+   * piece the way the board shows everything, as one projection, and leaves the
+   * player to infer the rest. Unlike the ghost, this is a real difficulty choice
+   * rather than a comprehension aid, which is why it is a setting at all.
+   */
+  readonly spinPreview: boolean;
 }
 
 const DEFAULT_PREFERENCES: RenderPreferences = {
@@ -104,6 +115,7 @@ const DEFAULT_PREFERENCES: RenderPreferences = {
   bloom: true,
   showGhost: true,
   depthColour: true,
+  spinPreview: true,
 };
 
 export interface WellScreenRect {
@@ -134,6 +146,23 @@ const MAX_EDGE_CELLS = 8 * 18 * 8;
  * x-ray in front of them, which inverts the point of the two bands.
  */
 const MUTED_DIM = 0.74;
+
+/**
+ * Peek: how far the camera tilts, and how long it takes to get there.
+ *
+ * Eight degrees is small on purpose. It has to be enough to separate the stack
+ * along the depth axis -- which is the whole point, since a settled board is
+ * dead-on and gives no parallax at all -- without becoming a second way to read
+ * depth that competes with the spectrum. The board stays orthographic
+ * throughout, so a far cube is still exactly the size of a near one; only the
+ * angle changes.
+ *
+ * Eased rather than snapped, in both directions. A hard cut to eight degrees
+ * reads as a glitch, and the movement itself is what carries the parallax: it is
+ * the cubes sliding past each other that says which is in front.
+ */
+const PEEK_ELEVATION_DEG = 8;
+const PEEK_EASE_MS = 180;
 
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
@@ -222,6 +251,32 @@ function dropChannel(game: Game): Map<number, DropChannel> | null {
  * The piece's own lanes are x-rayed along with the ones in front. There is no
  * separate focal band: a cube above the surface blocks the view of it whatever
  * its depth, so the whole front-to-piece run is glass.
+ *
+ * ## One pane of glass per screen cell
+ *
+ * Only the *nearest* cube in each screen cell is drawn as glass. The ones behind
+ * it are not drawn at all.
+ *
+ * Translucency accumulates, and that is what made the x-ray fail on exactly the
+ * boards it exists for. Seven panes at 0.12 each leave 0.88^7 = 41% of the light
+ * behind them, so a channel seen through a full-depth wall came back to 59%
+ * coverage -- measured at luminance 93 against an untouched cube's 107. The
+ * landing footprint behind it read 135 at its peak against glass peaking at 119.
+ * A 13% separation where an open board gives fourteen times: the aid dissolved
+ * as the board got harder, which is backwards.
+ *
+ * Dropping the fill's opacity cannot fix this, because one number has to serve
+ * both a single pane and eight of them: faint enough for eight is invisible for
+ * one. Per-instance alpha cannot either -- instance colour multiplies the
+ * fragment, not its alpha, so dimming a rear pane darkens the stack without
+ * making it any more transparent.
+ *
+ * So the pane count is capped instead, and one is the right cap. The number of
+ * cubes stacked in the way is not something a player acts on; where the region
+ * is, how deep it starts, and where the piece will land are, and those come from
+ * the outline, the outline's colour and the marks. `EdgeLayer` already collapses
+ * the region to one depth per screen cell for exactly that reason, so this makes
+ * the fill agree with the border drawn around it.
  */
 interface BoardBands {
   readonly xray: Cell[];
@@ -240,7 +295,9 @@ function partitionBoard(game: Game): BoardBands {
   const backstop = new Set<string>();
   for (const cell of game.firstContactCells()) backstop.add(`${cell.x},${cell.y},${cell.z}`);
 
-  const xray: Cell[] = [];
+  // Screen cell -> the nearest cube standing in the channel there, and its lane.
+  // Screen cells are 8 x 18, so one integer keys them.
+  const pane = new Map<number, { readonly cell: Cell; readonly lane: number }>();
   const plain: Cell[] = [];
   const muted: Cell[] = [];
   for (const cell of filled) {
@@ -249,11 +306,14 @@ function partitionBoard(game: Game): BoardBands {
     if (!column || y < column.floor || backstop.has(`${cell.x},${cell.y},${cell.z}`)) {
       plain.push(cell);
     } else if (lane <= column.back) {
-      xray.push(cell);
+      const key = u * 1024 + y;
+      const nearest = pane.get(key);
+      if (nearest === undefined || lane < nearest.lane) pane.set(key, { cell, lane });
     } else {
       muted.push(cell);
     }
   }
+  const xray = [...pane.values()].map((nearest) => nearest.cell);
   return { xray, plain, muted };
 }
 
@@ -386,6 +446,13 @@ export class GameRenderer {
   private lockFlashCells: readonly Cell[] = [];
   private lockFlashElapsed = LOCK_FLASH_MS;
 
+  /**
+   * The next piece, drawn into a scissored corner of this same canvas. One
+   * renderer, one GL context, one frame -- a second `WebGLRenderer` would mean a
+   * second of each and a second thing to keep in step.
+   */
+  private readonly preview = new PiecePreview();
+  private previewRect: PreviewRect | null = null;
   private readonly environment: Environment;
   private readonly debris = new Debris();
   private readonly composer: EffectComposer;
@@ -406,6 +473,9 @@ export class GameRenderer {
   private shakeElapsed = SHAKE_DECAY_MS;
   private shakeStrength = 0;
   private prefs: RenderPreferences = DEFAULT_PREFERENCES;
+  /** 0 while dead-on, 1 while fully peeked. Eased, so it is never a step. */
+  private peek = 0;
+  private peekHeld = false;
   private readonly turnDurationMs: number;
 
   constructor(
@@ -507,6 +577,28 @@ export class GameRenderer {
     this.turnElapsed = 0;
   }
 
+  /**
+   * Where on screen the next-piece preview should be drawn, in CSS pixels, and
+   * what it should show. Null hides it.
+   */
+  setPreview(rect: PreviewRect | null, cells: readonly Cell[], lane: number): void {
+    this.previewRect = rect;
+    this.preview.setPiece(cells, lane);
+  }
+
+  /**
+   * Hold or release Peek. Changes no game state -- the camera moves and nothing
+   * else does, which is what makes it safe to offer at all.
+   */
+  setPeek(held: boolean): void {
+    this.peekHeld = held;
+  }
+
+  /** Whether the camera is currently away from dead-on because of Peek. */
+  get peeking(): boolean {
+    return this.peek > 0;
+  }
+
   /** Begin the Full Spectrum bloom. */
   startPrism(): void {
     this.prismElapsed = 0;
@@ -522,6 +614,8 @@ export class GameRenderer {
     this.prefs = { ...this.prefs, ...patch };
     for (const layer of this.voxelLayers) layer.setDepthColour(this.prefs.depthColour);
     this.lockedXrayEdges.setDepthColour(this.prefs.depthColour);
+    this.preview.setDepthColour(this.prefs.depthColour);
+    this.preview.setSpinning(this.prefs.spinPreview);
   }
 
   get preferences(): RenderPreferences {
@@ -695,7 +789,14 @@ export class GameRenderer {
 
     // Orthographic throughout, so a cube's size on screen never depends on how
     // far back it is. Only the yaw and a small turn-time elevation change.
-    positionCamera(this.camera, yaw, TURN_ELEVATION_DEG * dimensional, this.shakeOffset);
+    // Peek eases toward its tilt while held and back when released. It adds to
+    // the turn's own elevation rather than replacing it, so letting go mid-turn
+    // cannot snap the camera through the rotation.
+    const peekStep = deltaMs / PEEK_EASE_MS;
+    this.peek = THREE.MathUtils.clamp(this.peek + (this.peekHeld ? peekStep : -peekStep), 0, 1);
+    const elevation =
+      TURN_ELEVATION_DEG * dimensional + PEEK_ELEVATION_DEG * easeInOutCubic(this.peek);
+    positionCamera(this.camera, yaw, elevation, this.shakeOffset);
     orientLights(this.lights, yaw);
     setLightingFlatness(this.lights, flatness);
     setWellFlatness(this.well, flatness);
@@ -758,6 +859,14 @@ export class GameRenderer {
     } else {
       this.renderer.render(this.scene, this.camera);
     }
+
+    // After the board, and after the bloom chain: the preview is a diagram, not
+    // part of the scene, and it must not be swept into a whiteout meant for the
+    // playfield.
+    this.preview.update(deltaMs);
+    if (this.previewRect) {
+      this.preview.render(this.renderer, this.previewRect);
+    }
   }
 
   dispose(): void {
@@ -772,6 +881,7 @@ export class GameRenderer {
     this.ghostHidden.dispose();
     this.contact.dispose();
     this.lockFlashLayer.dispose();
+    this.preview.dispose();
     this.environment.dispose();
     this.debris.dispose();
     this.columnPanel.geometry.dispose();
