@@ -879,15 +879,52 @@ and can then say, unprompted, what the colours mean and what turning does.
 
 ---
 
-## M14 — The Look
+## M14 — The Look ✅
 
 **Goal:** the game looks like itself.
 
-- **A stylised title screen** _(play notes)_. It is plain DOM type on a live
-  board today, which was right for getting the front door working and is not a
-  title screen. The board behind it is the strongest asset the game has;
-  whatever this becomes should use it rather than cover it.
-- **Gel voxels** _(play notes, with reference images)_. Each cube gets a subtle
+- ✅ **A stylised title screen** _(play notes)_. It was plain DOM type on a live
+  board, which was right for getting the front door working and is not a title
+  screen. The board behind it is the strongest asset the game has; whatever this
+  became should use it rather than cover it.
+
+  It does. The scrim is a gradient now rather than a flat 86% wash — opaque
+  behind the masthead at the top, clearing toward the bottom where the stack
+  sits — and the panel aligns to the top instead of centring, so the composition
+  is a masthead over a live scene rather than a card in front of one. The HUD
+  goes with it: a score of zero, an empty NEXT and a Shift meter for a run nobody
+  has started are furniture from a different screen, and they became legible the
+  moment the scrim stopped hiding them.
+
+  **The board turns by itself**, using the game's own turn rather than a rotation
+  written for the title, so the front door is a demonstration of the central
+  mechanic before anyone has pressed anything — and there is one piece of turn
+  choreography in the codebase rather than two that can drift apart. Held between
+  turns so it reads as presenting a face rather than as spinning, and suppressed
+  entirely under reduced motion.
+
+  On a cold boot the well holds a composed stack: a diagonal ridge with exactly
+  one cube per screen cell, which is what puts the whole ramp on the front face
+  and makes the same stack a completely different picture from every other. On
+  any other visit it holds whatever the player last built, which is a better
+  backdrop than anything authored here.
+
+  The masthead is achromatic, because §2.2 partitions the palette absolutely: the
+  only hue on screen belongs to a cube. A wordmark running red to violet is the
+  exact false inference that rule exists to prevent.
+
+  Responsive from the start rather than retrofitted, since **M12b moves the HUD
+  to portrait-first** and a desktop-shaped title would simply have been rebuilt
+  there.
+
+  One real bug came out of it, and it is the reason a title that moves the camera
+  is not free: the renderer's yaw is its own state, so after a few attract turns
+  it sits at 90, 180 or 270 while a new game is always on the front face. The
+  board would have come up wearing the palette of a face nobody was playing, with
+  every control pointing the wrong way. `snapToFace` on `startRun` closes it, and
+  a test holds it.
+
+- ✅ **Gel voxels** _(play notes, with reference images)_. Each cube gets a subtle
   three-dimensional gel material: translucent, lit from within, glossy along the
   bevels, with the glow pooling toward the lower edges and a brighter rim where
   the surface turns away. The reference reads as cast resin — a slightly deeper
@@ -907,8 +944,36 @@ and can then say, unprompted, what the colours mean and what turning does.
   competing with the spectrum, which is the one thing the projection rules
   forbid outright.
 
-**Exit criteria:** a still frame of the board is recognisably this game and
-nothing else, and the colour-fidelity tests still pass unchanged.
+  Built as a `onBeforeCompile` injection on the existing `MeshStandardMaterial`
+  rather than as a new material, which keeps Three's lighting maths intact —
+  reimplementing it is precisely how the board ended up at a fifth of its palette
+  value the first time, an ambient light at 1.18 where the Lambert BRDF needs pi.
+
+  **The fidelity rule is stricter than this entry assumed.** It is not the cube's
+  mean that is pinned: §2.5's test samples a 5×5 patch at the _centre of the
+  face_ and allows six levels of 255. That turned out to make the material easier
+  to get right, not harder — every term is multiplied by one of two masks that
+  are exactly zero at the face centre, so the invariant is structural rather than
+  tuned and cannot be broken by turning the effect up.
+
+  Two attempts were needed on the look itself, and the difference is instructive.
+  The first used a uniform band around the whole perimeter, which reads as a
+  backlit tile rather than as a solid: the halo is the entire silhouette lighting
+  up at once. Real gloss is directional, so the catch is weighted by how much the
+  bevel faces the light, and the all-round component is a true Fresnel term —
+  which peaks exactly on the silhouette and draws a thin line rather than a band.
+  The pooled glow also went from a lerp toward white to emission tinted by the
+  cube's own colour, because resin lit from within glows in its own hue; toward
+  white it turned a red cube pink along the bottom third, desaturating the one
+  channel that carries meaning.
+
+  See DESIGN §2.6 for the two rules restated, and for the muted-band interaction
+  that had to be found by measurement.
+
+**Exit criteria, met:** a still frame of the board is recognisably this game and
+nothing else, and the colour-fidelity tests pass unchanged. Five new end-to-end
+tests; the depth-independence one was confirmed to fail on a violation confined
+to the Fresnel rim alone, which is the narrowest form it could take.
 
 ---
 

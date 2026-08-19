@@ -172,6 +172,24 @@ better in isolation:
   image: the whole spectrum together is white light, which is exactly what the
   board does when a Prism chain closes.
 
+The title screen is the partition's clearest consequence. It was plain type over
+an 86%-opaque blackout, and on a cold boot there was nothing behind the blackout
+anyway — a wordmark on a black rectangle, which is true of any game. It shows the
+board now: a composed stack in the well, turning by itself with the game's own
+turn, under a masthead drawn from the neutral ink ramp. The type cannot carry the
+spectrum, so the board carries it, which is the better division of labour in any
+case.
+
+Two properties of that arrangement are deliberate. It holds **exactly one cube
+per screen cell**, because a near cube hides what is behind it completely and a
+second cube in the same cell is not extra material — it is a cube you cannot see
+that has taken a lane away from one you can. A denser version with two helices
+was tried and reverted for precisely that: of two cubes sharing a cell the nearer
+always wins, and at a half-depth offset the nearer is always in lanes 0 to 3, so
+the front face came out red-through-green with no blue or violet on screen at
+all. And the board is composed **only when it is empty**, so returning from a
+finished run leaves the player's own board behind the title.
+
 This rule is not permanent scripture — a future mechanic could earn a spectrum
 reference, if it is deliberately built on the same colour-is-depth relationship
 rather than borrowing the palette for flavour. The bar is that the reference has
@@ -295,6 +313,51 @@ So, as a standing constraint:
 Guarded by two end-to-end tests that sample the canvas and compare it against
 `depthColor` directly, and against the DOM preview's chroma. Each of the three
 causes above was re-introduced in turn to confirm the tests fail on it.
+
+### 2.6 The gel material, and the two rules it restates
+
+Every solid cube is cast resin rather than flat plastic: denser through its
+thickness, a bright catch along the bevel the light falls on, the glow settling
+toward its lower edge, a thin rim where the surface turns away, and a faint tooth
+inside it.
+
+A material whose whole purpose is variation _within_ a cube runs straight at both
+rules above, so neither is loosened — each is restated as something the shader
+cannot break:
+
+- **Fidelity.** §2.5's test samples a 5×5 patch at the centre of a cube's face
+  and allows six levels of 255. So every term in the gel is multiplied by one of
+  two masks, `gelEdge` or `gelBelow`, both of which are exactly zero at the
+  centre of every face. The material cannot shift the sampled colour however its
+  constants are set. Turning the effect up is a look decision; it can never
+  become a fidelity bug.
+
+- **No second depth cue.** §2.1 forbids anything that lets a player rank cubes by
+  distance without reading colour. The shader is given the object-space position
+  and normal of the unit cube and the camera's yaw, and nothing else — no lane,
+  no world position, no instance — so every cube wears an identical material.
+
+  Worth separating two things that sound alike: **making each cube look like a
+  solid is not making the board look three-dimensional.** A highlight that lands
+  in the same place on every cube ranks nothing. Differential shading would be
+  the violation; uniform shading is a material, and the field of cubes is exactly
+  as flat as it was.
+
+  Measured in Blind Spectrum, where every cube carries one neutral fill whatever
+  lane it sits in — so the instance colour is identical across the board and the
+  only thing that could distinguish one lane from another is the material. Eight
+  cubes, one per lane, spread 1.16 luminance levels; scaling any gel term by the
+  cube's depth spreads 2.5 to 2.9.
+
+One consequence had to be found by measurement rather than by reasoning. The
+gel's highlights lerp toward **white**, and the muted band exists to read as a
+dark mass with no structure — so a cube dimmed to a quarter of its colour came
+back with a rim as bright as an undimmed one's, and the muted band's peak
+overtook the x-ray's, inverting the two bands the whole drop channel depends on.
+The gel now carries the layer's own dim, so a receding cube's material recedes
+with it. Scaled by the layer rather than by the pixel's brightness: reading the
+brightness would work and would quietly make the effect depth-dependent, since
+violet is a darker stop than green.
 
 ## 3. Lines
 

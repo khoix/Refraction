@@ -74,6 +74,20 @@ body {
   align-items: start;
 }
 
+/*
+ * Faded out on the title screen, where the board is the subject.
+ *
+ * Declared right after `.hud` and at the same specificity, so the cascade order
+ * is visible rather than inferred. This landed inside `.hud__shift` on the first
+ * attempt -- CSS nesting turned it into a descendant selector that could never
+ * match anything, and the HUD simply stayed on screen. Third cascade slip in
+ * this file, all three the same shape: a rule that is right in isolation and
+ * wrong where it was written.
+ */
+.hud--hidden {
+  opacity: 0;
+}
+
 .hud__column {
   display: flex;
   flex-direction: column;
@@ -145,6 +159,7 @@ body {
   gap: 0.35rem;
   pointer-events: none;
   padding: 0.4rem 0.5rem 0.5rem;
+
   /* Layer 1: over the board, under the panels. See `.screens`. */
   z-index: 1;
 }
@@ -536,6 +551,52 @@ body {
   text-shadow: 0 0 18px rgb(var(--accent-ui-glow) / 0.4);
 }
 
+/*
+ * The title screen lets the board through.
+ *
+ * Every other screen is a panel over a paused game, and an 86% scrim is right
+ * for those: the board is context, not the subject. The title is the opposite --
+ * the board *is* the subject, and it was being covered by the same blackout and
+ * then, on a cold boot, showing nothing underneath anyway.
+ *
+ * A gradient rather than a flat wash, opaque behind the masthead at the top and
+ * clearing toward the bottom, where the stack sits. The type keeps the contrast
+ * it needs and the cubes are simply visible. That is also why the panel aligns
+ * to the top here instead of centring: the composition is a masthead over a live
+ * scene, so the type has to vacate the part of the well the board occupies.
+ */
+.screens[data-screen='title'] {
+  background: linear-gradient(
+    to bottom,
+    rgb(5 6 10 / 0.94) 0%,
+    rgb(5 6 10 / 0.86) 30%,
+    rgb(5 6 10 / 0.42) 56%,
+    rgb(5 6 10 / 0.1) 78%,
+    rgb(5 6 10 / 0.04) 100%
+  );
+  backdrop-filter: none;
+  /* Align to the top, justify to the centre. `place-items` takes align first,
+     and getting that round the wrong way flushed the masthead to the left edge
+     and ran the wordmark off both sides of the window. */
+  place-items: start safe center;
+  padding-top: clamp(2rem, 9vh, 5rem);
+}
+
+/* Wider than the other panels, which are sized for prose and controls. This one
+   holds a wordmark that is mostly letter-spacing. */
+.panel--title {
+  width: min(60rem, 100%);
+}
+
+/*
+ * The board is behind the type, so the type has to hold its own against
+ * whatever colour happens to be under it. A shadow rather than a plate: a plate
+ * would be the blackout again, in a smaller rectangle.
+ */
+.screens[data-screen='title'] .panel--title {
+  text-shadow: 0 2px 24px rgb(5 6 10 / 0.9);
+}
+
 /* ------------------------------------------------------------------- title */
 
 .title {
@@ -547,10 +608,36 @@ body {
 }
 
 .title__word {
-  font-size: clamp(2.6rem, 11vw, 6rem);
-  letter-spacing: 0.3em;
-  text-indent: 0.3em;
+  /*
+   * Sized to fit rather than to fill. Ten characters at a third of an em of
+   * tracking is a very wide word, and at the previous 11vw it overran both
+   * edges of a 1280px window -- the first and last letters were simply cut off.
+   */
+  font-size: clamp(1.5rem, 6.6vw, 4.4rem);
+  letter-spacing: 0.26em;
+  text-indent: 0.26em;
   line-height: 1;
+}
+
+/*
+ * Hairlines above and below the wordmark.
+ *
+ * Achromatic, like everything that is not a cube. They give the masthead an
+ * edge to sit on without introducing a panel, and they fade out at the ends so
+ * the mark reads as printed on the scene rather than boxed off from it.
+ */
+.title__rules {
+  display: block;
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(var(--accent-ui-glow) / 0.34) 22%,
+    rgb(var(--accent-ui-glow) / 0.34) 78%,
+    transparent
+  );
 }
 
 .title__rule {

@@ -15,6 +15,7 @@ import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
 import { Screens } from '@ui/screens';
+import { composeAttract } from '@ui/attract';
 import type { ScreenName } from '@ui/screens';
 import { toView } from '@core/projection';
 import { stageLabel } from '@core/stages';
@@ -133,6 +134,14 @@ function boot(root: HTMLElement): void {
   };
 
   let game = newGame(startingSeed, mode);
+  /**
+   * How long the title holds a face before turning to the next.
+   *
+   * Long enough to read the arrangement in that orientation -- which is the
+   * point, since the same stack is a different picture from each face.
+   */
+  const ATTRACT_DWELL_MS = 2600;
+  let attractDwell = 0;
   const renderer = new GameRenderer(canvas, {
     preserveDrawingBuffer: debug,
     turnDurationMs,
@@ -171,6 +180,10 @@ function boot(root: HTMLElement): void {
     mode = pinned ? pinned.mode : modeById(id);
     challenge = pinned;
     game = newGame(pinned ? pinned.seed : nextSeed(), mode);
+    // The title screen has been turning the board; a new game is on the front
+    // face. Without this the run opens with the camera wherever the attract
+    // cycle left it, colouring the board for a face nobody is playing.
+    renderer.snapToFace(game.face);
     outcomeRecorded = false;
     if (window.__refraction) window.__refraction.game = game;
     applySettings(save.settings);
@@ -212,7 +225,12 @@ function boot(root: HTMLElement): void {
     onQuit: () => {
       // From settings this is "back"; from pause it is "leave the run".
       if (screens.screen === 'settings') screens.show(settingsReturn);
-      else screens.show('title');
+      else {
+        // Quitting a run before anything landed would otherwise drop the title
+        // back to an empty well.
+        composeAttract(game);
+        screens.show('title');
+      }
     },
     onRestart: () => startRun(mode.id, challenge),
     onSettings: (patch) => commit(withSettings(save, patch)),
@@ -221,6 +239,10 @@ function boot(root: HTMLElement): void {
       screens.show(screen);
     },
   });
+
+  // Something behind the title on a cold boot. Returning from a run the board
+  // still holds what the player built, and `composeAttract` leaves that alone.
+  composeAttract(game);
 
   root.replaceChildren(canvas, hud.root, screens.root);
   if (!storageAvailable()) screens.warnUnwritableStorage();
@@ -393,6 +415,28 @@ function boot(root: HTMLElement): void {
       screens.show('over');
     }
 
+    // The title turns.
+    //
+    // The board presents each face in turn, using the game's own turn rather
+    // than a rotation written for the title: the front door is then a
+    // demonstration of the central mechanic, before anyone has pressed
+    // anything, and there is only one piece of turn choreography in the codebase
+    // rather than two that can drift apart.
+    //
+    // Held between turns so it reads as presenting a face rather than as
+    // spinning. Suppressed entirely under reduced motion -- an unattended,
+    // unstoppable animation is exactly what that setting is for, and the still
+    // board is a perfectly good backdrop.
+    if (screens.screen === 'title' && !save.settings.reducedMotion) {
+      attractDwell += elapsed;
+      if (!renderer.isTurning && attractDwell >= ATTRACT_DWELL_MS) {
+        attractDwell = 0;
+        renderer.startTurn('right');
+      }
+    } else {
+      attractDwell = 0;
+    }
+
     // Rendering never stops, even behind a menu. The engine is frozen, but the
     // room is not: the environment drifts and breathes on the title screen and
     // under the pause panel, which is the whole point of it. Skipping frames
@@ -401,6 +445,8 @@ function boot(root: HTMLElement): void {
     // The HUD lays out first so the preview's rectangle is this frame's, not
     // last frame's -- otherwise the turning piece lags the panel by a frame
     // through every resize.
+    // The title screen is the board, not the HUD.
+    hud.setHidden(screens.screen === 'title');
     hud.update(game, elapsed);
     hud.layoutWell(renderer.wellScreenRect());
     const next = game.preview[0];

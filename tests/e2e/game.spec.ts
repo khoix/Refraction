@@ -1423,17 +1423,34 @@ test.describe('the x-ray', () => {
   test('leaves the board alone when nothing is falling', async ({ page }) => {
     // The channel belongs to the falling piece, not to the board, so the same
     // cube comes back to full strength once the piece is gone.
-    const probe = [{ u: 3, y: PROBE_ROW }];
-    const [falling] = await sample(page, IN_FRONT, probe);
-    const [settled] = await sample(page, { ...IN_FRONT, falling: false }, probe);
+    // Column 0 carries an identical stack and the piece never covers it, so it
+    // is the same cube under no aids at all -- the reference for what "left
+    // alone" looks like.
+    const probe = [
+      { u: 3, y: PROBE_ROW },
+      { u: 0, y: PROBE_ROW },
+    ];
+    const falling = await sample(page, IN_FRONT, probe);
+    const settled = await sample(page, { ...IN_FRONT, falling: false }, probe);
 
     // Substantially changed while the piece is in play...
-    expect((falling as CellSample).mean).toBeLessThan((settled as CellSample).mean * 0.6);
-    // ...and a flat solid face once it is gone: no fill, no region outline, no
-    // mark, nothing. Measured as peak against mean rather than as a brightness
-    // ratio between the two states, which sat within a percent of its threshold
-    // and would have failed on any change of a few luminance levels.
-    expect((settled as CellSample).peak - (settled as CellSample).mean).toBeLessThan(3);
+    expect(at(falling, 3, PROBE_ROW).mean).toBeLessThan(at(settled, 3, PROBE_ROW).mean * 0.6);
+    // ...and once it is gone, indistinguishable from a cube the channel never
+    // reached: no fill, no region outline, no mark, nothing.
+    //
+    // Measured against that neighbour rather than as "peak within three levels
+    // of mean", which is what this asserted until the gel material landed. That
+    // form was really asserting the cube is *featureless*, which was true of flat
+    // shading and is deliberately false now -- a gel cube carries a rim, a catch
+    // and a pooled glow, and reads about sixty levels between peak and mean all
+    // on its own. Comparing two cubes in the same frame states the actual claim
+    // and does not care what the material does, as long as it does it to both.
+    expect(Math.abs(at(settled, 3, PROBE_ROW).mean - at(settled, 0, PROBE_ROW).mean)).toBeLessThan(
+      3
+    );
+    expect(Math.abs(at(settled, 3, PROBE_ROW).peak - at(settled, 0, PROBE_ROW).peak)).toBeLessThan(
+      6
+    );
   });
 });
 
@@ -2041,6 +2058,9 @@ test.describe('the marks survive a buried board', () => {
     // happening in the columns beside it.
     const probe = [
       { u: 6, y: 3 },
+      // Column 5 is outside the channel too, and carries the same stack: the
+      // reference for a cube under no aids at all.
+      { u: 5, y: 3 },
       // Above the wall, which stops at row 13, and outside the piece's columns:
       // empty. The dark reference, so a pass cannot come from the sample simply
       // reading everything as bright.
@@ -2050,8 +2070,14 @@ test.describe('the marks survive a buried board', () => {
 
     const wall = at(buried, 6, 3);
     expect(wall.mean).toBeGreaterThan(80);
-    // Flat, too: no glass, no outline, no mark anywhere near it.
-    expect(wall.peak - wall.mean).toBeLessThan(3);
+    // And identical to its untouched neighbour: no glass, no outline, no mark.
+    //
+    // Compared against another cube rather than asserted featureless -- this read
+    // `peak - mean < 3` until the gel material landed, which was measuring flat
+    // shading rather than the absence of aids. A gel cube is about sixty levels
+    // between peak and mean by itself, and that is the material working.
+    expect(Math.abs(wall.mean - at(buried, 5, 3).mean)).toBeLessThan(3);
+    expect(Math.abs(wall.peak - at(buried, 5, 3).peak)).toBeLessThan(6);
     expect(at(buried, 6, 15).mean).toBeLessThan(30);
   });
 });
@@ -2696,5 +2722,352 @@ test.describe('the turning preview', () => {
     const second = await previewPixels(page);
     expect(first.chroma).toBeGreaterThan(40);
     expect(Math.abs(second.chroma - first.chroma)).toBeLessThan(30);
+  });
+});
+
+/**
+ * The gel material.
+ *
+ * Every solid cube is cast resin rather than flat plastic. The look is a look
+ * and is judged by eye, but two properties of it are rules, and both have been
+ * broken by well-meaning render work before:
+ *
+ * - a settled cube still renders at exactly its `depthColor` (§2.5), which the
+ *   fidelity suite above holds; and
+ * - nothing the material does varies with depth (§2.1), because a gel that
+ *   glowed harder at the front would be a second depth cue competing with the
+ *   spectrum.
+ *
+ * The second is measured here, in Blind Spectrum. That mode gives every cube one
+ * neutral fill whatever lane it sits in, so the instance colour is identical
+ * across the board and the *only* thing that could make one lane look different
+ * from another is the material. Eight cubes, one per lane, have to come out the
+ * same.
+ */
+test.describe('the gel material', () => {
+  interface LaneSample {
+    readonly lane: number;
+    readonly mean: number;
+    readonly peak: number;
+  }
+
+  /** One cube per lane along the bottom row, sampled cell by cell. */
+  async function lanes(page: Page, mode: string): Promise<LaneSample[]> {
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: { bestStage: 6 }, records: {} })
+      );
+    });
+    await page.goto(`/?debug=1&mode=${mode}&seed=gel`);
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    return page.evaluate(() => {
+      const game = window.__refraction?.game;
+      const renderer = window.__refraction?.renderer;
+      if (!game || !renderer) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 7 - x });
+      game.active = null;
+
+      return new Promise<LaneSample[]>((resolve) => {
+        requestAnimationFrame(() =>
+          requestAnimationFrame(() => {
+            const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+            const rect = renderer.wellScreenRect();
+            const box = source.getBoundingClientRect();
+            const scaleX = source.width / box.width;
+            const scaleY = source.height / box.height;
+            const scratch = document.createElement('canvas');
+            scratch.width = source.width;
+            scratch.height = source.height;
+            const context = scratch.getContext('2d');
+            if (!context) throw new Error('no 2d context');
+            context.drawImage(source, 0, 0);
+            const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+            const lum = (px: number, py: number): number => {
+              const i = (Math.round(py * scaleY) * scratch.width + Math.round(px * scaleX)) * 4;
+              return (
+                0.2126 * (data[i] as number) +
+                0.7152 * (data[i + 1] as number) +
+                0.0722 * (data[i + 2] as number)
+              );
+            };
+
+            const PAD = 0.6;
+            const rows = 18 + PAD * 2;
+            const out: LaneSample[] = [];
+            for (let lane = 0; lane < 8; lane += 1) {
+              // Column x = lane holds the cube for that lane, on the bottom row.
+              const left = rect.left - box.left + (rect.width * lane) / 8;
+              const width = rect.width / 8;
+              const top = rect.top - box.top + (rect.height * (PAD + 17)) / rows;
+              const height = rect.height / rows;
+              let sum = 0;
+              let n = 0;
+              let peak = 0;
+              // The cube fills 4% to 96% of its cell -- `CUBE_GAP` is 0.92 -- so
+              // this covers the whole of it, silhouette included, and stops
+              // short of the neighbour. An inner-80% window was tried first and
+              // is blind to exactly the part that matters: the Fresnel rim lives
+              // on the extreme edge, so a violation confined to it changed
+              // nothing the sample could see.
+              for (let py = top + height * 0.03; py < top + height * 0.97; py += 1) {
+                for (let px = left + width * 0.03; px < left + width * 0.97; px += 1) {
+                  const v = lum(px, py);
+                  sum += v;
+                  n += 1;
+                  peak = Math.max(peak, v);
+                }
+              }
+              out.push({ lane, mean: sum / Math.max(1, n), peak });
+            }
+            resolve(out);
+          })
+        );
+      });
+    });
+  }
+
+  test('does not vary with depth', async ({ page }) => {
+    // The measurement that makes this exact rather than approximate. In Blind
+    // Spectrum the eight cubes carry one identical fill, so any difference
+    // between them is the material reading the lane -- which it must not.
+    //
+    // Not measured in a coloured mode, and one attempt was: the ratio of a
+    // cube's internal contrast to its own brightness looked like it should be
+    // constant across the ramp and is not, because luminance is not linear in a
+    // per-channel mix toward white. A violet cube gains far more luminance from
+    // the same lerp than a green one. That test would have been fitted to
+    // today's numbers rather than to the rule.
+    // Two out of 255 across the eight lanes. The material as written spreads
+    // 1.16; scaling any of its terms by the cube's world depth spreads 2.5 to
+    // 2.9, including when the dependence is confined to the Fresnel rim alone,
+    // which is the narrowest form the violation could take.
+    const samples = await lanes(page, 'blindSpectrum');
+    const means = samples.map((s) => s.mean);
+    expect(Math.max(...means) - Math.min(...means)).toBeLessThan(2);
+  });
+
+  test('is actually there', async ({ page }) => {
+    // The companion to the fidelity test. That one pins the centre of a cube to
+    // its palette colour, and a material deleted entirely would pass it
+    // perfectly -- so something has to claim the cube is more than a flat
+    // square. A gel cube carries a rim, a catch along the bevel and a pooled
+    // glow, which is tens of levels between its peak and its mean; flat shading
+    // measured under three.
+    const samples = await lanes(page, 'blindSpectrum');
+    for (const sample of samples) {
+      expect(sample.peak - sample.mean).toBeGreaterThan(12);
+    }
+  });
+});
+
+/**
+ * The title screen.
+ *
+ * It was plain type over an 86%-opaque blackout, on a cold boot with nothing
+ * behind the blackout anyway -- a wordmark on a black rectangle, which is true
+ * of any game. The board is the strongest thing this one has, so the front door
+ * shows it: a composed stack, turning by itself, under an achromatic masthead.
+ */
+test.describe('the title screen', () => {
+  /** Mean luminance and maximum chroma inside a screen rectangle. */
+  async function patch(
+    page: Page,
+    box: { x: number; y: number; width: number; height: number }
+  ): Promise<{ luminance: number; chroma: number; peak: number }> {
+    const shot = await page.screenshot({ clip: box });
+    return page.evaluate(
+      async (bytes) => {
+        const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+        const bitmap = await createImageBitmap(blob);
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const context = canvas.getContext('2d');
+        if (!context) throw new Error('no 2d context');
+        context.drawImage(bitmap, 0, 0);
+        const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+        let sum = 0;
+        let chroma = 0;
+        let peak = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          const r = data[i] as number;
+          const g = data[i + 1] as number;
+          const b = data[i + 2] as number;
+          const v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+          sum += v;
+          peak = Math.max(peak, v);
+          chroma = Math.max(chroma, Math.max(r, g, b) - Math.min(r, g, b));
+        }
+        return { luminance: sum / (data.length / 4), chroma, peak };
+      },
+      [...shot]
+    );
+  }
+
+  /** The lower half of the well, where the composed stack sits. */
+  async function stackBox(page: Page): Promise<{
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+  }> {
+    return page.evaluate(() => {
+      const renderer = window.__refraction?.renderer;
+      if (!renderer) throw new Error('debug hook unavailable');
+      const rect = renderer.wellScreenRect();
+      return {
+        x: Math.round(rect.left),
+        y: Math.round(rect.top + rect.height * 0.62),
+        width: Math.round(rect.width),
+        height: Math.round(rect.height * 0.34),
+      };
+    });
+  }
+
+  test('shows the board rather than covering it', async ({ page }) => {
+    // The whole point of the redesign. On a cold boot the well holds a composed
+    // stack, and the scrim over it has to be light enough to let its colour
+    // through -- so there is hue in the well, and plenty of it.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(400);
+
+    const box = await stackBox(page);
+    const title = await patch(page, box);
+    expect(title.chroma).toBeGreaterThan(60);
+
+    // And the contrast that makes it a decision rather than an accident: every
+    // other screen keeps the heavy scrim, because there the board is context
+    // rather than the subject.
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
+    const settings = await patch(page, box);
+    expect(settings.luminance).toBeLessThan(title.luminance * 0.55);
+  });
+
+  test('the masthead carries no hue', async ({ page }) => {
+    // §2.2 partitions the palette absolutely: the only hue on screen belongs to
+    // a cube. A wordmark running red to violet is the exact false inference the
+    // rule exists to prevent -- a second colour language with no marker
+    // separating it from the first.
+    //
+    // Measured from the declared colours, not from the pixels. A pixel reading
+    // was tried and it measures the font rasteriser: Chrome renders text with
+    // subpixel antialiasing, so white glyphs on a dark ground carry orange and
+    // blue fringes a pixel wide, and the maximum chroma in the masthead's
+    // rectangle came back at 34 with nothing tinted at all.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const declared = await page.evaluate(() => {
+      const parts: string[] = [];
+      for (const selector of ['.title__word', '.title__rule']) {
+        const node = document.querySelector(selector);
+        if (node) parts.push(getComputedStyle(node).color);
+      }
+      // The hairlines are a gradient, so every stop in it counts too.
+      for (const node of document.querySelectorAll('.title__rules')) {
+        parts.push(getComputedStyle(node).backgroundImage);
+      }
+      return parts.join(' ');
+    });
+
+    const triples = [...declared.matchAll(/rgba?\(([^)]+)\)/g)].map((match) =>
+      (match[1] as string).split(/[,/]/).slice(0, 3).map(Number)
+    );
+    expect(triples.length).toBeGreaterThan(3);
+    for (const [r, g, b] of triples) {
+      // Forty, the same bar the room is held to. A cube at full chroma spans
+      // about 170 between its channels; the ink ramp's cool cast is 34 -- the
+      // tagline's `--text-dim` is `#8b93ad` -- and a threshold tight enough to
+      // fail that is measuring the neutral's temperature, not testing the rule.
+      expect(Math.max(r!, g!, b!) - Math.min(r!, g!, b!)).toBeLessThan(40);
+    }
+  });
+
+  test('hides the HUD, which belongs to a run', async ({ page }) => {
+    // A score of zero, an empty NEXT and a Shift meter for a run nobody has
+    // started are furniture from a different screen, and they were legible the
+    // moment the scrim stopped hiding them.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.waitForTimeout(300);
+    const box = await page.locator('.hud__shift').boundingBox();
+    if (!box) throw new Error('no Shift meter');
+
+    const onTitle = await patch(page, box);
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await page.getByRole('button', { name: 'FLATLAND' }).click();
+    await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
+    await page.waitForTimeout(300);
+    const inPlay = await patch(page, box);
+
+    // Compared on the peak, not the mean. The meter's region is mostly dark
+    // either way -- panel chrome over a near-empty well -- so its average moves
+    // only a few levels and the ratio landed either side of the threshold from
+    // run to run: one attempt measured 0.74 and failed, the retry measured 0.57
+    // and passed. The peak is the meter's near-white SHIFT label, which is
+    // either drawn or it is not: 67 hidden against 147 in play, stable to four
+    // decimals across runs, and 138 with the hiding removed.
+    expect(onTitle.peak).toBeLessThan(inPlay.peak * 0.6);
+  });
+
+  test('turns by itself, and holds still under reduced motion', async ({ page }) => {
+    // The front door is a demonstration of the central mechanic, using the
+    // game's own turn rather than a rotation written for the title.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
+      .toBe(true);
+
+    // An unattended, unstoppable animation is exactly what reduced motion is
+    // for, and a still board is a perfectly good backdrop.
+    await page.goto('/');
+    await page.evaluate(() => {
+      localStorage.setItem(
+        'refraction.save.v1',
+        JSON.stringify({ stats: {}, records: {}, settings: { reducedMotion: true } })
+      );
+    });
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const before = await page.evaluate(() => window.__refraction?.renderer.yaw);
+    await page.waitForTimeout(4000);
+    const after = await page.evaluate(() => window.__refraction?.renderer.yaw);
+    expect(after).toBe(before);
+  });
+
+  test('a run starts on the face the engine is playing', async ({ page }) => {
+    // The bug the attract turn introduced, and the reason a title that moves the
+    // camera is not free. The renderer's yaw is its own state: after a few
+    // attract turns it is at 90, 180 or 270 while a new game is always on the
+    // front face, so the board would come up wearing the palette of a face
+    // nobody is playing and every control would point the wrong way.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    // Let at least one attract turn land, so the camera is genuinely off front.
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
+      .toBe(false);
+    const turned = await page.evaluate(() => window.__refraction?.renderer.yaw ?? 0);
+    expect(Math.abs(turned % 360)).toBeGreaterThan(1);
+
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await page.getByRole('button', { name: 'FLATLAND' }).click();
+    await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
+
+    const { yaw, face } = await page.evaluate(() => ({
+      yaw: window.__refraction?.renderer.yaw ?? -1,
+      face: window.__refraction?.game.face,
+    }));
+    expect(face).toBe('front');
+    expect(yaw).toBe(0);
   });
 });

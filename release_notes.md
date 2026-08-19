@@ -7,6 +7,157 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M14 — The Look
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Two items: the gel voxels and a stylised title screen. Taken before M12b and M13
+deliberately — M13 wants a title screen to be offered from, and M16 wants visual
+regression baselines, which would have been pinned to a look that was about to
+change.
+
+### Gel voxels
+
+Every solid cube is cast resin now rather than flat plastic: denser through its
+thickness, a directional catch along the bevel, a thin rim where the surface
+turns away, the glow settling toward the lower edge, and a faint tooth inside it.
+
+Built as a shader injection on the existing `MeshStandardMaterial` rather than as
+a new material. Three's lighting maths stays intact, which matters here more than
+usual — reimplementing it is exactly how the board ended up at a fifth of its
+palette value the first time.
+
+**The fidelity rule turned out to be stricter than the plan assumed, and that
+made the material easier rather than harder.** The plan said the cube's _mean_
+had to stay at the palette value. It is not the mean: the test samples a 5×5
+patch at the _centre of the face_ and allows six levels of 255. So rather than
+tune the effect until it happened to average out, every term is multiplied by one
+of two masks that are exactly zero at the centre of every face. The invariant is
+structural. Turning the effect up is a look decision and can never become a
+fidelity bug — which was confirmed by removing one mask and watching the settled
+cube come back at 211,65,55 against a palette of 235,73,63.
+
+Two passes on the look, and the difference between them is worth recording:
+
+- The first put a uniform band around the whole perimeter. That reads as a
+  backlit tile, not a solid — the halo is the entire silhouette lighting up at
+  once. Real gloss is directional, so the catch is now weighted by how much the
+  bevel faces the light, and the all-round component is a true Fresnel term,
+  which peaks exactly on the silhouette and draws a thin line instead of a band.
+- The pooled glow was a lerp toward white and is now emission tinted by the
+  cube's own colour. Resin lit from within glows in its own hue; toward white it
+  turned a red cube pink along its bottom third, desaturating the one channel
+  that carries meaning.
+
+**One consequence had to be found by measurement.** The gel's highlights lerp
+toward white, and the muted band exists to read as a dark mass with no structure
+— so a cube dimmed to a quarter of its colour came back with a rim as bright as
+an undimmed one's, and the muted band's peak overtook the x-ray's, inverting the
+two bands the whole drop channel depends on. The gel carries the layer's own dim
+now. Scaled by the layer rather than by the pixel's brightness: reading the
+brightness would work and would quietly make the effect depth-dependent, since
+violet is a darker stop than green.
+
+### The title screen
+
+It was plain type over an 86%-opaque blackout with, on a cold boot, nothing
+behind the blackout anyway — a wordmark on a black rectangle, which is true of
+any game.
+
+The scrim is a gradient now, opaque behind the masthead and clearing toward the
+bottom where the stack sits, and the panel aligns to the top rather than
+centring: a masthead over a live scene rather than a card in front of one. The
+HUD is hidden there, because a score of zero and a Shift meter for a run nobody
+has started are furniture from a different screen — they became legible the
+moment the scrim stopped hiding them.
+
+**The board turns by itself**, using the game's own turn rather than a rotation
+written for the title, so the front door demonstrates the central mechanic before
+anyone has pressed anything. Held between turns so it presents a face rather than
+spinning, and suppressed entirely under reduced motion.
+
+On a cold boot the well holds a composed ridge with **exactly one cube per screen
+cell**. That is load-bearing: a near cube hides what is behind it completely, so
+a second cube in the same cell is not extra material — it is a cube you cannot
+see that has taken a lane away from one you can. A denser two-helix version was
+tried and reverted for exactly that, because of two cubes sharing a cell the
+nearer always wins, and at a half-depth offset the nearer is always in lanes 0
+to 3: the front face came out red-through-green with no blue or violet anywhere.
+Density comes from height instead. On any later visit the well holds whatever the
+player last built.
+
+The masthead is achromatic. §2.2 partitions the palette absolutely — the only hue
+on screen belongs to a cube — so the type cannot carry the spectrum and the board
+carries it instead, which is the better division of labour anyway.
+
+Built responsive from the start rather than retrofitted, because **M12b moves the
+HUD to portrait-first** and a desktop-shaped title would simply have been rebuilt
+there.
+
+**One real bug came out of it**, and it is the reason a title that moves the
+camera is not free. The renderer's yaw is its own state, so after a few attract
+turns it sits at 90, 180 or 270 — while a new game is always on the front face.
+The board would have opened wearing the palette of a face nobody was playing,
+with every control pointing the wrong way. Found by reasoning about the two
+states rather than by seeing it, fixed with `snapToFace` on `startRun`, and the
+test for it was confirmed to fail without the fix.
+
+### Tests
+
+**325 unit, 109 end-to-end, all passing.** Five new:
+
+- The gel does not vary with depth, measured in Blind Spectrum — the one mode
+  where every cube carries an identical fill, so the material is the only thing
+  that could tell one lane from another.
+- The gel is actually there, which the fidelity test cannot say: a material
+  deleted entirely passes that one perfectly.
+- The title shows the board rather than covering it, and every other screen keeps
+  the heavy scrim.
+- The masthead carries no hue.
+- The HUD is hidden on the title, and a run starts on the face the engine is
+  playing.
+
+Two existing assertions had to change, both the same shape: they asserted a cube
+is _featureless_ (`peak - mean < 3`), which was true of flat shading and is
+deliberately false now — a gel cube reads about sixty levels between peak and
+mean on its own. Both now compare the cube against an untouched neighbour in the
+same frame, which is the claim they were always making and does not care what the
+material does, as long as it does it to both.
+
+### On the testing itself
+
+Three of the new tests did not discriminate when first written, and each was
+found by sabotaging the code and watching the test pass anyway:
+
+- **The depth-independence test sampled the inner 80% of a cube**, and the
+  Fresnel rim lives on the extreme silhouette — outside the window. A violation
+  confined to the rim changed the measurement by nothing at all. The sample now
+  covers the cube's full extent (4% to 96% of its cell) and catches it: 1.16
+  levels of spread clean, 2.5 to 2.9 sabotaged.
+- **The HUD test probed the stats panel**, which sits under the opaque end of the
+  title's gradient and reads dark whether the HUD is hidden or not. Moved to the
+  Shift meter, at the bottom where the gradient has cleared.
+- **That test then compared means**, and the meter's region is mostly dark either
+  way, so the ratio landed either side of the threshold from run to run — one
+  attempt failed at 0.74 and the retry passed at 0.57. It compares peaks now: the
+  meter's near-white label is either drawn or it is not, 67 against 147, stable
+  to four decimals.
+
+Worth recording separately: a `git checkout src/main.ts src/render/gel.ts`
+restored **neither** file, because `gel.ts` was untracked and git rejects the
+whole pathspec if any part of it is invalid. Several "the sabotage was not
+caught" results in between were measured against a tree that still had the
+sabotage in it. Verify the file, not the command's intent.
+
+### Worth revisiting
+
+The attract board is composed only when the well is empty, so it never appears
+again once a player has a stack. That is deliberate, but it means the composed
+arrangement is seen mostly by new players — worth re-checking when M13's tutorial
+decides what a first launch looks like.
+
+---
+
 ## M10 — Reading the board, closed out
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
