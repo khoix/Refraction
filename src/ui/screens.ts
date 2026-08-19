@@ -250,8 +250,13 @@ export class Screens {
 
   private buildTitle(): HTMLElement {
     const title = element('h1', 'title');
+    // Hairlines bracket the wordmark. Presentational, so they are `<hr>` inside
+    // the heading rather than borders on it -- the mark needs to breathe between
+    // them, and a border cannot fade out at its ends.
     title.append(
+      element('hr', 'title__rules'),
       element('span', 'title__word', 'REFRACTION'),
+      element('hr', 'title__rules'),
       element('span', 'title__rule', 'Position is absolute. Colour is relative.')
     );
 

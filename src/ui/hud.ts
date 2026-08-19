@@ -190,6 +190,21 @@ export class Hud {
     return { left: box.left, top: box.top, width: box.width, height: box.height };
   }
 
+  /**
+   * Hide the HUD without unmounting it.
+   *
+   * For the title screen, which now lets the board through: a score of zero, an
+   * empty NEXT and a Shift meter for a run nobody has started are furniture from
+   * a different screen. Every other panel keeps it -- under pause it is the run
+   * you are about to go back to, which is exactly what you want to see.
+   *
+   * Opacity rather than `hidden`, so the layout the renderer measures for the
+   * preview rectangle does not collapse and spring back on every transition.
+   */
+  setHidden(hidden: boolean): void {
+    this.root.classList.toggle('hud--hidden', hidden);
+  }
+
   setSpinPreview(spinning: boolean): void {
     this.spinPreview = spinning;
     this.nextPanel.classList.toggle('slot--window', spinning);

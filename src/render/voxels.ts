@@ -15,6 +15,7 @@ import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { depthParameterAtYaw, toView } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face } from '@core/types';
+import { applyGel, setGelStrength } from './gel';
 import { toSceneX, toSceneY, toSceneZ } from './scene';
 
 const MAX_INSTANCES = BOARD_WIDTH * BOARD_HEIGHT * BOARD_DEPTH;
@@ -125,6 +126,12 @@ export class VoxelLayer {
             opacity: options.opacity ?? 1,
           });
 
+    // Solid cubes are cast resin; marks are not. The branch above has already
+    // separated them -- everything that is a ghost, a pane of glass, an occluded
+    // silhouette or a glow is unlit `MeshBasicMaterial` -- so the material's own
+    // type decides this rather than another option to pass through.
+    if (material instanceof THREE.MeshStandardMaterial) applyGel(material);
+
     // Where-hidden passes invert the depth test: fragments draw only when
     // something nearer has already claimed the pixel. Through-wall passes skip
     // the test entirely. Both draw after the opaque board so the buffer they
@@ -201,6 +208,11 @@ export class VoxelLayer {
       );
       this.mesh.setColorAt(i, this.color);
     }
+
+    // The gel recedes with the cubes: a band dimmed toward the void must not
+    // keep a full-strength white rim, which is what would make the muted band
+    // read brighter than the glass in front of it.
+    setGelStrength(this.mesh.material as THREE.Material, 1 - toVoid);
 
     this.mesh.instanceMatrix.needsUpdate = true;
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;

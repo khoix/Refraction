@@ -17,6 +17,7 @@ import { FACE_YAW, depthParameterAtYaw, lineCells, toView, turnYawDelta } from '
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face, TurnDirection } from '@core/types';
 import { Debris, Environment } from './environment';
+import { setGelYaw } from './gel';
 import type { SceneLights, Well } from './scene';
 import {
   TURN_ELEVATION_DEG,
@@ -570,6 +571,23 @@ export class GameRenderer {
     return this.yawFrom + (this.yawTo - this.yawFrom) * t;
   }
 
+  /**
+   * Put the camera on a face immediately, with no travel.
+   *
+   * For starting a run. The title screen turns the board by itself, so by the
+   * time anyone presses PLAY the camera is at whatever yaw the attract cycle
+   * reached -- while the new game is on the front face, always. Nothing
+   * reconciles those two on its own: the renderer's yaw is its own state and
+   * colour is computed from it, so the board would have come up wearing the
+   * palette of a face the engine was not playing, and every control would have
+   * pointed the wrong way.
+   */
+  snapToFace(face: Face): void {
+    this.yawFrom = FACE_YAW[face];
+    this.yawTo = this.yawFrom;
+    this.turnElapsed = this.turnDurationMs;
+  }
+
   /** Begin a turn. The camera travels the way the player asked, not the short way. */
   startTurn(direction: TurnDirection): void {
     this.yawFrom = this.yaw;
@@ -798,6 +816,10 @@ export class GameRenderer {
       TURN_ELEVATION_DEG * dimensional + PEEK_ELEVATION_DEG * easeInOutCubic(this.peek);
     positionCamera(this.camera, yaw, elevation, this.shakeOffset);
     orientLights(this.lights, yaw);
+    // The gel's own light travels with them, for the same reason they travel
+    // with the camera: otherwise the material's highlight lands somewhere
+    // different on each of the four faces.
+    setGelYaw(yaw);
     setLightingFlatness(this.lights, flatness);
     setWellFlatness(this.well, flatness);
     orientWell(this.well, yaw);
