@@ -26,7 +26,7 @@
  *
  * | Gesture                        | Verb                        |
  * | ------------------------------ | --------------------------- |
- * | Drag sideways, in the strip    | Move -- absolute, per column |
+ * | Drag sideways, in the strip    | Move -- relative, per column |
  * | Fling down, in the strip       | Hard drop                   |
  * | Drag down, in the strip        | Soft drop                   |
  * | Tap left of centre, above      | Roll anticlockwise          |
@@ -42,6 +42,31 @@
  * first tap fires and every drop rolls the piece on its way down. A fling and a
  * tap differ at the first sample that moves, so neither has to wait on the
  * other.
+ *
+ * ## Movement is relative to the piece, not to the board
+ *
+ * A touch does not say *which column* the piece should be in; it says *how far*
+ * to move it from wherever it is. Every touch-down sets a fresh origin, and the
+ * piece steps by the distance the finger travels from that origin.
+ *
+ * The alternative -- mapping the finger's screen position through the well's
+ * geometry to a column -- was what shipped first, and it reads well on paper:
+ * the column under your finger is the column the piece is in, which is the same
+ * claim the game makes about everything else. In the hand it is wrong. Lifting a
+ * thumb and putting it back down somewhere more comfortable teleports the piece
+ * to wherever that happened to be, so the player cannot rest, cannot shift grip,
+ * and cannot reach with their thumb without the board answering. "Position is
+ * absolute" is a rule about the *board*; it was never a rule about the hand.
+ *
+ * With an origin per touch, where on the screen the finger lands carries no
+ * meaning at all. Lift, move anywhere -- over the HUD, off the well entirely --
+ * and put it down: nothing happens until you drag, and then the piece moves from
+ * where it already was.
+ *
+ * The recogniser emits a **delta** rather than a target column, which is what
+ * keeps it pure. A target would have to be computed from the piece's current
+ * column, and a piece that locks mid-drag would leave that stale; a delta is
+ * resolved by the caller against whatever piece is live at the time.
  *
  * **Roll picks its direction from where the tap lands**, rather than from a
  * double tap or a long press. Roll is the rotation a player uses constantly --
@@ -95,6 +120,15 @@ export interface TouchLayout {
    */
   readonly stripTop: number | null;
   readonly columns: number;
+  /**
+   * How far the finger travels, in CSS pixels, to move the piece one column.
+   *
+   * Defaults to the well's own column width, so the piece keeps pace with the
+   * thumb and a drag of one cube's width moves the piece one cube. Scaled by the
+   * player's sensitivity setting, because a comfortable thumb arc is a different
+   * distance on every hand and every phone.
+   */
+  readonly pxPerColumn: number;
 }
 
 export interface Sample {
@@ -105,8 +139,15 @@ export interface Sample {
 }
 
 export type TouchIntent =
-  /** Put the piece under this board column. Absolute, not a delta. */
-  | { readonly kind: 'column'; readonly column: number }
+  /**
+   * Step the piece this many columns from where it is. Negative is left.
+   *
+   * A delta rather than a target column: the recogniser has no idea where the
+   * piece is, and should not -- a piece that locks mid-drag would make any
+   * remembered column stale, while a delta is resolved against whatever piece is
+   * live when it arrives.
+   */
+  | { readonly kind: 'columnStep'; readonly steps: number }
   | { readonly kind: 'softDrop' }
   | { readonly kind: 'hardDrop' }
   | {
@@ -120,17 +161,22 @@ type Zone = 'strip' | 'field';
 interface Active {
   readonly start: Sample;
   readonly zone: Zone;
+  /** Where sideways travel is measured from: this touch's own landing point. */
+  readonly originX: number;
+  /**
+   * Columns already reported from `originX`, so each sample emits the *change*
+   * rather than the running total.
+   *
+   * This is also what makes a wall harmless. A finger pressed past the edge of
+   * the board emits nothing further -- the total stops changing once it stops
+   * moving -- and refused steps leave no debt behind, so the first sample that
+   * reverses moves the piece immediately.
+   */
+  reported: number;
   /** Furthest down the pointer has been, for soft-drop stepping. */
   softDropAnchor: number;
   /** Set once a gesture has travelled far enough to stop being a tap. */
   moved: boolean;
-}
-
-/** Which board column a screen x falls in, clamped to the board. */
-export function columnAt(layout: TouchLayout, x: number): number {
-  const width = layout.well.width / layout.columns;
-  const raw = Math.floor((x - layout.well.left) / Math.max(1, width));
-  return Math.min(layout.columns - 1, Math.max(0, raw));
 }
 
 export class GestureRecogniser {
@@ -140,7 +186,15 @@ export class GestureRecogniser {
     // With no strip every gesture is a movement gesture, and the tap case below
     // reads `layout.stripTop` again to decide what a tap means.
     const zone: Zone = layout.stripTop === null || sample.y >= layout.stripTop ? 'strip' : 'field';
-    this.active = { start: sample, zone, softDropAnchor: sample.y, moved: false };
+    this.active = {
+      start: sample,
+      zone,
+      // This touch's origin. Wherever the finger lands is where the piece is.
+      originX: sample.x,
+      reported: 0,
+      softDropAnchor: sample.y,
+      moved: false,
+    };
     // Deliberately silent. A press is not yet a verb: touching the strip must
     // not jump the piece before the player has moved, or a tap meant for
     // something else teleports it.
@@ -156,7 +210,14 @@ export class GestureRecogniser {
     if (Math.abs(dx) > TAP_SLOP_PX || Math.abs(dy) > TAP_SLOP_PX) active.moved = true;
     if (active.zone !== 'strip' || !active.moved) return [];
 
-    const intents: TouchIntent[] = [{ kind: 'column', column: columnAt(layout, sample.x) }];
+    const intents: TouchIntent[] = [];
+    // Round rather than truncate, so the piece changes column as the finger
+    // passes the halfway point rather than a full cell late.
+    const travelled = Math.round((sample.x - active.originX) / Math.max(1, layout.pxPerColumn));
+    if (travelled !== active.reported) {
+      intents.push({ kind: 'columnStep', steps: travelled - active.reported });
+      active.reported = travelled;
+    }
 
     // Soft drop steps as the pointer travels down, and only downward: dragging
     // back up must not undo them, because gravity is not reversible.

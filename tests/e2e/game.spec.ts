@@ -2249,10 +2249,14 @@ test.describe('arrow keys move through the menus', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
-    await page.locator('.field__range').focus();
-    const before = await page.locator('.field__range').inputValue();
+    // Named rather than "the range input": there are two now -- volume, and the
+    // touch sensitivity added with the relative controls -- and an unscoped
+    // locator matches both.
+    const volume = page.locator('.field[data-field="volume"] .field__range');
+    await volume.focus();
+    const before = await volume.inputValue();
     await page.keyboard.press('ArrowLeft');
-    expect(await page.locator('.field__range').inputValue()).not.toBe(before);
+    expect(await volume.inputValue()).not.toBe(before);
     // Focus stayed on the slider rather than moving away.
     expect(await page.evaluate(() => document.activeElement?.className ?? '')).toContain(
       'field__range'
@@ -2329,18 +2333,76 @@ test.describe('touch controls', () => {
   const column = (page: Page): Promise<number> =>
     page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
 
-  test('a drag in the strip puts the piece under the finger', async ({ page }) => {
-    // Absolute, not accumulated: the column under the finger is the column the
-    // piece is in, which is the same claim the game makes about everything else.
+  test('a drag moves the piece by how far the finger travelled', async ({ page }) => {
+    // Relative, not absolute. The finger's position on screen says nothing; the
+    // distance it covers says everything.
+    //
+    // This test used to assert the opposite -- drag to column 0's x, expect the
+    // piece at column 0 -- and it kept passing after the change, because
+    // dragging four columns left from a spawn near the middle also ends at the
+    // wall. A test that passes for the wrong reason is worse than none, so it
+    // measures the delta now and starts away from both walls.
     await page.goto('/?debug=1&mode=ascent&seed=touchdrag');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     const at = await anchors(page);
 
-    await gesture(page, [at.strip(4), at.strip(3), at.strip(1), at.strip(0)]);
-    expect(await column(page)).toBe(0);
+    const start = await column(page);
+    // Two columns right, from a point nowhere near the piece.
+    await gesture(page, [at.strip(0), at.strip(1), at.strip(2)]);
+    expect(await column(page)).toBe(start + 2);
 
-    await gesture(page, [at.strip(0), at.strip(3), at.strip(6)]);
-    expect(await column(page)).toBeGreaterThan(2);
+    // And back, from a different part of the screen entirely.
+    await gesture(page, [at.strip(6), at.strip(5), at.strip(4)]);
+    expect(await column(page)).toBe(start);
+  });
+
+  test('lifting and putting the finger down somewhere else does not move the piece', async ({
+    page,
+  }) => {
+    // The reason for the change. A player has to be able to rest a thumb, shift
+    // grip, or reach a more comfortable part of the screen without the board
+    // answering -- under an absolute mapping every one of those teleported the
+    // piece to wherever the hand happened to land.
+    await page.goto('/?debug=1&mode=ascent&seed=touchlift');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+
+    const start = await column(page);
+    // Down and up at one end of the strip, then the other. No drag either time.
+    await gesture(page, [at.strip(0), at.strip(0)]);
+    expect(await column(page)).toBe(start);
+    await gesture(page, [at.strip(7), at.strip(7)]);
+    expect(await column(page)).toBe(start);
+
+    // And a drag after re-placing still measures from the new resting point.
+    await gesture(page, [at.strip(7), at.strip(6)]);
+    expect(await column(page)).toBe(start - 1);
+  });
+
+  test('a drag into a wall does not bank distance to be undone', async ({ page }) => {
+    // Press into the left wall and hold, then reverse. Without re-anchoring on a
+    // refused step, the recogniser keeps counting columns the piece never took,
+    // and the first part of the return journey does nothing at all -- which
+    // reads as the controls dying rather than as a wall.
+    await page.goto('/?debug=1&mode=ascent&seed=touchwall');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const at = await anchors(page);
+
+    // One continuous drag: left into the wall, then back, without lifting.
+    //
+    // Without lifting is the whole point, and the first version of this test got
+    // it wrong -- it used two separate gestures, and a new touch re-anchors by
+    // itself, so the test passed with re-anchoring removed. The banked distance
+    // only exists inside a single drag.
+    await gesture(
+      page,
+      [at.strip(7), at.strip(4), at.strip(1), at.strip(0), at.strip(0), at.strip(1)],
+      { pauseMs: 10 }
+    );
+    // Seven columns of travel left from a spawn near the middle leaves three or
+    // four columns pressed into the wall. Coming back one column has to move the
+    // piece one column, not work off the debt first.
+    expect(await column(page)).toBe(1);
   });
 
   test('a flick down in the strip drops the piece', async ({ page }) => {
@@ -3327,6 +3389,74 @@ test.describe('on a phone', () => {
 
     await play(page, 'ascent');
     expect(await tapLow()).toBe('unchanged');
+  });
+
+  test('the sensitivity setting reaches the controls, not just the panel', async ({ browser }) => {
+    // A slider that persists a number and changes nothing is worse than no
+    // slider. Same drag, two settings: at twice the sensitivity it has to move
+    // the piece twice as far.
+    const drag = async (sensitivity: number): Promise<number> => {
+      const page = await phone(browser);
+      await page.goto('/');
+      await page.evaluate(
+        (value) =>
+          localStorage.setItem(
+            'refraction.save.v1',
+            JSON.stringify({ stats: {}, records: {}, settings: { touchSensitivity: value } })
+          ),
+        sensitivity
+      );
+      await play(page, 'ascent');
+
+      // Pinned to the middle, so neither setting can reach a wall -- the first
+      // version dragged half the well and clamped at both sensitivities, which
+      // made the two indistinguishable and the test useless.
+      await page.evaluate(() => {
+        const game = window.__refraction?.game;
+        if (!game?.active) throw new Error('no piece');
+        game.active = { ...game.active, u: 3 };
+      });
+      const well = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
+      if (!well) throw new Error('no well');
+      const y = (await stripTop(page)) + 40;
+      const from = well.left + well.width * 0.2;
+      const before = await page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
+
+      await page.evaluate(
+        ({ from, y, distance }) => {
+          const root = document.querySelector('#app');
+          if (!root) throw new Error('no root');
+          const send = (type: string, x: number): void => {
+            root.dispatchEvent(
+              new PointerEvent(type, {
+                pointerId: 1,
+                pointerType: 'touch',
+                isPrimary: true,
+                clientX: x,
+                clientY: y,
+                bubbles: true,
+              })
+            );
+          };
+          send('pointerdown', from);
+          // In steps, so every column threshold is crossed rather than jumped.
+          for (let i = 1; i <= 10; i += 1) send('pointermove', from + (distance * i) / 10);
+          send('pointerup', from + distance);
+        },
+        // A little over one column's travel at the default. One column at
+        // normal sensitivity, two at double, and three clear of the right wall
+        // either way.
+        { from, y, distance: (well.width / 8) * 1.2 }
+      );
+
+      const after = await page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
+      return after - before;
+    };
+
+    const normal = await drag(1);
+    const sensitive = await drag(2);
+    expect(normal).toBeGreaterThan(0);
+    expect(sensitive).toBeGreaterThan(normal);
   });
 
   test('the score panel does not lie across the board', async ({ browser }) => {

@@ -369,6 +369,7 @@ function boot(root: HTMLElement): void {
     // is a rule, and a gesture layer that decided for itself could hide a verb
     // the keyboard still had.
     hasStrip: () => !game.rollOnly,
+    sensitivity: () => save.settings.touchSensitivity,
   });
 
   applyStripReserve();

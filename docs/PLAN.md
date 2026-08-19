@@ -711,13 +711,19 @@ the mechanic unlocks is a better reveal than a gesture nobody discovers.
 
 ### Direct manipulation, not repeated swipes
 
+**Revised in M12c** _(play notes)_. "Drag to place" shipped as an absolute
+mapping — the column under the finger is the column the piece is in — and that is
+what the bullet below asks for. It was wrong in the hand: lifting a thumb and
+putting it down somewhere more comfortable teleported the piece there. Movement
+is relative to the piece now, with an origin set per touch. See DESIGN §9.2.1.
+
 A swipe that moves one column is a keyboard binding wearing a costume: eight
 columns means eight swipes. The piece should **follow the finger** instead.
 
-- **Drag to place.** While a finger is down the piece tracks its column
-  continuously and snaps cell by cell, absolutely — the column under the finger
-  is the column the piece is in, not an accumulated offset. That is the same
-  claim the game already makes about everything else: position is absolute.
+- ~~**Drag to place**, absolutely — the column under the finger is the column the
+  piece is in.~~ **Superseded.** The reasoning was that position is absolute, and
+  it conflated two things: the _board's_ coordinates are absolute, and that says
+  nothing about the hand's. Each touch sets its own origin now.
 - **Double tap to drop.** Hard drop, once the piece is where it should be.
 - **Drag down to soft drop**, so the slow descent is available without a second
   gesture vocabulary.
@@ -725,11 +731,10 @@ columns means eight swipes. The piece should **follow the finger** instead.
 Three things have to be solved for this to feel right, and all three are
 gameplay-affecting rather than cosmetic:
 
-- **The finger covers the board.** A thumb over an 8 × 18 well hides several
-  cells, including — on a low stack — the landing surface and both landing marks
-  the previous milestone just made visible. Some offset between touch point and
-  target column, or a lift of the piece's column indicator above the thumb, has
-  to be designed rather than defaulted.
+- ✅ **The finger covers the board.** Answered by the relative scheme rather than
+  by an offset: the thumb no longer has to be anywhere near the column it is
+  aiming at, or near the well at all, so it can rest wherever it does not block
+  the view. The strip already kept it below the board in modes that have one.
 - **Tap, double tap and drag must not fight.** A double tap is two taps plus a
   window, and holding the hard drop behind that window makes it feel late. The
   usual escape is to treat the second touch-down as the drop rather than waiting

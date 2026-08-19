@@ -15,7 +15,6 @@ import {
   SOFT_DROP_STEP_PX,
   SWIPE_MIN_PX,
   TAP_SLOP_PX,
-  columnAt,
 } from '../../src/touch/gestures';
 import type { TouchIntent, TouchLayout } from '../../src/touch/gestures';
 
@@ -24,6 +23,8 @@ const LAYOUT: TouchLayout = {
   well: { left: 100, top: 0, width: 400, height: 600 },
   stripTop: 600,
   columns: 8,
+  // One column of the well: 400 across 8 columns.
+  pxPerColumn: 50,
 };
 
 const CENTRE = LAYOUT.well.left + LAYOUT.well.width / 2;
@@ -48,19 +49,6 @@ function play(
   return out;
 }
 
-describe('where a pointer is', () => {
-  it('maps a position across the well to a column', () => {
-    expect(columnAt(LAYOUT, 100)).toBe(0);
-    expect(columnAt(LAYOUT, 499)).toBe(7);
-    expect(columnAt(LAYOUT, 300)).toBe(4);
-  });
-
-  it('clamps outside the well rather than running off the board', () => {
-    expect(columnAt(LAYOUT, -500)).toBe(0);
-    expect(columnAt(LAYOUT, 5000)).toBe(7);
-  });
-});
-
 describe('the movement strip', () => {
   it('says nothing on touch down', () => {
     // A press is not a verb. Landing on the strip must not jump the piece
@@ -69,18 +57,94 @@ describe('the movement strip', () => {
     expect(recogniser.begin({ x: 300, y: 640, t: 0 }, LAYOUT)).toEqual([]);
   });
 
-  it('moves the piece to the column under the finger, absolutely', () => {
-    // Absolute, not accumulated: the column under the finger is the column the
-    // piece is in. Starting at column 4 and ending at column 1 must ask for
-    // column 1, not for three steps left.
+  it('moves the piece by how far the finger travelled, not to where it is', () => {
+    // The whole change. A drag of 140px at 50px per column is three columns
+    // left, whatever part of the screen it happened over -- the recogniser does
+    // not know or care which column the finger is above.
     const intents = play([
       [300, 640, 0],
       [160, 640, 40],
-      [155, 640, 80],
     ]);
-    const columns = intents.filter((i) => i.kind === 'column');
-    expect(columns.length).toBeGreaterThan(0);
-    expect(columns[columns.length - 1]).toEqual({ kind: 'column', column: 1 });
+    const steps = intents.filter((i) => i.kind === 'columnStep');
+    expect(steps.reduce((total, i) => total + (i as { steps: number }).steps, 0)).toBe(-3);
+  });
+
+  it('reports each change once, rather than the running total every sample', () => {
+    // Emitting the total each time would step the piece by the total each time,
+    // so a smooth drag would accelerate away from the finger.
+    const intents = play([
+      [300, 640, 0],
+      [250, 640, 40],
+      [200, 640, 80],
+      [150, 640, 120],
+    ]);
+    const steps = intents
+      .filter((i) => i.kind === 'columnStep')
+      .map((i) => (i as { steps: number }).steps);
+    expect(steps).toEqual([-1, -1, -1]);
+  });
+
+  it('starts from wherever the finger lands, so the same drag means the same thing', () => {
+    // Two drags of identical shape, a long way apart on screen. Under the old
+    // absolute mapping these asked for different columns; now they must ask for
+    // the same movement, which is what lets a player lift and re-place a thumb.
+    const near = play([
+      [140, 640, 0],
+      [240, 640, 60],
+    ]);
+    const far = play([
+      [420, 640, 0],
+      [520, 640, 60],
+    ]);
+    const total = (intents: TouchIntent[]): number =>
+      intents
+        .filter((i) => i.kind === 'columnStep')
+        .reduce((sum, i) => sum + (i as { steps: number }).steps, 0);
+    expect(total(near)).toBe(2);
+    expect(total(far)).toBe(2);
+  });
+
+  it('says nothing when the finger is put down somewhere new', () => {
+    // Lifting and re-placing is the gesture this exists for. Touching down must
+    // emit nothing at all, however far the new point is from the old one.
+    const recogniser = new GestureRecogniser();
+    recogniser.begin({ x: 140, y: 640, t: 0 }, LAYOUT);
+    recogniser.move({ x: 240, y: 640, t: 50 }, LAYOUT);
+    recogniser.end({ x: 240, y: 640, t: 60 }, LAYOUT);
+    expect(recogniser.begin({ x: 700, y: 640, t: 200 }, LAYOUT)).toEqual([]);
+  });
+
+  it('reverses immediately, however far the finger overshot', () => {
+    // This is what makes a wall harmless without any special handling. A finger
+    // dragged well past the edge of the board emits its steps as it goes; the
+    // piece takes what it can and the rest are dropped. Coming back one column
+    // emits exactly one step the other way, with no debt to work off first.
+    //
+    // An explicit re-anchor was written for this and turned out to be dead code:
+    // it is the *delta* that makes it true, and reporting a running target is
+    // the only thing that would break it.
+    const recogniser = new GestureRecogniser();
+    recogniser.begin({ x: 500, y: 640, t: 0 }, LAYOUT);
+    recogniser.move({ x: 100, y: 640, t: 40 }, LAYOUT);
+    const back = recogniser.move({ x: 150, y: 640, t: 80 }, LAYOUT);
+    expect(back).toContainEqual({ kind: 'columnStep', steps: 1 });
+  });
+
+  it('scales with the travel distance the layout asks for', () => {
+    // The sensitivity setting reaches the recogniser as `pxPerColumn` and
+    // nothing else, so this is the whole of its behaviour.
+    const twiceAsSensitive: TouchLayout = { ...LAYOUT, pxPerColumn: 25 };
+    const intents = play(
+      [
+        [300, 640, 0],
+        [200, 640, 40],
+      ],
+      twiceAsSensitive
+    );
+    const steps = intents
+      .filter((i) => i.kind === 'columnStep')
+      .reduce((sum, i) => sum + (i as { steps: number }).steps, 0);
+    expect(steps).toBe(-4);
   });
 
   it('ignores a movement too small to be meant', () => {
@@ -88,7 +152,7 @@ describe('the movement strip', () => {
       [300, 640, 0],
       [300 + TAP_SLOP_PX - 2, 640, 30],
     ]);
-    expect(intents.filter((i) => i.kind === 'column')).toHaveLength(0);
+    expect(intents.filter((i) => i.kind === 'columnStep')).toHaveLength(0);
   });
 
   it('soft drops a step at a time as the finger travels down', () => {
@@ -194,7 +258,7 @@ describe('the field above the strip', () => {
       [300, 300, 0],
       [460, 300, 120],
     ]);
-    expect(intents.some((i) => i.kind === 'column')).toBe(false);
+    expect(intents.some((i) => i.kind === 'columnStep')).toBe(false);
   });
 
   it('ignores a tap that is really a slow rest of the thumb', () => {
@@ -243,7 +307,7 @@ describe('a mode with no strip', () => {
       ],
       NO_STRIP
     );
-    const columns = intents.filter((intent) => intent.kind === 'column');
+    const columns = intents.filter((intent) => intent.kind === 'columnStep');
     expect(columns.length).toBeGreaterThan(0);
     expect(intents.some((intent) => intent.kind === 'rotate')).toBe(false);
   });
