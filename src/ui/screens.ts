@@ -422,13 +422,6 @@ export class Screens {
         () => this.save.settings.bloom,
         (on) => this.handlers.onSettings({ bloom: on })
       ),
-      toggleRow(
-        'showGhost',
-        'Ghost piece',
-        'Shows where the piece will land',
-        () => this.save.settings.showGhost,
-        (on) => this.handlers.onSettings({ showGhost: on })
-      ),
     ];
     for (const row of rows) {
       fields.append(row.root);
@@ -448,11 +441,7 @@ export class Screens {
     );
     const volumeRow = element('label', 'field');
     volumeRow.dataset['field'] = 'volume';
-    volumeRow.append(
-      volume,
-      element('span', 'field__label', 'Volume'),
-      element('span', 'field__hint', 'Master level, kept separately from mute')
-    );
+    volumeRow.append(volume, element('span', 'field__label', 'Volume'));
     fields.append(volumeRow);
     this.syncers.push(() => {
       volume.value = String(Math.round(this.save.settings.volume * 100));
@@ -535,7 +524,16 @@ export class Screens {
     this.root.hidden = name === 'playing';
     this.root.dataset['screen'] = name;
     this.sync();
-    const focusable = this.panels.get(name)?.querySelector('button:not(:disabled)');
+    // The mode grid opens on the mode you last played, not on whichever card
+    // happens to be first in the table. For a new save that is the default mode,
+    // which is what makes "the default mode" mean anything on screen rather than
+    // only in storage; for anyone else it is where they left off.
+    const preferred =
+      name === 'modes' ? this.modeCards.get(this.save.lastMode as ModeId) : undefined;
+    const focusable =
+      preferred && !preferred.disabled
+        ? preferred
+        : this.panels.get(name)?.querySelector('button:not(:disabled)');
     if (focusable instanceof HTMLElement) focusable.focus();
   }
 

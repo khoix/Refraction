@@ -2093,3 +2093,103 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('.keymap--touch')).toBeHidden();
   });
 });
+
+/**
+ * Interface corrections from the play notes.
+ *
+ * Small, unrelated to each other, and grouped only because they are all things
+ * the interface was getting wrong.
+ */
+test.describe('interface corrections', () => {
+  test('no HUD element paints over a panel', async ({ page }) => {
+    // The Shift meter carries a stacking context so it clears the board's
+    // chrome, and with nothing answering it on `.screens` the meter sat on top
+    // of every panel — the title screen included, which is the first thing
+    // anyone sees.
+    //
+    // Measured in pixels, not by hit-testing and not by reading z-index. Hit
+    // testing cannot see this at all: the HUD is `pointer-events: none`, so
+    // `elementFromPoint` skips it and reports the panel underneath whichever way
+    // round the two are stacked — a check that passed just as happily with the
+    // bug reinstated. Reading z-index would pin one implementation of the fix
+    // rather than the thing that matters.
+    //
+    // So: the meter's own rectangle, with a panel open and without. The panel's
+    // backdrop is 86% opaque, so if it is genuinely on top the meter's chrome
+    // has to lose most of its brightness behind it.
+    await page.goto('/?debug=1&mode=ascent&seed=stacking');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const box = await page.locator('.hud__shift').boundingBox();
+    if (!box) throw new Error('no Shift meter');
+
+    const brightness = async (): Promise<number> => {
+      const shot = await page.screenshot({ clip: box });
+      return page.evaluate(
+        async (bytes) => {
+          const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
+          const bitmap = await createImageBitmap(blob);
+          const canvas = document.createElement('canvas');
+          canvas.width = bitmap.width;
+          canvas.height = bitmap.height;
+          const context = canvas.getContext('2d');
+          if (!context) throw new Error('no 2d context');
+          context.drawImage(bitmap, 0, 0);
+          const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+          let sum = 0;
+          for (let i = 0; i < data.length; i += 4) {
+            sum +=
+              0.2126 * (data[i] as number) +
+              0.7152 * (data[i + 1] as number) +
+              0.0722 * (data[i + 2] as number);
+          }
+          return sum / (data.length / 4);
+        },
+        [...shot]
+      );
+    };
+
+    const uncovered = await brightness();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.panel[data-screen="paused"]')).toBeVisible();
+    const covered = await brightness();
+
+    expect(covered).toBeLessThan(uncovered * 0.6);
+  });
+
+  test('the ghost piece is not something a player can switch off', async ({ page }) => {
+    // It is not a preference, it is how the board is read — every landing-mark
+    // decision assumes it is there. A toggle invites a player to turn off the
+    // thing that makes depth legible and then conclude the game is unfair.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    await expect(page.locator('.field[data-field="showGhost"]')).toHaveCount(0);
+    // And it is gone from the saved settings, not merely hidden from the panel.
+    const saved = await page.evaluate(() => JSON.stringify(window.__refraction?.save() ?? {}));
+    expect(saved).not.toContain('showGhost');
+  });
+
+  test('volume is labelled and left alone', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+
+    const row = page.locator('.field[data-field="volume"]');
+    await expect(row.locator('.field__label')).toHaveText('Volume');
+    await expect(row.locator('.field__hint')).toHaveCount(0);
+  });
+
+  test('a new player lands in Flatland', async ({ page }) => {
+    // Planar pieces only, so depth is purely a property of where a piece is put
+    // rather than of its own shape.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await page.keyboard.press('Enter');
+
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.game.mode.id))
+      .toBe('flatland');
+  });
+});

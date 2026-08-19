@@ -145,6 +145,7 @@ body {
   gap: 0.35rem;
   pointer-events: none;
   padding: 0.4rem 0.5rem 0.5rem;
+  /* Layer 1: over the board, under the panels. See `.screens`. */
   z-index: 1;
 }
 
@@ -426,6 +427,21 @@ body {
 .screens {
   position: absolute;
   inset: 0;
+  /*
+   * Above the HUD. The Shift meter carries a stacking context of its own so it
+   * clears the board's chrome, and with nothing here to answer it the meter sat
+   * on top of every panel -- the title screen included, which is the first thing
+   * anyone sees. Painting order for this app, in one place so the next addition
+   * has somewhere to slot into rather than a number to guess at:
+   *
+   *   0  the board                   `.stage`, the canvas
+   *   1  the HUD over the board      `.hud__shift` and anything like it
+   *   2  panels over everything      `.screens`
+   *
+   * This is the second cascade bug in two milestones. Both were a rule that was
+   * right on its own and wrong beside a rule written later.
+   */
+  z-index: 2;
   display: grid;
   place-items: center;
   /*

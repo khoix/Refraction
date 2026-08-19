@@ -27,7 +27,7 @@ import { HARD_DROP_PER_CELL, SOFT_DROP_PER_CELL, clearLabel, scoreClear } from '
 import type { StageConfig } from './stages';
 import { LINES_PER_STAGE, stageForLines } from './stages';
 import type { ModeConfig } from './modes';
-import { modeById, modeGravity, modeStage } from './modes';
+import { AUTHORED_MODE_ID, modeById, modeGravity, modeStage } from './modes';
 import type { Cell, Face, TurnDirection } from './types';
 
 export type GameStatus =
@@ -161,7 +161,7 @@ export class Game {
 
   constructor(options: GameOptions) {
     this.options = options;
-    this.mode = options.mode ?? modeById(null);
+    this.mode = options.mode ?? modeById(AUTHORED_MODE_ID);
     this.rng = createRng(options.seed);
     this.dealer = new Dealer(this.rng, this.stage.maxTier, options.catalog ?? 'standard');
     for (let i = 0; i < 3; i += 1) this.queue.push(this.dealer.deal());

@@ -83,6 +83,16 @@ export interface RenderPreferences {
   readonly reducedMotion: boolean;
   readonly screenShake: boolean;
   readonly bloom: boolean;
+  /**
+   * Draw the landing marks.
+   *
+   * A renderer flag, **not a player setting**. It was one, and it should not
+   * have been: the ghost is not a preference, it is how the board is read, and
+   * every landing-mark decision assumes it is there. A toggle invites a player
+   * to switch off the thing that makes depth legible and then conclude the game
+   * is unfair. It survives here because the end-to-end suite turns the marks off
+   * to measure the cubes underneath them on their own.
+   */
   readonly showGhost: boolean;
   /** False in Blind Spectrum: cubes are drawn in one neutral fill. */
   readonly depthColour: boolean;

@@ -1,6 +1,6 @@
 # Refraction — Build Plan
 
-Sixteen milestones. Each one is a self-contained push: source, tests, and a
+Seventeen milestones. Each one is a self-contained push: source, tests, and a
 `release_notes.md` entry. Every milestone leaves `main` in a state that builds,
 passes `npm run verify:full`, and can be played or inspected.
 
@@ -444,26 +444,26 @@ controls with swipe and tap", "responsive layout from 390 px to ultrawide" — a
 they are neither one line of work nor an accessibility footnote. They are their
 own milestone now; see M12.
 
-### Interface corrections — M11b _(play notes)_
+### Interface corrections — M11b ✅ _(play notes)_
 
 Four small ones, unrelated to each other except that they are all interface.
 
-- **The Shift bar paints over every menu.** `.hud__shift` carries `z-index: 1`
+- ✅ **The Shift bar paints over every menu.** `.hud__shift` carries `z-index: 1`
   and `.screens` carries none, so the meter sits above the title screen, the
   mode grid, settings, pause and game over alike. It is purely visual — the HUD
   is `pointer-events: none` — but it is on screen at all times including the
   front door. A live bug on every device, so it goes first rather than waiting
   for the rest of this group.
-- **The ghost piece stops being a setting.** It is not a preference, it is how
+- ✅ **The ghost piece stops being a setting.** It is not a preference, it is how
   the game is read: everything the last three milestones did to the landing
   marks assumed it is there. A toggle invites a player to turn off the thing
   that makes depth legible and then conclude the game is unfair. Removing a
   setting from the accessibility milestone is worth stating plainly — the case
   for it is that the ghost is a _comprehension_ aid, and the modes that want it
   gone (Blind Spectrum) already say so in their own configuration.
-- **Volume loses its description.** "Master level, kept separately from mute"
+- ✅ **Volume loses its description.** "Master level, kept separately from mute"
   explains a distinction nobody asked about. Everyone knows what volume is.
-- **Flatland becomes the default mode.** `DEFAULT_MODE_ID` is `ascent` today.
+- ✅ **Flatland becomes the default mode.** `DEFAULT_MODE_ID` is `ascent` today.
   Flatland deals planar pieces only, so depth is purely a property of where a
   piece is put rather than of its own shape — which is the gentlest possible
   first contact with the one idea the whole game rests on. It is already
@@ -471,7 +471,16 @@ Four small ones, unrelated to each other except that they are all interface.
 
   Pairs with the rotation-axis change in M12. As the default and the first thing
   anyone sees, Flatland is roll-only with no depth nudge, so a new player meets
-  exactly one new idea — the board turning — rather than four at once.
+  exactly one new idea — the board turning — rather than four at once. **That
+  half is still M12's**; what shipped here is the default itself, so a new player
+  currently gets flat pieces but all three rotation axes.
+
+  Two things had to move with it. The mode grid opens on the last-played mode
+  rather than on whichever card is first in the table, which is what makes a
+  default mean anything on screen rather than only in storage. And the engine's
+  own fallback split off as `AUTHORED_MODE_ID`: `new Game({ seed })` means "the
+  authored arc", and it had been reading the player-facing constant, so moving
+  that constant quietly turned every mode-less test game into a tier-capped one.
 
 ### Remapping, and the WASD cluster — M11c _(play notes)_
 
@@ -811,7 +820,95 @@ nothing else, and the colour-fidelity tests still pass unchanged.
 
 ---
 
-## M15 — Performance and Release Candidate
+## M15 — Full Shift
+
+**Goal:** a mode that inverts the turn economy — you buy turns instead of earning
+them.
+
+**Flatland's rules, with the turn set free.** Planar pieces only, roll the sole
+rotation, no depth nudge — and on top of that, **`A` and `D` turn the board left
+or right at any moment, each turn costing one line off the total.**
+
+That is a real inversion rather than a variation. The existing loop is _place →
+anticipate → rotate → reveal_, with the rotation arriving on the game's schedule
+and the skill being preparation. Here the rotation arrives on the player's
+schedule and the skill is knowing when a turn is worth what it costs — a line
+spent to reveal a line, or two, or nothing.
+
+Building it on Flatland is what makes it legible rather than merely permissive.
+In Flatland the piece never leaves the screen plane, so depth is purely a
+property of _where you put things_ — and the board turning is the only
+three-dimensional idea in the mode. Handing the player that one lever, and
+charging for it, gives them direct control of the single thing Flatland is about.
+It is the natural next mode after the one a new player starts in, and a candidate
+for an unlock earned there rather than an option offered from the first screen.
+
+### What it costs, and what that touches
+
+`lines` is not just a score. It drives stage progression and gravity through
+`modeStage` and `modeGravity`, and it feeds the Shift meter. Subtracting from it
+naively would let a player **buy their way back down the difficulty curve**: turn
+often enough and the stage never climbs, gravity never accelerates, and the arc
+the game is built on is opted out of.
+
+**Recommendation: split earned from spendable.** Progression counts lines _ever
+cleared_ and only ever goes up; the HUD's LINES readout shows the balance, earned
+minus spent, which is what the player is actually deciding with. The note says
+the cost comes off the total, and it does — off the total they can see and spend,
+not off the record of how far they have come.
+
+The alternative is to let the cost reach progression as well, so turning is a
+brake on difficulty as much as a tool. That is a more interesting mode and a
+harder one to keep honest, and it should be a deliberate choice rather than a
+side effect of subtraction.
+
+### The rest of the shape
+
+- **The Shift meter has nothing to do here** and should go, not sit at zero. The
+  HUD gains a price instead: what a turn costs, and whether one is affordable.
+- **Nothing at zero.** A player with no lines cannot turn. That is the whole
+  tension, and it wants to be legible before the last line is spent rather than
+  discovered at it.
+- **Refraction and Prism still pay.** Turning is what makes a line eligible, so
+  the chain scoring is the reward the cost is measured against. `refractionScale`
+  already exists to tune that balance without touching the engine.
+- **`linesPerTurn` changes meaning** from a threshold to a price. Worth a
+  distinct field rather than reusing one whose name would then lie.
+- **Inherits from Flatland**, so `maxTier: 1` and `startStage: 2` come with it,
+  along with the roll-only and no-nudge fields M12 adds. The "no two modes with
+  identical rules" test is satisfied by the turn economy alone, which is exactly
+  the difference the mode exists for.
+- **The name is Full Shift.** It uses the game's own word for turning the board,
+  which is what the mode is about: the Shift is no longer rationed by a meter.
+
+  One adjacency to keep an eye on. `Full Spectrum` is already the banner for a
+  Prism event — a four-face chain, the game's biggest scoring moment — so two
+  `Full` two-word phrases now sit in the same vocabulary, one a mode and one an
+  event. They are different enough in context that this is a note rather than an
+  objection, but if the mode's banner and the event's banner ever share a screen
+  they should not be set alike.
+
+### The binding resolves itself
+
+M11c gives `A` and `D` to yaw, which looked like a conflict: a key meaning "yaw
+the piece" in most modes and "turn the board" in this one is the mode-dependent
+meaning M11c argued against.
+
+Inheriting Flatland's rules settles it without a special case. Roll is the only
+rotation there and the depth nudge never unlocks, so `A`, `D`, `W` and `S` are
+**unbound in this mode already**. `A` and `D` are free to take the turn, and they
+take it in the shape the game has always used them for: left and right choosing
+which face comes forward, exactly as they do at the turn prompt everywhere else.
+The key does not change meaning — it stops being conditional on the meter.
+
+**Exit criteria:** a run in which the player turns the board when they choose,
+can see what it costs before they commit, and can be caught out by spending their
+last line. Pieces stay planar throughout, the stage arc climbs at the same rate
+it does everywhere else, and a player who never turns has played Flatland.
+
+---
+
+## M16 — Performance and Release Candidate
 
 **Goal:** ship quality.
 

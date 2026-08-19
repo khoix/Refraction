@@ -7,6 +7,78 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M11b — Interface corrections
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Four small ones from the play notes, unrelated except that they are all things
+the interface was getting wrong.
+
+### The Shift bar was painting over every menu
+
+`.hud__shift` carries `z-index: 1` so the meter clears the board's chrome, and
+`.screens` carried nothing to answer it — so the meter sat on top of the title
+screen, the mode grid, settings, pause and game over alike. Purely visual, since
+the HUD is `pointer-events: none`, but it was on screen at the front door.
+
+Fixed by declaring the painting order in one place rather than patching a number,
+since this was the second cascade bug in two milestones and both were a rule that
+was right alone and wrong beside one written later.
+
+### The ghost piece stops being a setting
+
+It is not a preference, it is how the board is read: every landing-mark decision
+of the last three milestones assumed it is there. A toggle invites a player to
+switch off the thing that makes depth legible and then conclude the game is
+unfair. Gone from the settings panel and from the save schema. It survives as a
+renderer flag, because the end-to-end suite turns the marks off to measure the
+cubes underneath them on their own — and that is a different thing from offering
+it to a player.
+
+### Volume loses its description
+
+"Master level, kept separately from mute" explained a distinction nobody asked
+about.
+
+### Flatland is the default mode
+
+Planar pieces only, so depth is purely a property of where a piece is put rather
+than of its own shape — the gentlest first contact with the idea the game rests
+on, and it was already unlocked so nothing else had to move. Roll-only is still
+M12's half; for now a new player gets flat pieces but all three rotation axes.
+
+Two things had to move with it, and the second was a genuine latent bug.
+
+**The mode grid opens on the last-played mode** rather than on whichever card is
+first in the table. Without that, "the default mode" meant something in storage
+and nothing on screen: the grid still focused Ascent, so pressing Play and Enter
+still started Ascent. It is better behaviour for a returning player too.
+
+**The engine's default split off from the player's.** `new Game({ seed })` was
+resolving its mode through `DEFAULT_MODE_ID`, and its own doc comment said
+"defaults to Ascent, the authored arc" — true until the player-facing default
+moved, at which point every mode-less game in the test suite quietly became a
+tier-capped one starting at stage 2. Two tests failed and were right to. They are
+now two constants: `AUTHORED_MODE_ID` is the reference ruleset the engine falls
+back to, `DEFAULT_MODE_ID` is what a player is handed first. A test that asserted
+"defaults to Ascent" while comparing against whichever constant was handy has
+been split the same way.
+
+### Tested
+
+**322 unit tests, 90 end-to-end tests.** Typecheck and lint clean. Four new
+browser tests, each confirmed to fail when its behaviour is reverted.
+
+One of those four was **passing for the wrong reason** and had to be rewritten.
+The stacking test used `document.elementFromPoint` to ask what was on top at the
+meter's position — but the HUD is `pointer-events: none`, so hit-testing skips it
+entirely and reports the panel underneath _whichever way round the two are
+stacked_. It passed just as happily with the bug reinstated. It measures pixels
+now: the meter's own rectangle, with a panel open and without, and the 86%-opaque
+backdrop has to take most of its brightness away.
+
+---
+
 ## M12a — Touch controls
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

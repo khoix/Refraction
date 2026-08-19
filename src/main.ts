@@ -150,7 +150,6 @@ function boot(root: HTMLElement): void {
       reducedMotion: settings.reducedMotion,
       screenShake: settings.screenShake,
       bloom: settings.bloom,
-      showGhost: settings.showGhost,
       depthColour: mode.depthColour,
     });
     audio.setMuted(settings.muted);
