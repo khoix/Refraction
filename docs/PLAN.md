@@ -820,7 +820,7 @@ nothing else, and the colour-fidelity tests still pass unchanged.
 
 ---
 
-## M15 — Turning on Demand
+## M15 — Full Shift
 
 **Goal:** a mode that inverts the turn economy — you buy turns instead of earning
 them.
@@ -878,9 +878,15 @@ side effect of subtraction.
   along with the roll-only and no-nudge fields M12 adds. The "no two modes with
   identical rules" test is satisfied by the turn economy alone, which is exactly
   the difference the mode exists for.
-- **The mode still needs a name.** The modes are Ascent, Endless, Prism,
-  Flatland, Blind Spectrum and Zen — each says something about what it is. This
-  one is Flatland with the reveal for sale.
+- **The name is Full Shift.** It uses the game's own word for turning the board,
+  which is what the mode is about: the Shift is no longer rationed by a meter.
+
+  One adjacency to keep an eye on. `Full Spectrum` is already the banner for a
+  Prism event — a four-face chain, the game's biggest scoring moment — so two
+  `Full` two-word phrases now sit in the same vocabulary, one a mode and one an
+  event. They are different enough in context that this is a note rather than an
+  objection, but if the mode's banner and the event's banner ever share a screen
+  they should not be set alike.
 
 ### The binding resolves itself
 
