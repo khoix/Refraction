@@ -828,6 +828,29 @@ respectively. `EdgeLayer` already collapses the region to one depth per screen
 cell for that reason, so this makes the fill agree with the border drawn around
 it.
 
+### 2.4.1 A flat plane has no thickness when the board is dead-on
+
+The room's floor lattice is a horizontal grid, and it is drawn only while the
+board turns.
+
+Not for the reason it sounds like. A ground plane _is_ a spatial cue and §2.1
+would rule it out of the still frame on those grounds alone -- but the reason it
+had to change is simpler and was visible on screen: a horizontal plane viewed
+from zero elevation is **edge-on**, so every line in it projects onto the same
+row of pixels. The room's backdrop blends additively, so eighteen lines at 0.085
+summed past 1 and clipped. What the player got was not a grid, it was a hard
+white rule across the bottom of the screen, measured at luminance 194 against a
+room that reads under 30.
+
+Holding Peek is what identified it: eight degrees of elevation dropped the peak
+to 35 and spread it across a hundred rows, which is a grid.
+
+The general rule this is an instance of: **anything in the room that lies flat in
+the ground plane disappears into a line when the board is settled, and has to
+fade with `flatness` the way the well's corner posts do.** Everything else in the
+room -- dust, the wireframe fragments, the light shafts, the clear ripples --
+stands up in the frame and is unaffected.
+
 ### 9.2 The touch split, and when there isn't one
 
 A narrow strip along the bottom of the window moves the piece; everything above

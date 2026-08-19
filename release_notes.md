@@ -7,6 +7,37 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Fix — the white line across the bottom of the screen
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Reported in play: a solid white line along the bottom, in Flatland and every
+other mode. It had been there a while and I had seen it in my own captures
+without registering it.
+
+It was the room's floor lattice. A horizontal plane viewed from zero elevation is
+edge-on, so every line in the grid projects onto the same row of pixels; the
+backdrop blends additively, so eighteen lines at 0.085 summed past 1 and clipped
+to white. Measured at luminance 194 against a room that otherwise reads under 30.
+
+Holding Peek identified it without touching any code: eight degrees of elevation
+dropped the peak to 35 and spread it over a hundred rows, which is a grid.
+
+The lattice now fades with `flatness`, exactly as the well's corner posts already
+do -- absent when the board is settled, arriving as the camera lifts into the
+turn. That is also the right answer on the design's own terms: a ground plane is
+a spatial cue, and §2.1 keeps those out of the still frame.
+
+Guarded by a test that measures a **local spike** -- one row far brighter than
+the rows either side -- rather than overall brightness, since that is what a line
+is and the room's own gradients score near zero by it. The bug reads 123 by that
+measure against a threshold of 40; sabotage-verified.
+
+The general rule is written up as DESIGN §2.4.1: anything in the room lying flat
+in the ground plane collapses to a line when the board is dead-on.
+
+---
+
 ## M12c — Touch moves the piece, not to a column
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

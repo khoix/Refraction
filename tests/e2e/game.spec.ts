@@ -1052,6 +1052,59 @@ test.describe('the room', () => {
     await page.waitForTimeout(400);
   }
 
+  test('draws no hard line across the frame when the board is settled', async ({ page }) => {
+    // The floor lattice is a horizontal plane, and a horizontal plane viewed
+    // from zero elevation is edge-on: every line in it lands on the same row of
+    // pixels. Under additive blending eighteen of them at 0.085 sum past 1 and
+    // clip, so what reached the screen was not a grid but a hard white rule
+    // across the bottom -- luminance 194 against a room that reads under 30.
+    //
+    // Measured as a local spike rather than as overall brightness, because that
+    // is what a line is: one row far brighter than the rows either side of it.
+    // The room's own gradients move slowly and score near zero here.
+    await busyBoard(page);
+    const spike = await page.evaluate(() => {
+      const source = document.querySelector('canvas.stage') as HTMLCanvasElement;
+      const scratch = document.createElement('canvas');
+      scratch.width = source.width;
+      scratch.height = source.height;
+      const context = scratch.getContext('2d');
+      if (!context) throw new Error('no 2d context');
+      context.drawImage(source, 0, 0);
+      const { data } = context.getImageData(0, 0, scratch.width, scratch.height);
+
+      const rowMean = (y: number): number => {
+        let sum = 0;
+        let n = 0;
+        for (let x = 0; x < scratch.width; x += 4) {
+          const i = (y * scratch.width + x) * 4;
+          sum +=
+            0.2126 * (data[i] as number) +
+            0.7152 * (data[i + 1] as number) +
+            0.0722 * (data[i + 2] as number);
+          n += 1;
+        }
+        return sum / Math.max(1, n);
+      };
+
+      const means: number[] = [];
+      for (let y = 0; y < scratch.height; y += 1) means.push(rowMean(y));
+
+      // Each row against the rows three away on both sides, so a genuine hard
+      // line stands out and a smooth gradient does not.
+      let worst = 0;
+      for (let y = 3; y < means.length - 3; y += 1) {
+        const around = ((means[y - 3] as number) + (means[y + 3] as number)) / 2;
+        worst = Math.max(worst, (means[y] as number) - around);
+      }
+      return worst;
+    });
+
+    // The bug measured about 174 by this reading; the room without it scores a
+    // handful of levels.
+    expect(spike).toBeLessThan(40);
+  });
+
   test('is achromatic — no hue anywhere outside the board', async ({ page }) => {
     await busyBoard(page);
     const { roomSaturation } = await roomAndBoard(page);
