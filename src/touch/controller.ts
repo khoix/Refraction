@@ -58,6 +58,11 @@ export interface TouchHandlers {
    * controller outlives it.
    */
   readonly hasStrip: () => boolean;
+  /**
+   * The player's touch sensitivity, as a multiplier on how far a drag has to
+   * travel. Read per gesture, so changing it in settings takes effect at once.
+   */
+  readonly sensitivity: () => number;
 }
 
 export class TouchController {
@@ -104,7 +109,25 @@ export class TouchController {
     // gets no strip at all: drag anywhere to move, tap anywhere to roll. See
     // `TouchLayout.stripTop`.
     const stripTop = this.handlers.hasStrip() ? stripTopPx(window.innerHeight) : null;
-    return { well, stripTop, columns: 8 };
+    const columns = 8;
+    /*
+     * One column of travel is one column of the well, divided by the player's
+     * sensitivity.
+     *
+     * The well's own column width is the honest default: a drag the width of one
+     * cube moves the piece one cube, so the piece keeps pace with the thumb even
+     * though it is no longer tied to where the thumb is. It is a setting because
+     * the right distance depends on the hand and the phone -- a comfortable
+     * thumb arc on a small screen is four columns at 1:1 and the whole board at
+     * twice that.
+     */
+    const sensitivity = Math.max(0.1, this.handlers.sensitivity());
+    return {
+      well,
+      stripTop,
+      columns,
+      pxPerColumn: Math.max(1, well.width / columns / sensitivity),
+    };
   }
 
   private sample(event: PointerEvent): Sample {
@@ -142,9 +165,12 @@ export class TouchController {
     // a keyboard, where Left and Right do double duty in exactly this state.
     if (game.status === 'awaitingTurn') {
       for (const intent of intents) {
-        if (intent.kind !== 'column') continue;
-        const middle = this.layout().columns / 2;
-        this.handlers.onTurn(intent.column < middle ? 'left' : 'right');
+        if (intent.kind !== 'columnStep' || intent.steps === 0) continue;
+        // The drag's *direction*, not the column it landed on. A column was
+        // meaningful while movement was absolute; with a relative scheme the
+        // number says how far the finger moved, and its sign says which way --
+        // which is the more natural reading of this gesture anyway.
+        this.handlers.onTurn(intent.steps < 0 ? 'left' : 'right');
         return;
       }
       return;
@@ -152,8 +178,8 @@ export class TouchController {
 
     for (const intent of intents) {
       switch (intent.kind) {
-        case 'column':
-          this.moveToColumn(intent.column);
+        case 'columnStep':
+          this.step(intent.steps);
           break;
         case 'softDrop':
           game.softDrop();
@@ -169,31 +195,31 @@ export class TouchController {
   }
 
   /**
-   * Walk the piece to the column under the finger.
+   * Step the piece sideways, one column at a time.
    *
-   * Absolute rather than accumulated, which is the whole point of dragging: the
-   * column under the finger is the column the piece is in, not a running total
-   * of how far the finger has travelled. It is also the claim the game already
-   * makes about everything else -- position is absolute.
+   * One at a time rather than by assignment, because each step goes through the
+   * engine's collision check -- a drag across a wall stops at the wall instead of
+   * tunnelling through it.
    *
-   * The piece is centred on the target rather than aligned by its left edge, so
-   * a wide piece sits under the thumb instead of beside it.
+   * **A refused step is simply dropped, and that is enough.** Pressing into a
+   * wall does not build a debt the player has to work off before the piece comes
+   * back, because the recogniser reports the *change* since the last sample
+   * rather than a running target: a finger held against the wall emits nothing,
+   * and the first sample that moves the other way emits one step the other way.
+   *
+   * That was not obvious, and an explicit re-anchor was written here first, on
+   * the reasoning that travel spent against a wall would otherwise be banked. It
+   * would be -- under an absolute target. Under deltas it never accumulates, and
+   * the test written to prove the re-anchor necessary passed just as well with
+   * it removed, which is what showed it was doing nothing.
    */
-  private moveToColumn(column: number): void {
+  private step(steps: number): void {
     const game = this.game();
-    const piece = game.active;
-    if (!piece || game.status !== 'falling') return;
+    if (!game.active || game.status !== 'falling' || steps === 0) return;
 
-    const spans = piece.offsets.map((offset) => offset.x);
-    const width = Math.max(...spans) - Math.min(...spans) + 1;
-    const target = column - Math.floor((width - 1) / 2);
-
-    // Step rather than assign: each step goes through the collision check, so a
-    // drag across a wall stops at the wall instead of tunnelling through it.
-    for (let guard = 0; guard < 16; guard += 1) {
-      const current = game.active?.u;
-      if (current === undefined || current === target) return;
-      if (!game.moveHorizontal(current < target ? 1 : -1)) return;
+    const direction = steps > 0 ? 1 : -1;
+    for (let i = 0; i < Math.abs(steps); i += 1) {
+      if (!game.moveHorizontal(direction)) return;
     }
   }
 }

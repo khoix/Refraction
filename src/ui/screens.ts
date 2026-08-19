@@ -13,6 +13,7 @@ import { DEFAULT_MODE_ID, MODES, isUnlocked, modeById } from '@core/modes';
 import type { ModeConfig, ModeId } from '@core/modes';
 import { dailyChallenge, parseChallenge } from '@core/challenge';
 import type { Challenge } from '@core/challenge';
+import { TOUCH_SENSITIVITY_MAX, TOUCH_SENSITIVITY_MIN } from '@core/save';
 import type { SaveData, Settings } from '@core/save';
 import {
   BINDINGS,
@@ -476,6 +477,37 @@ export class Screens {
     volumeRow.dataset['field'] = 'volume';
     volumeRow.append(volume, element('span', 'field__label', 'Volume'));
     fields.append(volumeRow);
+
+    /*
+     * Touch sensitivity: how far a drag travels to move the piece one column.
+     *
+     * Shown wherever the device *has* touch at all -- `any-pointer: coarse`,
+     * which a touchscreen laptop matches and a mouse-only desktop does not. The
+     * controls panels swap on `pointer: coarse`, the stricter test for "touch is
+     * the only way in", and that is right for choosing which of two panels to
+     * show. It would be wrong here: hiding a setting a player can actually use
+     * is not tidying, it is making it unreachable.
+     */
+    const sensitivity = element('input');
+    sensitivity.type = 'range';
+    sensitivity.min = String(Math.round(TOUCH_SENSITIVITY_MIN * 100));
+    sensitivity.max = String(Math.round(TOUCH_SENSITIVITY_MAX * 100));
+    sensitivity.step = '10';
+    sensitivity.className = 'field__range';
+    sensitivity.addEventListener('input', () =>
+      this.handlers.onSettings({ touchSensitivity: Number(sensitivity.value) / 100 })
+    );
+    const sensitivityRow = element('label', 'field field--touch');
+    sensitivityRow.dataset['field'] = 'touchSensitivity';
+    sensitivityRow.append(
+      sensitivity,
+      element('span', 'field__label', 'Touch sensitivity'),
+      element('span', 'field__hint', 'How far a drag moves the piece')
+    );
+    fields.append(sensitivityRow);
+    this.syncers.push(() => {
+      sensitivity.value = String(Math.round(this.save.settings.touchSensitivity * 100));
+    });
     this.syncers.push(() => {
       volume.value = String(Math.round(this.save.settings.volume * 100));
     });

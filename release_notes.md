@@ -7,6 +7,93 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M12c — Touch moves the piece, not to a column
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+A play note, and a correction to something M12a got wrong on purpose.
+
+### What changed
+
+Movement was **absolute**: the finger's screen position ran through the well's
+geometry to a board column, and the piece went to that column. Lifting a thumb
+and putting it back down somewhere more comfortable teleported the piece to
+wherever that happened to be.
+
+It is **relative** now. Every touch-down sets a fresh origin, and the piece moves
+by the distance the finger covers from it. Where on screen the finger lands
+carries no meaning at all — put it down over the HUD, off the well, the other
+side of the screen; nothing happens until it moves, and then the piece moves from
+where it already was.
+
+The original reasoning was that position is absolute, which is the game's own
+rule and the justification written into the code. It conflated two things. **The
+board's coordinates are absolute. That says nothing about the hand's.** A player
+has to be able to rest, shift grip and reach without the board answering.
+
+### How far a drag moves the piece is now a setting
+
+One column of travel is one column of the well by default, so the piece keeps
+pace with the thumb even though it is no longer tied to where the thumb is. The
+slider scales that from half to double, because a comfortable thumb arc is about
+four columns at 1:1 on a small phone and the whole board at twice that.
+
+Shown wherever the device _has_ a touchscreen — `any-pointer: coarse` — rather
+than where touch is the only way in, which is the stricter test the controls
+panels use. That one is right for choosing between a key map and a gesture list,
+since both describe controls and only one applies. It would be wrong for a
+setting: a laptop with a touchscreen can use touch controls, and hiding the
+slider there puts it out of reach rather than out of the way.
+
+### Two consequences
+
+**The turn prompt** read the drag's absolute column to pick a face, which is
+meaningless once columns are relative. It reads the drag's _direction_ now, which
+is the more natural reading of that gesture anyway.
+
+**`columnAt` is gone.** Mapping a screen x to a board column was the whole basis
+of the old scheme and nothing calls it any more. It had tests of its own, which
+is exactly how a dead function survives a refactor — so it went, and they went
+with it.
+
+### A wall needed no special handling, which took two tries to establish
+
+The concern was real: press into the left wall and hold, and travel spent against
+it would be banked, so reversing would do nothing until the debt was worked off.
+An explicit re-anchor was written for it — move the origin whenever the engine
+refuses a step.
+
+It was dead code. The recogniser reports the **change** since the last sample
+rather than a running target, so refused steps are simply dropped and there is no
+debt to accumulate. The first sample that reverses moves the piece one column
+back, with or without the re-anchor.
+
+That was found by sabotage, not by reading: the test written to prove the
+re-anchor necessary passed just as well with it removed. The first version of
+that test could not have caught it either — it used two separate gestures, and a
+new touch re-anchors by itself, so the case only exists inside one continuous
+drag. Both the code and the test are now what they claim to be, and the test was
+re-verified against the error that _would_ break it: reporting the running total
+instead of the change.
+
+### Tests
+
+**338 unit, 122 end-to-end, all passing.** The recogniser's movement tests were
+rewritten around the delta — same drag from two distant parts of the screen must
+mean the same thing — plus end-to-end cover for lifting and re-placing, for a
+drag into a wall, and for the sensitivity setting actually reaching the controls
+rather than only persisting.
+
+Four sabotages, each caught by exactly the test that claims it: fixing the origin
+to the well (back to absolute), reporting the running total instead of the
+change, ignoring the sensitivity setting, and — the one that was _not_ caught —
+removing the re-anchor, which is how it was found to be dead.
+
+One existing test needed a scoped locator rather than a change of claim: there
+are two range inputs in settings now, and `.field__range` matched both.
+
+---
+
 ## M12b — Mobile, wrapped up
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

@@ -805,6 +805,27 @@ input,
   height: 1.05rem;
 }
 
+/*
+ * Settings that only mean something where there is a touchscreen.
+ *
+ * `any-pointer: coarse` rather than the `pointer: coarse` the controls panels
+ * use. That one asks "is touch the only way in", which is the right question
+ * when choosing between a key map and a gesture list -- both describe controls,
+ * and only one applies. This asks "is there a touchscreen at all", which is the
+ * right question for a setting: a laptop with a touchscreen can use touch
+ * controls, and hiding the slider there would put it out of reach rather than
+ * out of the way.
+ */
+.field--touch {
+  display: none;
+}
+
+@media (any-pointer: coarse) {
+  .field--touch {
+    display: grid;
+  }
+}
+
 .field__range {
   width: 7rem;
 }

@@ -32,7 +32,21 @@ export interface Settings {
   readonly bloom: boolean;
   /** Turn the next-piece preview. Off is the harder option. */
   readonly spinPreview: boolean;
+  /**
+   * How far a touch drag has to travel to move the piece one column, as a
+   * multiplier on the well's own column width. Higher is more sensitive.
+   *
+   * 1 means the piece keeps pace with the thumb: a drag one cube wide moves the
+   * piece one cube. It is a setting because the right distance depends on the
+   * hand and the phone -- a comfortable thumb arc is four columns at 1:1 on a
+   * small screen and the whole board at twice that.
+   */
+  readonly touchSensitivity: number;
 }
+
+/** The range the sensitivity slider offers, and its default. */
+export const TOUCH_SENSITIVITY_MIN = 0.5;
+export const TOUCH_SENSITIVITY_MAX = 2;
 
 export interface ModeRecord {
   readonly bestScore: number;
@@ -87,6 +101,7 @@ export const DEFAULT_SETTINGS: Settings = {
   screenShake: true,
   bloom: true,
   spinPreview: true,
+  touchSensitivity: 1,
 };
 
 const EMPTY_RECORD: ModeRecord = { bestScore: 0, bestLines: 0, bestStage: 0, runs: 0 };
@@ -134,6 +149,12 @@ function readSettings(raw: unknown): Settings {
     screenShake: bool(raw['screenShake'], DEFAULT_SETTINGS.screenShake),
     bloom: bool(raw['bloom'], DEFAULT_SETTINGS.bloom),
     spinPreview: bool(raw['spinPreview'], DEFAULT_SETTINGS.spinPreview),
+    touchSensitivity: num(
+      raw['touchSensitivity'],
+      DEFAULT_SETTINGS.touchSensitivity,
+      TOUCH_SENSITIVITY_MIN,
+      TOUCH_SENSITIVITY_MAX
+    ),
   };
 }
 

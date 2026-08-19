@@ -858,6 +858,46 @@ Two consequences reach outside the gesture layer, and both are the same rule —
   a table-shared-with-the-implementation exists to prevent, arriving through the
   mode instead of through a stale copy.
 
+### 9.2.1 A touch is relative to the piece, not to the board
+
+A drag does not say _which column_ the piece should be in. It says **how far** to
+move it from wherever it is. Every touch-down sets a fresh origin; the piece
+steps by the distance the finger covers from that origin, and where on screen the
+finger happens to be carries no meaning at all.
+
+The first version mapped the finger's position through the well's geometry to a
+column, and it reads well written down: the column under your finger is the
+column the piece is in, which is the same claim the game makes about everything
+else. In the hand it is wrong. Lifting a thumb and putting it back somewhere more
+comfortable teleported the piece to wherever that happened to be, so the player
+could not rest, could not shift grip, and could not reach without the board
+answering. **"Position is absolute" is a rule about the board. It was never a
+rule about the hand.**
+
+Two properties follow, and both are the reason the scheme is worth the change:
+
+- **Lift and re-place is free.** Put the thumb down anywhere — over the HUD, off
+  the well entirely, the other side of the screen — and nothing happens until it
+  moves. The new point is simply where the piece is now.
+- **A wall costs nothing.** The recogniser reports the _change_ since the last
+  sample rather than a running target, so a finger pressed past the edge of the
+  board banks no debt: refused steps are dropped, and the first sample that
+  reverses moves the piece one column back. An explicit re-anchor was written for
+  this and turned out to be dead code — the delta already had the property, and
+  the test written to prove the re-anchor necessary passed just as well without
+  it.
+
+**How far is a setting.** One column of travel is one column of the well by
+default, so the piece keeps pace with the thumb; the slider scales that, because
+a comfortable thumb arc is four columns at 1:1 on a small screen and the whole
+board at twice that. It is shown wherever the device _has_ a touchscreen —
+`any-pointer: coarse` — rather than where touch is the only way in, since hiding
+a setting a player can use is not tidying, it is putting it out of reach.
+
+Rotation stays anchored to the board: a tap left of the well's centre rolls one
+way and right of it the other. A tap has no origin to be relative to — it is one
+point with no drag — so the only reference available is one the player can see.
+
 ### 9.3 What lives under the board
 
 Two things sit below the well and neither is laid out by the document: the Shift
