@@ -1372,6 +1372,54 @@ will say.
 
 ---
 
+## M18 — The Front Door ✅
+
+A real title screen: assets are fetched before the game opens, a bar reports the
+fetch, and a tap opens the door. The tap is the point — a browser will not start
+an `AudioContext` outside a user gesture, so until there was a screen whose only
+job was to collect one, menu music was not a thing this game could have.
+
+**Shipped**
+
+- `src/assets/preload.ts` — streaming fetch with weighted, monotonic progress, a
+  stall timeout rather than a deadline, and failure that resolves rather than
+  throws. No DOM, so it is unit-tested in the node environment.
+- `src/audio/tracks.ts` — the music manifest, one `?url` import per track that
+  actually plays, so the bundler hashes and emits it.
+- `src/audio/music.ts` — a streamed `<audio>` through a
+  `MediaElementAudioSourceNode` into the existing master gain, with fades.
+- The `boot` screen: centred wordmark, bar beneath, `TAP TO PLAY` once loaded.
+- `Blockfall Skyline` plays on the menu and stops when a run begins.
+
+**Decisions**
+
+- **Streamed, not decoded.** 137 seconds of stereo at 48 kHz is ~53 MB of
+  resident float32 for a 1.8 MB file. The cost is a loop seam a buffer would not
+  have; taken deliberately, and only for music.
+- **Deep links go round the door.** `?mode=` and `?challenge=` open straight
+  into a run. The gate fills a wait and collects a gesture, and a player arriving
+  on a shared code has already chosen. The preload still runs behind the run.
+- **A missing track cannot jam the door.** The bar completes and the button
+  appears regardless; the game is playable without music.
+
+### M18a — The rest of the music _(next)_
+
+Five more tracks sit in `src/audio/tracks/` unreferenced, and the interesting
+question is not how to play one but when. The room already carries a tension
+signal that drives the lattice glow; music that ignores it would be the one part
+of the presentation not answering to the board. Candidates, in order of
+appetite:
+
+- A track per mode, chosen from the mode table like every other mode property.
+- Layered stems crossfaded against stack height, which is what the tension
+  signal already computes.
+- One track, shuffled per run, and nothing clever.
+
+Whichever it is, it wants the same preload treatment, and the bar already
+supports several assets — that is what the weighting is for.
+
+---
+
 ## Deliberately out of scope
 
 Not in this plan, and not by accident:

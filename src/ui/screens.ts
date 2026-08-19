@@ -26,10 +26,13 @@ import {
 } from '../keymap';
 
 export type ScreenName =
-  'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
+  'boot' | 'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
 
 export interface ScreenHandlers {
   readonly onStart: (mode: ModeId) => void;
+  /** The tap that opens the front door: the first gesture, and the only one
+   *  that is allowed to start an `AudioContext`. */
+  readonly onEnter: () => void;
   /** Start a run pinned to a challenge code. */
   readonly onChallenge: (challenge: Challenge) => void;
   readonly onResume: () => void;
@@ -78,6 +81,29 @@ function toggleRow(
   root.append(input, text, note);
   input.addEventListener('change', () => set(input.checked));
   return { root, sync: () => (input.checked = get()) };
+}
+
+/**
+ * The wordmark, built fresh each time it is needed.
+ *
+ * Two screens show it -- the boot gate and the title -- and a DOM node cannot be
+ * in two panels at once, so this is a factory rather than a shared constant.
+ * They are deliberately identical: the mark moves from the centre of the screen
+ * to the masthead when the door opens, and if it were also a different mark that
+ * would read as a second screen rather than as the same one settling.
+ */
+function wordmark(): HTMLElement {
+  const title = element('h1', 'title');
+  // Hairlines bracket the wordmark. Presentational, so they are `<hr>` inside
+  // the heading rather than borders on it -- the mark needs to breathe between
+  // them, and a border cannot fade out at its ends.
+  title.append(
+    element('hr', 'title__rules'),
+    element('span', 'title__word', 'REFRACTION'),
+    element('hr', 'title__rules'),
+    element('span', 'title__rule', 'Position is absolute. Colour is relative.')
+  );
+  return title;
 }
 
 /**
@@ -240,7 +266,15 @@ export class Screens {
   private readonly dailyLine = element('p', 'panel__detail', '');
   private readonly storageWarning = element('p', 'panel__warning', '');
 
-  private current: ScreenName = 'title';
+  /** The boot gate's three moving parts. */
+  private readonly loadingBar = element('div', 'loading__bar');
+  private readonly loadingFill = element('div', 'loading__fill');
+  private readonly loadingNote = element('p', 'loading__note', 'LOADING');
+  private readonly enterButton = button('TAP TO PLAY', 'button button--primary', () =>
+    this.handlers.onEnter()
+  );
+
+  private current: ScreenName = 'boot';
   private save: SaveData;
 
   constructor(
@@ -248,6 +282,7 @@ export class Screens {
     private readonly handlers: ScreenHandlers
   ) {
     this.save = save;
+    this.panels.set('boot', this.buildBoot());
     this.panels.set('title', this.buildTitle());
     this.panels.set('modes', this.buildModes());
     this.panels.set('paused', this.buildPause());
@@ -257,7 +292,9 @@ export class Screens {
     this.panels.set('challenge', this.buildChallenge());
     for (const panel of this.panels.values()) this.root.append(panel);
     this.root.addEventListener('keydown', (event) => this.handleArrow(event));
-    this.show('title');
+    // The front door, not the title. A deep link overrides this from the host
+    // before the first frame; see `main.ts`.
+    this.show('boot');
   }
 
   // ------------------------------------------------------------------ panels
@@ -270,17 +307,67 @@ export class Screens {
     return panel;
   }
 
+  /**
+   * The front door.
+   *
+   * Two jobs, and the second is the reason it exists at all. It fills the wait
+   * on a large asset with something to look at -- and it collects the one user
+   * gesture a browser requires before an `AudioContext` may start. Without a
+   * screen like this, the first sound in the game is whatever the player happens
+   * to press first, and menu music simply cannot exist.
+   *
+   * The button is `hidden` *and* `disabled` until loading finishes, which is one
+   * belt more than it looks. `show` focuses the first enabled button in a panel,
+   * and `hidden` alone would leave an invisible button to take focus and answer
+   * a stray Enter -- opening the door before the thing behind it had arrived.
+   */
+  private buildBoot(): HTMLElement {
+    this.loadingBar.append(this.loadingFill);
+    this.loadingBar.setAttribute('role', 'progressbar');
+    this.loadingBar.setAttribute('aria-valuemin', '0');
+    this.loadingBar.setAttribute('aria-valuemax', '100');
+    this.loadingBar.setAttribute('aria-label', 'Loading');
+
+    const loading = element('div', 'loading');
+    loading.append(this.loadingBar, this.loadingNote);
+
+    const actions = element('div', 'panel__actions');
+    actions.append(this.enterButton);
+
+    const panel = this.panel('boot', wordmark(), loading, actions);
+    this.setLoading(0);
+    this.setReady(false);
+    return panel;
+  }
+
+  /**
+   * Move the bar.
+   *
+   * Width only -- no transition longer than a frame or two, because a bar that
+   * eases toward its target is showing an animation rather than a download, and
+   * the two disagree most at the end, which is exactly when the player is
+   * watching.
+   */
+  setLoading(fraction: number): void {
+    const clamped = Math.min(1, Math.max(0, fraction));
+    const percent = Math.round(clamped * 100);
+    this.loadingFill.style.width = `${percent}%`;
+    this.loadingBar.setAttribute('aria-valuenow', String(percent));
+    this.loadingBar.dataset['value'] = String(percent);
+  }
+
+  /** Reveal the way in. Idempotent, so it can be driven from state. */
+  setReady(ready: boolean): void {
+    this.enterButton.hidden = !ready;
+    this.enterButton.disabled = !ready;
+    this.loadingNote.textContent = ready ? 'READY' : 'LOADING';
+    const panel = this.panels.get('boot');
+    panel?.classList.toggle('panel--ready', ready);
+    if (ready && this.current === 'boot') this.enterButton.focus();
+  }
+
   private buildTitle(): HTMLElement {
-    const title = element('h1', 'title');
-    // Hairlines bracket the wordmark. Presentational, so they are `<hr>` inside
-    // the heading rather than borders on it -- the mark needs to breathe between
-    // them, and a border cannot fade out at its ends.
-    title.append(
-      element('hr', 'title__rules'),
-      element('span', 'title__word', 'REFRACTION'),
-      element('hr', 'title__rules'),
-      element('span', 'title__rule', 'Position is absolute. Colour is relative.')
-    );
+    const title = wordmark();
 
     const actions = element('div', 'panel__actions');
     actions.append(

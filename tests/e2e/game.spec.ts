@@ -9,6 +9,21 @@ async function boot(page: Page): Promise<void> {
   await expect(page.locator('canvas.stage')).toBeVisible();
 }
 
+/**
+ * Through the front door.
+ *
+ * A run reached by a deep link skips the boot gate, so most of this suite never
+ * meets it. Anything that starts at a bare `/` does, and has to wait for the
+ * preload and tap in -- which is exactly what a player does, so the wait is the
+ * test setup being honest rather than a concession to one.
+ */
+async function enter(page: Page): Promise<void> {
+  const way = page.getByRole('button', { name: 'TAP TO PLAY' });
+  await expect(way).toBeVisible();
+  await way.click();
+  await expect(page.locator('.panel--title')).toBeVisible();
+}
+
 /** Sample the WebGL canvas and count distinct colours. */
 async function distinctCanvasColours(page: Page): Promise<number> {
   return page.evaluate(() => {
@@ -669,8 +684,11 @@ test.describe('screens', () => {
   test('opens on the title rather than dropping straight into a run', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await expect(page.locator('.panel--title')).toBeVisible();
-    await expect(page.locator('.title__word')).toHaveText('REFRACTION');
+    // Scoped to the panel: the boot gate carries the same mark, deliberately, so
+    // an unscoped locator now matches two.
+    await expect(page.locator('.panel--title .title__word')).toHaveText('REFRACTION');
     // The room is alive behind the title from the first frame.
     await expect(page.locator('canvas.stage')).toBeVisible();
   });
@@ -678,6 +696,7 @@ test.describe('screens', () => {
   test('walks from title to a running game', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'PLAY' }).click();
     await expect(page.locator('.panel--modes')).toBeVisible();
     await page.locator('.mode[data-mode="ascent"]').click();
@@ -687,6 +706,7 @@ test.describe('screens', () => {
 
   test('offers every mode, with the expert one locked', async ({ page }) => {
     await page.goto('/');
+    await enter(page);
     await page.getByRole('button', { name: 'PLAY' }).click();
     await expect(page.locator('.mode')).toHaveCount(6);
     await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toBeDisabled();
@@ -731,15 +751,110 @@ test.describe('screens', () => {
   });
 });
 
+test.describe('the front door', () => {
+  test('opens on the gate, with the room already behind it', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.panel--boot')).toBeVisible();
+    await expect(page.locator('.panel--title')).toBeHidden();
+    await expect(page.locator('.panel--boot .title__word')).toHaveText('REFRACTION');
+    // The board is lit behind the gate, not after it.
+    await expect(page.locator('canvas.stage')).toBeVisible();
+
+    /*
+     * The loading bar makes no claim about depth.
+     *
+     * A progress bar is the single most tempting surface in this interface to
+     * run through the spectrum, and DESIGN 2.2 reserves hue for cubes alone --
+     * so a red-to-violet bar would be a second colour language on the first
+     * screen anyone sees. A gradient would show up as a background *image*, and
+     * a solid hue as a wide channel spread; this refuses both.
+     */
+    const paint = await page.evaluate(() => {
+      const fill = document.querySelector('.loading__fill');
+      if (!fill) return null;
+      const style = getComputedStyle(fill);
+      return { image: style.backgroundImage, colour: style.backgroundColor };
+    });
+    expect(paint?.image).toBe('none');
+    const channels = (paint?.colour.match(/\d+/g) ?? []).slice(0, 3).map(Number);
+    expect(Math.max(...channels) - Math.min(...channels)).toBeLessThanOrEqual(16);
+  });
+
+  test('holds the way in until the loading has actually finished', async ({ page }) => {
+    let release = (): void => undefined;
+    const held = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    await page.route('**/*.webm', async (route) => {
+      await held;
+      await route.continue();
+    });
+
+    await page.goto('/');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const way = page.getByRole('button', { name: 'TAP TO PLAY' });
+    await expect(way).toBeHidden();
+    await expect(page.locator('.loading__bar')).toHaveAttribute('aria-valuenow', '0');
+
+    release();
+    await expect(way).toBeVisible();
+    await expect(page.locator('.loading__bar')).toHaveAttribute('aria-valuenow', '100');
+  });
+
+  test('starts the theme on the menu and stops it for a run', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+
+    // The tap is the gesture the browser requires before any of this can sound.
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(true);
+
+    await page.evaluate(() => window.__refraction?.play('ascent'));
+    // Stopping is a fade, so this is not immediate by design.
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(false);
+  });
+
+  test('a deep link goes round the door rather than through it', async ({ page }) => {
+    // A shared challenge code is a player who has already chosen. Holding one
+    // behind a download of music it will not play would be a worse front door
+    // than none.
+    await page.goto('/?mode=ascent');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.locator('.panel--boot')).toBeHidden();
+    await expect(page.locator('.hud')).toBeVisible();
+  });
+
+  test('a missing track does not jam the door shut', async ({ page }) => {
+    await page.route('**/*.webm', (route) => route.abort());
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    // The bar completes and the way in opens regardless. The game is playable
+    // without music, so a failed asset costs the soundtrack and nothing else.
+    await expect(page.locator('.loading__bar')).toHaveAttribute('aria-valuenow', '100');
+    await enter(page);
+    expect(await page.evaluate(() => window.__refraction?.music().ready)).toBe(false);
+    await page.getByRole('button', { name: 'PLAY' }).click();
+    await expect(page.locator('.panel--modes')).toBeVisible();
+  });
+});
+
 test.describe('settings', () => {
   test('persists a change across a reload', async ({ page }) => {
     await page.goto('/');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
     const bloom = page.locator('[data-field="bloom"] input');
     await expect(bloom).toBeChecked();
     await bloom.uncheck();
 
     await page.reload();
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
     await expect(page.locator('[data-field="bloom"] input')).not.toBeChecked();
   });
@@ -810,6 +925,7 @@ test.describe('persistence', () => {
     await page.goto('/');
     await page.evaluate(() => localStorage.setItem('refraction.save.v1', '{"records":{"asc'));
     await page.reload();
+    await enter(page);
 
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await expect(page.locator('.panel--title')).toBeVisible();
@@ -827,6 +943,7 @@ test.describe('persistence', () => {
       );
     });
     await page.reload();
+    await enter(page);
     await page.getByRole('button', { name: 'PLAY' }).click();
     await expect(page.locator('.mode[data-mode="blindSpectrum"]')).toBeEnabled();
   });
@@ -834,6 +951,7 @@ test.describe('persistence', () => {
   test('a deep link cannot open a locked mode', async ({ page }) => {
     await page.goto('/?mode=blindSpectrum');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     // Held at the title rather than dropped into a mode not yet earned.
     await expect(page.locator('.panel--title')).toBeVisible();
   });
@@ -842,6 +960,7 @@ test.describe('persistence', () => {
 test.describe('challenges', () => {
   test('rejects a code that is not one, without starting a run', async ({ page }) => {
     await page.goto('/');
+    await enter(page);
     await page.getByRole('button', { name: 'CHALLENGE' }).click();
     await page.locator('.code').fill('nonsense');
     await page.getByRole('button', { name: 'START' }).click();
@@ -852,6 +971,7 @@ test.describe('challenges', () => {
   test("starts today's challenge and names it on the game-over screen", async ({ page }) => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'CHALLENGE' }).click();
     await page.getByRole('button', { name: "TODAY'S CHALLENGE" }).click();
     await expect(page.locator('.screens')).toBeHidden();
@@ -2254,6 +2374,7 @@ test.describe('arrow keys move through the menus', () => {
     // markup either way, so the rows come from the laid-out geometry.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'PLAY' }).click();
 
     const top = (): Promise<number> =>
@@ -2282,6 +2403,7 @@ test.describe('arrow keys move through the menus', () => {
   test('moves down the settings rows and reaches the button at the end', async ({ page }) => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     const seen = new Set<string>();
@@ -2300,6 +2422,7 @@ test.describe('arrow keys move through the menus', () => {
     // very keyboard this is meant to serve.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     // Named rather than "the range input": there are two now -- volume, and the
@@ -2551,6 +2674,7 @@ test.describe('the controls panel follows the input method', () => {
     });
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     await expect(page.locator('.keymap--touch')).toBeVisible();
@@ -2564,6 +2688,7 @@ test.describe('the controls panel follows the input method', () => {
   test('a desktop is told the keys, not the gestures', async ({ page }) => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     await expect(page.locator('.keymap:not(.keymap--touch)')).toBeVisible();
@@ -2639,6 +2764,7 @@ test.describe('interface corrections', () => {
     // thing that makes depth legible and then conclude the game is unfair.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     await expect(page.locator('.field[data-field="showGhost"]')).toHaveCount(0);
@@ -2650,6 +2776,7 @@ test.describe('interface corrections', () => {
   test('volume is labelled and left alone', async ({ page }) => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     const row = page.locator('.field[data-field="volume"]');
@@ -2662,6 +2789,7 @@ test.describe('interface corrections', () => {
     // rather than of its own shape.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'PLAY' }).click();
     await page.keyboard.press('Enter');
 
@@ -3089,6 +3217,7 @@ test.describe('the title screen', () => {
     // through -- so there is hue in the well, and plenty of it.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.waitForTimeout(400);
 
     const box = await stackBox(page);
@@ -3150,6 +3279,7 @@ test.describe('the title screen', () => {
     // moment the scrim stopped hiding them.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.waitForTimeout(300);
     const box = await page.locator('.hud__shift').boundingBox();
     if (!box) throw new Error('no Shift meter');
@@ -3205,6 +3335,7 @@ test.describe('the title screen', () => {
     // nobody is playing and every control would point the wrong way.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     // Let at least one attract turn land, so the camera is genuinely off front.
     await expect
       .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
@@ -3334,6 +3465,7 @@ test.describe('on a phone', () => {
     // to select it.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
     await page.getByRole('button', { name: 'CHALLENGE' }).click();
     const value = await page.evaluate(
       () => getComputedStyle(document.querySelector('.code') as Element).userSelect

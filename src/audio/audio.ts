@@ -9,10 +9,17 @@
 
 import type { ToneSpec } from './tones';
 import { clearTones, gameOverTone, lockTone, prismChord, turnSweep } from './tones';
+import { Music } from './music';
 
 export class Audio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
+  /**
+   * Music hangs off the same master gain as the effects, so mute and volume
+   * reach it without knowing it exists. See `music.ts` for why that routing is
+   * not optional.
+   */
+  private readonly music = new Music();
   private enabled = true;
   /**
    * Kept separately from `enabled` so muting never destroys the level the
@@ -36,6 +43,34 @@ export class Audio {
       this.master.connect(this.context.destination);
     }
     if (this.context.state === 'suspended') void this.context.resume();
+    // Safe to repeat: `attach` is a no-op once it holds this context. The two
+    // are created together above, so the guard is for the type system rather
+    // than for a state this can actually be in.
+    if (this.master) this.music.attach(this.context, this.master);
+  }
+
+  // -------------------------------------------------------------------- music
+
+  /** Hand over a fetched track. Starts playing if music was already asked for. */
+  loadMusic(blob: Blob): void {
+    this.music.load(blob);
+  }
+
+  /** Idempotent, so callers may drive it from state rather than from an event. */
+  playMusic(): void {
+    this.music.play();
+  }
+
+  stopMusic(): void {
+    this.music.stop();
+  }
+
+  get musicReady(): boolean {
+    return this.music.ready;
+  }
+
+  get musicPlaying(): boolean {
+    return this.music.playing;
   }
 
   get muted(): boolean {
@@ -140,6 +175,7 @@ export class Audio {
   }
 
   dispose(): void {
+    this.music.dispose();
     void this.context?.close();
     this.context = null;
     this.master = null;
