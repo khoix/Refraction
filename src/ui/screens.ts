@@ -9,7 +9,7 @@
  * These read state and emit intents. They never touch the game.
  */
 
-import { MODES, isUnlocked } from '@core/modes';
+import { DEFAULT_MODE_ID, MODES, isUnlocked, modeById } from '@core/modes';
 import type { ModeConfig, ModeId } from '@core/modes';
 import { dailyChallenge, parseChallenge } from '@core/challenge';
 import type { Challenge } from '@core/challenge';
@@ -20,6 +20,7 @@ import {
   TOUCH_ACTIONS,
   TOUCH_TURN_NOTE,
   TURN_PROMPT_NOTE,
+  appliesToMode,
   keyLabel,
 } from '../keymap';
 
@@ -136,12 +137,18 @@ function nextInDirection(
  * decided in CSS by input method, not here -- a narrow window on a laptop still
  * has a keyboard, and a tablet with one attached reports a fine pointer.
  */
-function buildTouchMap(): HTMLElement {
+function buildTouchMap(mode: ModeConfig): HTMLElement {
   const list = element('div', 'keymap keymap--touch');
   list.append(element('h3', 'keymap__title', 'CONTROLS'));
 
+  // A roll-only mode has no field/strip split, so the notes that place a
+  // gesture relative to the strip are describing a screen that is not there.
+  const split = mode.rotation === 'all';
+
   for (const group of BINDING_GROUPS) {
-    const rows = TOUCH_ACTIONS.filter((action) => action.group === group);
+    const rows = TOUCH_ACTIONS.filter(
+      (action) => action.group === group && appliesToMode(action, mode)
+    );
     if (rows.length === 0) continue;
     const section = element('section', 'keymap__section');
     section.append(element('h4', 'keymap__group', group.toUpperCase()));
@@ -151,7 +158,8 @@ function buildTouchMap(): HTMLElement {
       const keys = element('span', 'keymap__keys');
       keys.append(element('span', 'gesture', action.gesture));
       row.append(keys, element('span', 'keymap__label', action.label));
-      if (action.note) row.append(element('span', 'keymap__note', action.note));
+      const note = action.stripNote && !split ? undefined : action.note;
+      if (note) row.append(element('span', 'keymap__note', note));
       section.append(row);
     }
     list.append(section);
@@ -169,7 +177,7 @@ function buildTouchMap(): HTMLElement {
  * and it has enough of them now -- move, three rotation axes, a depth nudge,
  * hold, hard drop, face choice, pause, mute, restart -- that it has to.
  */
-function buildKeyMap(): HTMLElement {
+function buildKeyMap(mode: ModeConfig): HTMLElement {
   const list = element('div', 'keymap');
   list.append(element('h3', 'keymap__title', 'CONTROLS'));
 
@@ -177,7 +185,9 @@ function buildKeyMap(): HTMLElement {
   // where it liked, the column split landed mid-group and stranded "Pitch back"
   // at the top of the second column with no heading over it.
   for (const group of BINDING_GROUPS) {
-    const rows = BINDINGS.filter((binding) => binding.group === group);
+    const rows = BINDINGS.filter(
+      (binding) => binding.group === group && appliesToMode(binding, mode)
+    );
     if (rows.length === 0) continue;
     const section = element('section', 'keymap__section');
     section.append(element('h4', 'keymap__group', group.toUpperCase()));
@@ -211,6 +221,16 @@ export class Screens {
   private readonly overTitle = element('h2', 'panel__title', 'GAME OVER');
   private readonly overScore = element('p', 'panel__score', '0');
   private readonly overDetail = element('p', 'panel__detail', '');
+  /**
+   * Where the two controls panels live, so they can be rebuilt.
+   *
+   * They describe what the *mode in play* answers to, and a mode can withhold a
+   * verb outright: Flatland permits roll alone and never offers the depth nudge,
+   * so a panel built once at boot would advertise four keys and two gestures the
+   * engine ignores.
+   */
+  private readonly controls = element('div', 'keymap__pair');
+  private mode: ModeConfig = modeById(DEFAULT_MODE_ID);
   private readonly overBest = element('p', 'panel__best', '');
   private readonly statsLine = element('p', 'panel__stats', '');
   private readonly sessionLog = element('ol', 'session');
@@ -231,6 +251,7 @@ export class Screens {
     this.panels.set('modes', this.buildModes());
     this.panels.set('paused', this.buildPause());
     this.panels.set('over', this.buildGameOver());
+    this.setMode(this.mode);
     this.panels.set('settings', this.buildSettings());
     this.panels.set('challenge', this.buildChallenge());
     for (const panel of this.panels.values()) this.root.append(panel);
@@ -466,8 +487,7 @@ export class Screens {
       'settings',
       element('h2', 'panel__title', 'SETTINGS'),
       fields,
-      buildKeyMap(),
-      buildTouchMap(),
+      this.controls,
       actions
     );
   }
@@ -526,6 +546,18 @@ export class Screens {
       next.focus();
       event.preventDefault();
     }
+  }
+
+  /**
+   * Tell the panels which mode's controls to describe.
+   *
+   * Called when a run starts and at boot. Cheap enough to rebuild outright --
+   * two short lists -- and rebuilding is what keeps the panels a projection of
+   * the tables rather than a thing with state of its own.
+   */
+  setMode(mode: ModeConfig): void {
+    this.mode = mode;
+    this.controls.replaceChildren(buildKeyMap(mode), buildTouchMap(mode));
   }
 
   show(name: ScreenName): void {

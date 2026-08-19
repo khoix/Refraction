@@ -7,6 +7,150 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M12b — Mobile, wrapped up
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The rest of M12: the touch strip gated by mode, the Shift meter kept out from
+under the thumb, touch hygiene, and a portrait layout that stops the score panel
+lying across the board.
+
+### Flatland is roll only, and gets its strip back
+
+The field/strip split exists to carry three rotation axes. Flatland has one, so
+the strip was 84 pixels of an eighteen-row well spent on a verb the mode does not
+have.
+
+The gate is in the mode table, not the interface, which matters more than it
+sounds: hiding the swipe zone on a phone while the keyboard still answered `Q`
+would be an input-parity break, and an invisible one until someone played both.
+Two fields carry it — `rotation: 'roll' | 'all'`, and `depthNudge: 'never' |
+'byStage' | 'always'` replacing `forceDepthNudge`, which could only ever turn the
+nudge on _early_ and had no way to withhold it.
+
+It also makes the mode's own promise true. Flatland is about depth being purely a
+property of where you put a piece — and yaw on a flat I-piece turns four columns
+in one lane into one column across four lanes, taking the piece out of the screen
+plane entirely.
+
+With no split: drag anywhere to move, fling anywhere to drop, tap anywhere to
+roll. Modelled as _no strip_ rather than a strip pushed off screen, because the
+zones do not merely merge — with a split, a tap on the strip is a **miss**, since
+the strip is where the hand rests and resting a thumb must not roll the piece.
+
+### The Shift meter was under the thumb
+
+Measured on a Pixel 7: the meter ran 679 to 723 and the strip 669 to 753. The
+hand rested squarely on the one readout that says when the board is about to
+turn.
+
+The strip anchored to the bottom of the _well_, which is also where the meter
+goes. It anchors to the bottom of the **window** now — where a thumb rests
+anyway — leaving the space under the board free.
+
+That exposed an older bug underneath it. `HUD_RESERVE` reserves space below the
+board in **cells**, and cells shrink with the window: 1.6 of them is 27 pixels on
+a phone in landscape against a 44-pixel meter, so the meter had always been drawn
+over the bottom rows of the board there. The camera fit takes a reserve in pixels
+now and treats it as a **floor** — the board is pushed up only when the framing
+does not already leave that much — so a desktop is framed exactly as before, and
+portrait turns out to have room to spare: the strip costs it nothing.
+
+|                    | before                 | after                                    |
+| ------------------ | ---------------------- | ---------------------------------------- |
+| Portrait, Flatland | meter inside the strip | no strip at all                          |
+| Portrait, Ascent   | meter inside the strip | meter 679–719, strip from 755            |
+| Landscape, Ascent  | meter over the board   | board ends 220, meter 224–268, strip 276 |
+
+### Touch hygiene
+
+**Text selection** was scoped to four selectors and to touch-primary devices,
+which left the title, the score, the mode blurbs and every panel body selectable
+— and on a touchscreen laptop, which is not touch-primary, all of it. It is
+app-wide now. The challenge code stays selectable, because a player has an actual
+reason to copy theirs.
+
+**Horizontal scrolling** was implied by `overflow: hidden` and is now named, on
+the page and on the panel layer. Every way a page starts sliding sideways is an
+accident — a panel a few pixels too wide, a long unbroken string — and each one
+turns a game into a page that moves under the thumb.
+
+### Portrait
+
+The score panel lay across the top-left of the well and covered the first rows of
+the stack: `min-width: 8.5rem` on the stats alone is 136px before padding, in a
+margin of about 80px.
+
+**The plan said to move the HUD above and below and let the well take the width,
+and that was wrong.** The board cannot take the width and never could — the
+frustum has to hold the footprint's 45-degree diagonal so the board does not
+change scale during a turn, which caps the well at about 62% of the window
+whatever the HUD does. The remaining 38% is permanently empty and is exactly
+where the HUD belongs. So the columns stayed and the panels were sized to the gap
+that already exists, which is a much smaller change than the plan imagined and
+the right one.
+
+Safe-area insets go on the two full-bleed layers rather than on the page, so the
+canvas still fills the display and only what has to be read moves inward.
+
+### Controls panels stopped advertising verbs the mode ignores
+
+A consequence of the gating, and one the plan called: `Q`, `E`, `R`, `F` and the
+two nudge keys do nothing in Flatland, and neither do the yaw and pitch gestures.
+Both panels filter through one shared predicate, so the keyboard map and the
+touch map cannot disagree about what a mode offers. The touch panel also drops
+its "in the bottom strip" notes in a mode with no strip — a note pointing at a
+region the player cannot find is worse than no note.
+
+### Tests
+
+**335 unit, 119 end-to-end, all passing.** New: five unit tests for the mode
+gating, five for the recogniser with no strip, and eleven end-to-end run against
+a real device profile rather than a narrowed desktop window — the two differ in
+the way that matters, since a narrow window still reports a fine pointer and
+still has a keyboard, and the layout branches on exactly that.
+
+Sabotage-verified: giving Flatland a strip, removing the bottom reserve, and
+making text selectable each failed exactly the test that claims it.
+
+### Two findings from the testing
+
+**A test that could not fail.** The meter-clears-the-strip assertion passed with
+the meter's own clamp removed, because in portrait the meter lands thirty pixels
+clear whatever the layout does. The clamp is a guard; the reserve is the
+mechanism. The test now runs in both orientations, where landscape's margin is
+thin enough for the reserve to be doing real work, and the code comment says
+plainly which of the two is load-bearing.
+
+**A leak that looked like flakiness.** Two phone tests timed out at 35 seconds
+and passed in four on their own. Contexts made from `browser` are not closed the
+way the `page` fixture is, and each held a page rendering WebGL every frame; by
+the seventh test the machine was saturated. Closing them cut the block from three
+minutes to fifty seconds.
+
+### Also fixed on the way
+
+**The debug hooks had drifted from the real start path.** `restart` and `play`
+constructed a game, reset the flag and showed the screen themselves rather than
+calling `startRun` — so they had already missed `snapToFace` from M14, and missed
+the strip reserve the moment it was added. The end-to-end suite drives the game
+through those hooks, so a debug path that diverges from the real one is a suite
+testing something no player ever gets. Both delegate now.
+
+### Still open
+
+**Landscape as a genuine second layout.** It works and nothing overlaps, but the
+well is 87px wide on an 863×360 window with roughly 600px of horizontal space
+empty either side. The board is height-limited there, so the answer is a layout
+that uses the width — not a reserve that shrinks the board further.
+
+**The frame budget**, moved to M16 with the profiling pass. Nothing in that
+section was ever measured, and one of its assumptions changed under it: the gel
+material added per-fragment work to every cube in M14, which is exactly what a
+budget exists to catch and exactly why it should be set after the look settles.
+
+---
+
 ## M14 — The Look
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

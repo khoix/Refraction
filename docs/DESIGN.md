@@ -828,6 +828,53 @@ respectively. `EdgeLayer` already collapses the region to one depth per screen
 cell for that reason, so this makes the fill agree with the border drawn around
 it.
 
+### 9.2 The touch split, and when there isn't one
+
+A narrow strip along the bottom of the window moves the piece; everything above
+it rotates it. The zoning is what makes the vocabulary work: a gesture never has
+to be disambiguated by what it happens to be near, because the region it starts
+in already says which verb class it belongs to.
+
+**The split is gated by the mode.** It exists to carry three rotation axes, and a
+mode that permits only roll has nothing for it to carry — at which point the
+strip is not a convenience, it is 84 pixels of an eighteen-row well spent on a
+verb the mode does not have. Flatland drops it: drag anywhere to move, fling
+anywhere to drop, tap anywhere to roll.
+
+The two zones do not merely merge when the split goes, which is why a mode with
+no strip is modelled as _no strip_ rather than as a strip pushed off the screen.
+A tap means something different in each: with a split, a tap on the strip is a
+**miss** rather than a verb, because the strip is where the hand rests for the
+whole game and resting a thumb must not roll the piece. With no split there is
+nowhere to rest that is not the playfield, so a tap is the roll.
+
+Two consequences reach outside the gesture layer, and both are the same rule —
+**the interface asks the engine what a mode permits, it never decides**:
+
+- The board's bottom reserve grows by the strip's height only in modes that have
+  one, so a roll-only mode gets the pixels back.
+- Both controls panels omit the rows a mode does not answer to, through one
+  predicate they share. A panel that lists a key the engine ignores is the drift
+  a table-shared-with-the-implementation exists to prevent, arriving through the
+  mode instead of through a stale copy.
+
+### 9.3 What lives under the board
+
+Two things sit below the well and neither is laid out by the document: the Shift
+meter is absolutely positioned, and the touch strip is a region of the window
+rather than an element. So the board has to be told how much room to leave, and
+`HUD_RESERVE` — which is measured in **cells** — could not tell it. Cells shrink
+with the window: 1.6 of them is 27 pixels on a phone in landscape against a
+44-pixel meter, so the meter had always been drawn over the bottom rows of the
+board there, and the strip made the same arithmetic worse rather than
+introducing it.
+
+The camera fit takes a reserve in pixels now, and treats it as a **floor** rather
+than an addition: the board is pushed up only when the framing does not already
+leave that much clear. A window with room to spare is framed exactly as it was,
+which is every desktop, and a phone in portrait — where the reserve is satisfied
+without shrinking anything.
+
 ## 10. Accessibility **[GAP — critical]**
 
 Colour is the primary depth channel, so a colourblind player is not losing

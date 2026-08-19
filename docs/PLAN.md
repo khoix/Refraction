@@ -632,7 +632,7 @@ by keyboard alone.
 
 ---
 
-## M12 — Mobile
+## M12 — Mobile ✅
 
 **Goal:** the game is genuinely good on a phone, not merely reachable from one.
 
@@ -654,7 +654,7 @@ The turn prompt borrows the strip: while the board waits to be turned, a sideway
 drag chooses the face. Same gesture, same double duty Left and Right already do
 on a keyboard in exactly that state.
 
-**Gate the split by mode** _(play notes)_. The field/strip split exists to carry
+✅ **Gate the split by mode** _(play notes)_. The field/strip split exists to carry
 three rotation axes. A mode that does not need three does not need the split: the
 whole screen can move the piece, a tap anywhere rolls it, and the strip stops
 being dedicated screen space paid for out of an eighteen-row well.
@@ -674,27 +674,34 @@ entirely. So hiding the swipe zone on a phone would take from touch something a
 keyboard still had — an input-parity break, and an invisible one until someone
 plays both.
 
-**Confirmed shape: Flatland becomes roll only, with no depth nudge at all.** The
+✅ **Shipped as: Flatland is roll only, with no depth nudge at all.** The
 piece never leaves the screen plane, and its lane changes only when the board
 turns — which is what "pure projection reading" has always claimed and what the
 mode's own blurb already promises. Two fields in the mode table carry it:
 
-- **Which rotation axes the mode permits.** Flatland gets roll alone.
-- **Whether the depth nudge is ever available.** `forceDepthNudge` exists to turn
-  it on early; the inverse is missing, and a mode needs to be able to withhold it
-  outright rather than merely start below stage 4. Worth folding both into one
-  field — never / by stage / always — rather than adding a second boolean that
-  contradicts the first.
+- ✅ **Which rotation axes the mode permits.** `rotation: 'roll' | 'all'`.
+  Flatland gets roll alone, and the engine answers `allowsRotation` from it, so
+  the interface asks the rule rather than deciding for itself.
+- ✅ **Whether the depth nudge is ever available.** Folded into one field —
+  `depthNudge: 'never' | 'byStage' | 'always'` — replacing `forceDepthNudge`,
+  which could only ever turn the nudge on early. The policy is folded into the
+  stage's own boolean by `withOverrides`, so the engine still reads one flag.
 
-Everything else follows from those two:
+Everything else followed from those two:
 
-- Touch drops the split in roll-only modes. Tap to roll, drag to move.
-- `Q`, `E`, `R`, `F`, `T` and `G` do nothing in Flatland, so the key map — built
-  from `BINDINGS` — has to learn that a row can be inapplicable to the mode in
-  play. Otherwise it lists keys the engine is ignoring, which is exactly the
-  drift the shared table exists to prevent.
-- The greedy agent in `playability.test.ts` only ever rolls (`rotate(offsets,
-'z')`), so the balance tests are unaffected by the restriction.
+- ✅ **Touch drops the split in roll-only modes.** Tap anywhere to roll, drag
+  anywhere to move. `TouchLayout.stripTop` is null rather than a strip pushed off
+  the screen, because the two zones do not merely merge: in the split scheme a
+  tap on the strip is a _miss_, since the strip is where the hand rests; with no
+  split there is nowhere to rest that is not the playfield, so a tap is the roll.
+- ✅ **Both controls panels learned that a row can be inapplicable.** `Q`, `E`,
+  `R`, `F` and the two nudge keys are absent in Flatland, and so are the yaw and
+  pitch gestures. One predicate, `appliesToMode`, read by the keyboard map and
+  the touch map alike, so the two cannot disagree about what a mode offers. The
+  touch panel also drops its "in the bottom strip" notes in a mode with no strip,
+  which would otherwise point at a region of the screen that is not there.
+- ✅ The greedy agent in `playability.test.ts` only ever rolls, so the balance
+  tests were unaffected by the restriction — 335 unit tests passed unchanged.
 
 **Still unassigned, and needed before a run can be completed one-thumbed:** hold,
 the depth nudge from Stage 4, and pause. All three want a place to live rather
@@ -793,15 +800,39 @@ The **turn prompt** needs a touch answer too. When the Shift meter fills the gam
 asks for left or right and falls back after five seconds; on a phone that has to
 be a pair of targets, not a keypress.
 
-### Layout
+### Layout — M12b ✅
 
-- Portrait first. The HUD flanks the board today — score to the left, next and
-  hold to the right — which is exactly wrong on a narrow screen. Above and below,
-  and the well takes the width.
-- Safe-area insets, so nothing lands under a notch or a home indicator.
-- Landscape as a genuine second layout, not a squashed portrait.
-- `HUD_RESERVE` and the camera fit were tuned against desktop framing and want
-  re-checking once the HUD moves.
+- ✅ **Portrait.** The HUD flanked the board and was sized for a desktop:
+  `min-width: 8.5rem` on the stats alone is 136px before padding, in a margin of
+  about 80px, so the score panel lay across the top-left of the well and covered
+  the first rows of the stack.
+
+  It is not moved above and below, and that entry was wrong to assume it should
+  be. **The board cannot take the width and never could**: the frustum has to
+  hold the footprint's 45-degree diagonal so the board does not change scale
+  during a turn, which caps the well at about 62% of the window whatever the HUD
+  does. The remaining 38% — two margins of roughly 80px on a 412px phone — is
+  permanently empty and is exactly where the HUD belongs. So the columns stay and
+  the panels are sized to the gap that already exists.
+
+- ✅ **Safe-area insets**, on the two full-bleed layers rather than on the page,
+  so the canvas still fills the display and only what has to be read moves
+  inward. The Shift meter is positioned inside the HUD's content box, so it
+  follows without knowing about it.
+
+- ✅ **`HUD_RESERVE` re-checked, and it was wrong.** It is measured in _cells_,
+  and cells shrink with the window: 1.6 of them is 27 pixels on a phone in
+  landscape against a 44-pixel Shift meter, so the meter had always been drawn
+  over the bottom rows of the board there. The camera fit now takes a reserve in
+  **pixels** and treats it as a floor — the board is only pushed up when the
+  framing does not already leave that much — so a desktop is framed exactly as
+  before and a short window is not.
+
+- **Landscape as a genuine second layout** — still open, and now the only part of
+  this section that is. It works and nothing overlaps, but the well is 87px wide
+  on a 863×360 window while roughly 600px of horizontal space sits empty either
+  side. The board is height-limited there, so the answer is a layout that uses
+  the width rather than a reserve that shrinks the board further.
 
 ### Smooth
 
@@ -817,6 +848,12 @@ be a pair of targets, not a keypress.
 - Establish a frame-time budget and measure against a throttled CPU profile in
   the end-to-end suite, so a regression is caught rather than felt.
 
+**Not done, and moved to M16**, where the profiling pass lives. Nothing here was
+measured, so the section is a list of hypotheses rather than findings — and one
+of them changed under it: the gel material added per-fragment work to every cube
+in M14, which is exactly the kind of thing a budget exists to catch and exactly
+why the budget should be set after the look is settled rather than before.
+
 ### Say the mobile controls, not the keyboard ones
 
 The key map in settings is hidden on touch-primary devices already — by input
@@ -829,15 +866,28 @@ The same table-shared-with-the-implementation approach applies: whatever carries
 the gestures should be what the panel reads, for the same reason the key map
 reads `BINDINGS`.
 
-### Touch hygiene
+### Touch hygiene ✅
 
 `touch-action: none` on the playfield, no pull-to-refresh, no double-tap zoom, no
 text selection on a long press, no tap highlight. Individually trivial,
 collectively the difference between a web game and a web page.
 
-**Exit criteria:** a full run — start to game over, including a turn and a hold —
-played on a phone with one thumb, without the finger hiding anything the player
-needs, and holding its frame budget on a mid-range device profile.
+Two of these were only half done. **Text selection** was scoped to four selectors
+and to touch-primary devices, which left the title, the score, the mode blurbs
+and every panel body selectable — and on a touchscreen laptop, which is not
+touch-primary, all of it. It is app-wide now, with the challenge code kept
+selectable because a player has an actual reason to copy theirs. **Horizontal
+scrolling** was implied by `overflow: hidden` and is now named, on the page and
+on the panel layer, because every way a page starts sliding sideways is an
+accident — a panel a few pixels too wide, a long unbroken string — and each one
+turns a game into a page that moves under the thumb.
+
+**Exit criteria, met** for everything except the frame budget and the landscape
+layout, both carried to M16: a run can be played on a phone with one thumb
+without the finger hiding anything the player needs. Eleven end-to-end tests run
+against a real device profile rather than a narrowed desktop window, because the
+two differ in the way that matters — a narrow window still reports a fine pointer
+and still has a keyboard, and the layout branches on that.
 
 ---
 

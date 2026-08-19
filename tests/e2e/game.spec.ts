@@ -1,5 +1,5 @@
-import { expect, test } from '@playwright/test';
-import type { Page } from '@playwright/test';
+import { devices, expect, test } from '@playwright/test';
+import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { LINES_PER_STAGE } from '../../src/core/stages';
 
 /** Wait for the first rendered frame. */
@@ -2100,15 +2100,28 @@ test.describe('the key map', () => {
   // counts them as keyboard bindings.
   const KEYBOARD_MAP = '.keymap:not(.keymap--touch)';
 
-  async function openSettings(page: Page): Promise<void> {
-    await page.goto('/?debug=1');
+  /**
+   * Open settings with a given mode in play.
+   *
+   * The panel describes what *that mode* answers to, so which mode is running
+   * changes what it lists. Opened from the title it describes the default, which
+   * is Flatland -- a mode that permits roll alone and never offers the depth
+   * nudge, so four keys and two gestures are correctly absent there.
+   */
+  async function openSettings(page: Page, mode = 'ascent'): Promise<void> {
+    await page.goto('/?debug=1&seed=keymap');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate((id) => window.__refraction?.play(id as never, 'keymap'), mode);
+    await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
+    await page.keyboard.press('Escape');
     await page.getByRole('button', { name: 'SETTINGS' }).click();
     await expect(page.locator(KEYBOARD_MAP)).toBeVisible();
   }
 
-  test('shows a row for every binding, with the keys that work', async ({ page }) => {
-    await openSettings(page);
+  test('shows a row for every binding the mode answers to', async ({ page }) => {
+    // Ascent permits everything, so here the panel and the table are the same
+    // list -- which is the contract the shared table exists to hold.
+    await openSettings(page, 'ascent');
 
     const table = await page.evaluate(() => window.__refraction?.bindings ?? []);
     expect(table.length).toBeGreaterThan(10);
@@ -2123,6 +2136,29 @@ test.describe('the key map', () => {
     await expect(page.locator(`${KEYBOARD_MAP} .keymap__row`)).toHaveCount(table.length);
   });
 
+  test('leaves out the keys a mode does not answer to', async ({ page }) => {
+    // Flatland permits roll alone and never offers the depth nudge. A panel that
+    // listed Q, E, R, F and the two nudge keys would be advertising six controls
+    // the engine ignores -- exactly the drift a table shared with the
+    // implementation exists to prevent, arriving through the mode instead.
+    await openSettings(page, 'flatland');
+
+    for (const action of ['yawClock', 'yawAnti', 'pitchUp', 'pitchDown']) {
+      await expect(
+        page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="${action}"]`)
+      ).toHaveCount(0);
+    }
+    for (const action of ['nudgeDeeper', 'nudgeNearer']) {
+      await expect(
+        page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="${action}"]`)
+      ).toHaveCount(0);
+    }
+    // Roll is still there: it is the one rotation the mode does have.
+    await expect(
+      page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="rollClock"]`)
+    ).toBeVisible();
+  });
+
   test('names the one key that means two things', async ({ page }) => {
     // Left and Right move the piece, and answer the turn prompt while the Shift
     // meter is full. A key map that lists only the first is telling a half
@@ -2133,8 +2169,8 @@ test.describe('the key map', () => {
 
   test('the depth nudge is listed in both directions', async ({ page }) => {
     // The bug the table found: only one direction had ever been bound, so half
-    // of a Stage 4 mechanic was unreachable.
-    await openSettings(page);
+    // of a Stage 4 mechanic was unreachable. Read in a mode that has the nudge.
+    await openSettings(page, 'ascent');
     await expect(
       page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="nudgeDeeper"]`)
     ).toBeVisible();
@@ -2278,9 +2314,14 @@ test.describe('touch controls', () => {
       if (!r) throw new Error('no renderer');
       return { left: r.left, top: r.top, width: r.width, height: r.height };
     });
+    // The strip is anchored to the bottom of the window, not to the bottom of
+    // the well. It used to sit directly under the board, which is also where the
+    // Shift meter goes -- on a Pixel 7 the two overlapped almost exactly, so the
+    // thumb rested on the one readout that says when the board is about to turn.
+    const stripY = await page.evaluate(() => window.innerHeight - 84 + 40);
     const columnX = (column: number): number => rect.left + (rect.width * (column + 0.5)) / 8;
     return {
-      strip: (column) => ({ x: columnX(column), y: rect.top + rect.height + 20 }),
+      strip: (column) => ({ x: columnX(column), y: stripY }),
       field: (column) => ({ x: columnX(column), y: rect.top + rect.height * 0.4 }),
     };
   }
@@ -3069,5 +3110,234 @@ test.describe('the title screen', () => {
     }));
     expect(face).toBe('front');
     expect(yaw).toBe(0);
+  });
+});
+
+/**
+ * The phone.
+ *
+ * Measured on a real device profile rather than on a narrowed desktop window,
+ * because the two differ in the way that matters: a narrow window on a laptop
+ * still reports a fine pointer and a hover, and still has a keyboard. The
+ * layout branches on `(hover: none) and (pointer: coarse)` for exactly that
+ * reason, so a width-only emulation would test the wrong branch.
+ */
+test.describe('on a phone', () => {
+  /*
+   * The device profile is applied per context rather than through `test.use`,
+   * which cannot set one inside a describe -- it carries `defaultBrowserType`
+   * and that would force a new worker.
+   */
+  const PHONE = (() => {
+    const { defaultBrowserType: _ignored, ...rest } = devices['Pixel 7'];
+    return rest;
+  })();
+
+  /*
+   * Contexts made from `browser` are not closed for us the way the `page`
+   * fixture is, and each one holds a page rendering WebGL every frame. Left to
+   * accumulate they saturate the machine: the seventh test in this block started
+   * timing out at 35 seconds and passed in four on its own.
+   */
+  const open: BrowserContext[] = [];
+  test.afterEach(async () => {
+    await Promise.all(open.splice(0).map((context) => context.close()));
+  });
+
+  async function phone(
+    browser: Browser,
+    viewport?: { width: number; height: number }
+  ): Promise<Page> {
+    const context = await browser.newContext({ ...PHONE, ...(viewport ? { viewport } : {}) });
+    open.push(context);
+    return context.newPage();
+  }
+
+  /** Where the movement strip begins, by the same rule the app uses. */
+  const stripTop = (page: Page): Promise<number> => page.evaluate(() => window.innerHeight - 84);
+
+  async function play(page: Page, mode: string): Promise<void> {
+    await page.goto('/?debug=1&seed=phone');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate((id) => window.__refraction?.play(id as never, 'phone'), mode);
+    await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
+    await page.waitForTimeout(300);
+  }
+
+  test('is what the layout thinks it is', async ({ browser }) => {
+    const page = await phone(browser);
+    // The premise every other test here rests on. If the profile stopped
+    // reporting a coarse pointer, the rest would pass by testing the desktop
+    // layout and nobody would notice.
+    await play(page, 'flatland');
+    const coarse = await page.evaluate(
+      () => window.matchMedia('(hover: none) and (pointer: coarse)').matches
+    );
+    expect(coarse).toBe(true);
+  });
+
+  test('never scrolls sideways', async ({ browser }) => {
+    const page = await phone(browser);
+    await play(page, 'ascent');
+    for (const screen of ['playing', 'settings'] as const) {
+      if (screen === 'settings') {
+        await page.keyboard.press('Escape');
+        await page.getByRole('button', { name: 'SETTINGS' }).click();
+        await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
+      }
+      const { scrollWidth, clientWidth } = await page.evaluate(() => ({
+        scrollWidth: document.documentElement.scrollWidth,
+        clientWidth: document.documentElement.clientWidth,
+      }));
+      expect(scrollWidth).toBe(clientWidth);
+    }
+  });
+
+  test('does not let a long press select text', async ({ browser }) => {
+    const page = await phone(browser);
+    // A long press is how a player holds a piece in place. It must not also
+    // raise a selection and a context menu over the board.
+    await play(page, 'flatland');
+    const selectable = await page.evaluate(() => {
+      const probes = ['.hud__stats', '.hud__label', '.stat__value', 'body'];
+      return probes.filter((selector) => {
+        const node = document.querySelector(selector);
+        if (!node) return false;
+        const value = getComputedStyle(node).userSelect;
+        return value !== 'none';
+      });
+    });
+    expect(selectable).toEqual([]);
+  });
+
+  test('keeps the challenge code selectable, because it is meant to be copied', async ({
+    browser,
+  }) => {
+    const page = await phone(browser);
+    // The exception that stops the rule above from being a blanket. A code is
+    // read aloud and retyped; a player who wants to copy theirs has to be able
+    // to select it.
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.getByRole('button', { name: 'CHALLENGE' }).click();
+    const value = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.code') as Element).userSelect
+    );
+    expect(value).toBe('text');
+  });
+
+  test('the Shift meter stays clear of the strip in a mode that has one', async ({ browser }) => {
+    // The measurement that started this: on a Pixel 7 the meter ran 679 to 723
+    // and the strip 669 to 753, so the thumb rested squarely on it.
+    //
+    // Both orientations, because portrait alone does not test anything hard --
+    // there the meter lands a good thirty pixels clear whatever the layout does,
+    // and the assertion passes even with the meter's own clamp removed. Landscape
+    // is where the margin is thin enough for the reserve to be doing real work.
+    for (const size of [
+      { width: 412, height: 839 },
+      { width: 863, height: 360 },
+    ]) {
+      const page = await phone(browser, size);
+      await play(page, 'ascent');
+      const bar = await page.locator('.hud__shift').boundingBox();
+      if (!bar) throw new Error('no Shift meter');
+      expect(bar.y + bar.height).toBeLessThanOrEqual(await stripTop(page));
+    }
+  });
+
+  test('the Shift meter stays clear of the board, in both orientations', async ({ browser }) => {
+    // Separate from the strip, and older than it. `HUD_RESERVE` is measured in
+    // cells, and cells shrink with the window -- 1.6 of them is 27 pixels on a
+    // phone in landscape against a 44-pixel meter, so the meter had always been
+    // drawn over the bottom rows of the board there.
+    for (const size of [
+      { width: 412, height: 839 },
+      { width: 863, height: 360 },
+    ]) {
+      const page = await phone(browser, size);
+      await play(page, 'ascent');
+      const bar = await page.locator('.hud__shift').boundingBox();
+      const well = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
+      if (!bar || !well) throw new Error('no geometry');
+      expect(bar.y).toBeGreaterThanOrEqual(well.top + well.height);
+    }
+  });
+
+  test('a roll-only mode spends no screen space on a strip', async ({ browser }) => {
+    const page = await phone(browser);
+    // Flatland permits roll alone, so there is nothing for the split to carry.
+    // The board it gets back is the whole point: the strip is 84px out of an
+    // eighteen-row well, paid for a verb the mode does not have.
+    await play(page, 'flatland');
+    const flat = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
+    await play(page, 'ascent');
+    const full = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
+    if (!flat || !full) throw new Error('no geometry');
+
+    expect(await page.evaluate(() => window.__refraction?.game.rollOnly)).toBe(false);
+    // Portrait has room to spare, so neither is squeezed -- the reserve is a
+    // floor, not an addition, and a window that already clears it is framed
+    // exactly as it was. What must hold is that the roll-only mode is never the
+    // smaller of the two.
+    expect(flat.height).toBeGreaterThanOrEqual(full.height);
+  });
+
+  test('a tap low on the screen rolls in Flatland and does not in Ascent', async ({ browser }) => {
+    const page = await phone(browser);
+    // The behavioural half of dropping the split. With no strip there is nowhere
+    // for a hand to rest that is not the playfield, so a tap anywhere is the
+    // roll; with a strip, a tap there is a miss rather than a verb.
+    const tapLow = async (): Promise<string> => {
+      const y = (await stripTop(page)) + 40;
+      const x = await page.evaluate(() => {
+        const r = window.__refraction?.renderer.wellScreenRect();
+        return (r?.left ?? 0) + (r?.width ?? 0) * 0.75;
+      });
+      const before = await page.evaluate(() =>
+        JSON.stringify(window.__refraction?.game.active?.offsets)
+      );
+      await page.evaluate(
+        ({ x, y }) => {
+          const root = document.querySelector('#app');
+          if (!root) throw new Error('no root');
+          for (const type of ['pointerdown', 'pointerup']) {
+            root.dispatchEvent(
+              new PointerEvent(type, {
+                pointerId: 1,
+                pointerType: 'touch',
+                isPrimary: true,
+                clientX: x,
+                clientY: y,
+                bubbles: true,
+              })
+            );
+          }
+        },
+        { x, y }
+      );
+      const after = await page.evaluate(() =>
+        JSON.stringify(window.__refraction?.game.active?.offsets)
+      );
+      return before === after ? 'unchanged' : 'rolled';
+    };
+
+    await play(page, 'flatland');
+    expect(await tapLow()).toBe('rolled');
+
+    await play(page, 'ascent');
+    expect(await tapLow()).toBe('unchanged');
+  });
+
+  test('the score panel does not lie across the board', async ({ browser }) => {
+    const page = await phone(browser);
+    // It did: `min-width: 8.5rem` on the stats is 136px before padding, in a
+    // margin of about 80px, so the panel covered the top-left of the well and
+    // the first rows of the stack with it.
+    await play(page, 'flatland');
+    const stats = await page.locator('.hud__stats').boundingBox();
+    const well = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
+    if (!stats || !well) throw new Error('no geometry');
+    expect(stats.x + stats.width).toBeLessThanOrEqual(well.left);
   });
 });

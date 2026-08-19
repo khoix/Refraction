@@ -26,6 +26,34 @@ import type { StageConfig } from './stages';
 export type ModeId = 'ascent' | 'endless' | 'prism' | 'flatland' | 'blindSpectrum' | 'zen';
 
 /**
+ * Which rotation axes a mode permits.
+ *
+ * `all` is the game as designed: roll in the screen plane, plus yaw and pitch,
+ * which are the two extra axes a three-dimensional board makes available.
+ *
+ * `roll` restricts a mode to the screen plane entirely. It exists because
+ * Flatland's promise -- planar pieces, depth purely a property of where you put
+ * them -- was not actually true: yaw on a flat I-piece turns four columns in one
+ * lane into one column across four lanes, taking the piece out of the screen
+ * plane and straight past the thing the mode is supposed to isolate.
+ *
+ * It is also what lets touch drop the field/strip split. The split exists to
+ * carry three rotation axes, and a mode that has one does not need to spend a
+ * strip of an eighteen-row well on it.
+ */
+export type RotationPolicy = 'roll' | 'all';
+
+/**
+ * When the depth nudge becomes available.
+ *
+ * One field rather than two booleans. `forceDepthNudge` could only ever turn the
+ * nudge on early; the inverse was missing, so a mode could start below the stage
+ * that unlocks it but could not withhold it outright -- and adding a second
+ * boolean for that would have created a pair that can contradict each other.
+ */
+export type DepthNudgePolicy = 'never' | 'byStage' | 'always';
+
+/**
  * What a player has to do to open a mode.
  *
  * Kept as data rather than a predicate so it can be *shown* to the player on
@@ -61,8 +89,20 @@ export interface ModeConfig {
   readonly linesPerTurn: number | null;
   /** Hard cap on piece tier, or null to follow the stage table's schedule. */
   readonly maxTier: number | null;
-  /** Depth Nudge available from the first piece. */
-  readonly forceDepthNudge: boolean;
+  /**
+   * Which rotation axes the mode permits.
+   *
+   * Read by the engine, by the key map -- which must not advertise a key the
+   * engine ignores -- and by the touch layer, which drops its movement strip
+   * when there is only one axis to carry.
+   */
+  readonly rotation: RotationPolicy;
+  /**
+   * When the depth nudge becomes available. Folded into the stage's own
+   * `depthNudge` boolean by `withOverrides`, so the engine keeps reading one
+   * flag and the policy lives here.
+   */
+  readonly depthNudge: DepthNudgePolicy;
   /** Whether the run can end. False only for Zen. */
   readonly canFail: boolean;
   /** Whether cubes are drawn in depth colour at all. False for Blind Spectrum. */
@@ -90,7 +130,8 @@ const base = {
   continuousGravity: false,
   linesPerTurn: null,
   maxTier: null,
-  forceDepthNudge: false,
+  rotation: 'all',
+  depthNudge: 'byStage',
   canFail: true,
   depthColour: true,
   refractionScale: 1,
@@ -125,7 +166,7 @@ export const MODES: readonly ModeConfig[] = [
     pinStage: true,
     gravityScale: 0.54,
     continuousGravity: true,
-    forceDepthNudge: true,
+    depthNudge: 'always',
   },
   {
     ...base,
@@ -134,7 +175,7 @@ export const MODES: readonly ModeConfig[] = [
     blurb: 'The board turns constantly. Chains are everything.',
     startStage: 3,
     linesPerTurn: 2,
-    forceDepthNudge: true,
+    depthNudge: 'always',
     refractionScale: 2,
   },
   {
@@ -146,6 +187,13 @@ export const MODES: readonly ModeConfig[] = [
     // depth is purely a property of where you put it. Pure projection reading.
     maxTier: 1,
     startStage: 2,
+    // Roll alone, and no depth nudge ever. Both follow from the mode's own
+    // promise: the piece never leaves the screen plane, so its lane changes only
+    // when the board turns. Yaw and the nudge are the two ways a player could
+    // move a piece through depth directly, and a mode about reading projection
+    // cannot offer either.
+    rotation: 'roll',
+    depthNudge: 'never',
   },
   {
     ...base,
@@ -153,7 +201,7 @@ export const MODES: readonly ModeConfig[] = [
     name: 'Blind Spectrum',
     blurb: 'No depth colour. Read the structure from memory.',
     startStage: 4,
-    forceDepthNudge: true,
+    depthNudge: 'always',
     depthColour: false,
     // Playing without the depth channel is the hardest thing the game asks of
     // anyone, and the score should say so.
@@ -170,7 +218,7 @@ export const MODES: readonly ModeConfig[] = [
     blurb: 'No failure. Build and turn for as long as you like.',
     startStage: 2,
     pinStage: true,
-    forceDepthNudge: true,
+    depthNudge: 'always',
     canFail: false,
     // Nothing is at stake, so a Zen score cannot stand beside a real one.
     scoreScale: 0.25,
@@ -240,7 +288,11 @@ function withOverrides(mode: ModeConfig, stage: StageConfig): StageConfig {
     ...stage,
     ...(mode.linesPerTurn !== null ? { linesPerTurn: mode.linesPerTurn } : {}),
     ...(mode.maxTier !== null ? { maxTier: Math.min(stage.maxTier, mode.maxTier) } : {}),
-    ...(mode.forceDepthNudge ? { depthNudge: true } : {}),
+    ...(mode.depthNudge === 'always'
+      ? { depthNudge: true }
+      : mode.depthNudge === 'never'
+        ? { depthNudge: false }
+        : {}),
   };
 }
 

@@ -27,7 +27,8 @@ import { isPersonalBest, recordRun, withSettings } from '@core/save';
 import type { SaveData, Settings } from '@core/save';
 import { loadSave, persistSave, storageAvailable } from '@ui/storage';
 import { BINDINGS, keyLabel } from './keymap';
-import { TouchController } from './touch/controller';
+import { STRIP_HEIGHT_PX, TouchController, stripTopPx } from './touch/controller';
+import { touchPrimary } from './touch/primary';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
 const STEP_MS = 1000 / 60;
@@ -176,6 +177,23 @@ function boot(root: HTMLElement): void {
     persistSave(save);
   };
 
+  /**
+   * Keep the board clear of everything below it.
+   *
+   * The Shift meter and the touch strip both live under the board, and neither
+   * is laid out by the document -- the meter is absolutely positioned and the
+   * strip is a region of the window rather than an element -- so the board has
+   * to be told how much room to leave. The strip's share is zero in a roll-only
+   * mode, which has no strip, and on any device that is not touch-primary.
+   *
+   * A floor rather than an addition: the fit only pushes the board up when the
+   * framing does not already leave this much, so a desktop loses nothing.
+   */
+  const applyStripReserve = (): void => {
+    const strip = touchPrimary() && !game.rollOnly ? STRIP_HEIGHT_PX : 0;
+    renderer.setBottomReserve(hud.shiftReservePx + strip);
+  };
+
   const startRun = (id: ModeId, pinned: Challenge | null = null): void => {
     mode = pinned ? pinned.mode : modeById(id);
     challenge = pinned;
@@ -184,6 +202,11 @@ function boot(root: HTMLElement): void {
     // face. Without this the run opens with the camera wherever the attract
     // cycle left it, colouring the board for a face nobody is playing.
     renderer.snapToFace(game.face);
+    // The reserve depends on the mode, so it is re-applied per run rather than
+    // once at boot.
+    applyStripReserve();
+    // The controls panels describe what this mode answers to.
+    screens.setMode(mode);
     outcomeRecorded = false;
     if (window.__refraction) window.__refraction.game = game;
     applySettings(save.settings);
@@ -265,19 +288,28 @@ function boot(root: HTMLElement): void {
     const handle: DebugHandle = {
       game,
       renderer,
+      /*
+       * Both delegate to `startRun` rather than starting a run of their own.
+       *
+       * They used to duplicate it -- construct the game, reset the flag, show
+       * the screen -- and duplication of a start path is drift waiting to
+       * happen: it had already missed `snapToFace`, and it missed the strip
+       * reserve the moment that was added. The end-to-end suite drives the game
+       * through these, so a debug path that diverges from the real one is a
+       * suite testing something no player ever gets.
+       *
+       * `pinnedSeed` is how a seed reaches `startRun`, which reads it through
+       * `nextSeed` -- the same route the `?seed=` link uses.
+       */
       restart: (seed?: string) => {
-        game = newGame(seed ?? nextSeed(), mode);
-        outcomeRecorded = false;
+        if (seed !== undefined) pinnedSeed = seed;
+        startRun(mode.id, challenge);
         handle.game = game;
       },
       play: (id: ModeId, seed?: string) => {
-        mode = modeById(id);
-        challenge = null;
-        game = newGame(seed ?? nextSeed(), mode);
-        outcomeRecorded = false;
+        if (seed !== undefined) pinnedSeed = seed;
+        startRun(id);
         handle.game = game;
-        applySettings(save.settings);
-        screens.show('playing');
       },
       save: () => save,
       screen: () => screens.screen,
@@ -333,9 +365,19 @@ function boot(root: HTMLElement): void {
     onInteract: () => audio.resume(),
     onTurn: (direction: TurnDirection) => game.chooseTurn(direction),
     wellRect: () => renderer.wellScreenRect(),
+    // The engine answers this, not the interface: which rotations a mode permits
+    // is a rule, and a gesture layer that decided for itself could hide a verb
+    // the keyboard still had.
+    hasStrip: () => !game.rollOnly,
   });
 
-  window.addEventListener('resize', () => renderer.resize());
+  applyStripReserve();
+  screens.setMode(mode);
+
+  window.addEventListener('resize', () => {
+    applyStripReserve();
+    renderer.resize();
+  });
   // Clicking a menu button is also a user gesture, and the only one a
   // mouse-only player makes before the first key press.
   root.addEventListener('pointerdown', () => audio.resume());
@@ -448,7 +490,10 @@ function boot(root: HTMLElement): void {
     // The title screen is the board, not the HUD.
     hud.setHidden(screens.screen === 'title');
     hud.update(game, elapsed);
-    hud.layoutWell(renderer.wellScreenRect());
+    hud.layoutWell(
+      renderer.wellScreenRect(),
+      touchPrimary() && !game.rollOnly ? stripTopPx(window.innerHeight) : null
+    );
     const next = game.preview[0];
     renderer.setPreview(
       save.settings.spinPreview && next && screens.screen === 'playing' ? hud.nextSlotRect() : null,

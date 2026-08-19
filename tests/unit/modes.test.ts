@@ -350,3 +350,75 @@ describe('mode-specific scoring', () => {
     for (const mode of MODES) expect(mode.scoreScale).toBeGreaterThan(0);
   });
 });
+
+/**
+ * Flatland is roll only, with no depth nudge at all.
+ *
+ * The mode's promise is that depth is purely a property of where a piece is put
+ * rather than of its own shape, and it was not true. Yaw on a flat I-piece turns
+ * four columns in one lane into one column across four lanes: the piece leaves
+ * the screen plane entirely, which is exactly what "pure projection reading" is
+ * supposed to exclude. The depth nudge does the same thing more directly.
+ *
+ * Both restrictions live in the mode table rather than in the interface. A
+ * gesture layer that hid the swipe zone while the keyboard still answered `Q`
+ * would be an input-parity break, and an invisible one until someone played
+ * both.
+ */
+describe('Flatland stays in the screen plane', () => {
+  const flatland = () => new Game({ seed: 'flat', mode: modeById('flatland') });
+
+  it('rolls, and does nothing else', () => {
+    const game = flatland();
+    expect(game.rollOnly).toBe(true);
+    expect(game.allowsRotation('roll')).toBe(true);
+    expect(game.allowsRotation('yaw')).toBe(false);
+    expect(game.allowsRotation('pitch')).toBe(false);
+  });
+
+  it('refuses the rotations it does not permit, rather than ignoring them quietly', () => {
+    const game = flatland();
+    const before = JSON.stringify(game.active?.offsets);
+    expect(game.rotatePiece('yaw')).toBe(false);
+    expect(game.rotatePiece('pitch')).toBe(false);
+    expect(JSON.stringify(game.active?.offsets)).toBe(before);
+    expect(game.rotatePiece('roll')).toBe(true);
+  });
+
+  it('never offers the depth nudge, at any stage', () => {
+    const game = flatland();
+    // Well past stage 4, which is where the schedule would otherwise unlock it.
+    game.lines = LINES_PER_STAGE * 10;
+    expect(game.stage.index).toBeGreaterThan(4);
+    expect(game.depthNudgeAllowed).toBe(false);
+    expect(game.nudgeDepth(1)).toBe(false);
+  });
+});
+
+describe('the rotation and nudge policies', () => {
+  it('leaves every other mode with all three axes', () => {
+    for (const mode of MODES) {
+      if (mode.id === 'flatland') continue;
+      expect(mode.rotation).toBe('all');
+    }
+  });
+
+  it('reaches the stage the engine actually reads', () => {
+    // The policy is folded into the stage's own `depthNudge` boolean rather than
+    // checked separately at every call site, so this is the seam that matters.
+    const never = modeStage(
+      modeById('flatland'),
+      LINES_PER_STAGE * 10,
+      stageForLines,
+      LINES_PER_STAGE
+    );
+    expect(never.depthNudge).toBe(false);
+
+    const always = modeStage(modeById('zen'), 0, stageForLines, LINES_PER_STAGE);
+    expect(always.depthNudge).toBe(true);
+
+    // And a mode with no opinion still follows the table.
+    const byStage = modeStage(modeById('ascent'), 0, stageForLines, LINES_PER_STAGE);
+    expect(byStage.depthNudge).toBe(stageForLines(0).depthNudge);
+  });
+});

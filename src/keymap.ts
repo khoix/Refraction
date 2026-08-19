@@ -19,6 +19,8 @@
  */
 
 /** Everything the player can ask for. */
+import type { DepthNudgePolicy, RotationPolicy } from '@core/modes';
+
 export type Action =
   | 'moveLeft'
   | 'moveRight'
@@ -49,7 +51,25 @@ export interface Binding {
    * Shown alongside the row when the control is not always available.
    */
   readonly note?: string;
+  /**
+   * What the mode has to permit for this row to mean anything.
+   *
+   * A mode can withhold a verb outright -- Flatland permits roll alone and never
+   * offers the depth nudge -- and a controls panel that lists a key the engine
+   * ignores is exactly the drift a shared table exists to prevent. Absent means
+   * the control is always available.
+   */
+  readonly needs?: Capability;
 }
+
+/**
+ * A capability a mode may or may not offer.
+ *
+ * Named for the verb rather than for the field it is read from, because the two
+ * tables here are read by both a keyboard panel and a touch panel and neither
+ * should have to know how a mode stores its policy.
+ */
+export type Capability = 'depthRotation' | 'depthNudge';
 
 export type BindingGroup = 'Move' | 'Rotate' | 'Depth' | 'Game';
 
@@ -63,13 +83,26 @@ export const BINDINGS: readonly Binding[] = [
 
   { action: 'rollClock', codes: ['KeyX', 'ArrowUp'], label: 'Roll', group: 'Rotate' },
   { action: 'rollAnti', codes: ['KeyZ'], label: 'Roll back', group: 'Rotate' },
-  { action: 'yawClock', codes: ['KeyE'], label: 'Yaw', group: 'Rotate' },
-  { action: 'yawAnti', codes: ['KeyQ'], label: 'Yaw back', group: 'Rotate' },
-  { action: 'pitchUp', codes: ['KeyR'], label: 'Pitch', group: 'Rotate' },
-  { action: 'pitchDown', codes: ['KeyF'], label: 'Pitch back', group: 'Rotate' },
+  { action: 'yawClock', codes: ['KeyE'], label: 'Yaw', group: 'Rotate', needs: 'depthRotation' },
+  {
+    action: 'yawAnti',
+    codes: ['KeyQ'],
+    label: 'Yaw back',
+    group: 'Rotate',
+    needs: 'depthRotation',
+  },
+  { action: 'pitchUp', codes: ['KeyR'], label: 'Pitch', group: 'Rotate', needs: 'depthRotation' },
+  {
+    action: 'pitchDown',
+    codes: ['KeyF'],
+    label: 'Pitch back',
+    group: 'Rotate',
+    needs: 'depthRotation',
+  },
 
   {
     action: 'nudgeDeeper',
+    needs: 'depthNudge',
     codes: ['KeyT'],
     label: 'Push deeper',
     group: 'Depth',
@@ -77,6 +110,7 @@ export const BINDINGS: readonly Binding[] = [
   },
   {
     action: 'nudgeNearer',
+    needs: 'depthNudge',
     codes: ['KeyG'],
     label: 'Pull nearer',
     group: 'Depth',
@@ -151,20 +185,90 @@ export interface TouchAction {
   readonly label: string;
   readonly group: BindingGroup;
   readonly note?: string;
+  /** As `Binding.needs`. */
+  readonly needs?: Capability;
+  /**
+   * True for rows whose wording assumes the field/strip split.
+   *
+   * A roll-only mode has no strip, so "in the bottom strip" and "above the
+   * strip" describe a screen that is not there. The row still applies -- the
+   * verb exists -- but its note does not, and a note that points at a region the
+   * player cannot find is worse than none.
+   */
+  readonly stripNote?: boolean;
 }
 
 export const TOUCH_ACTIONS: readonly TouchAction[] = [
-  { gesture: 'Drag sideways', label: 'Move', group: 'Move', note: 'In the bottom strip' },
-  { gesture: 'Drag down', label: 'Soft drop', group: 'Move', note: 'In the bottom strip' },
-  { gesture: 'Flick down', label: 'Hard drop', group: 'Move', note: 'In the bottom strip' },
+  {
+    gesture: 'Drag sideways',
+    label: 'Move',
+    group: 'Move',
+    note: 'In the bottom strip',
+    stripNote: true,
+  },
+  {
+    gesture: 'Drag down',
+    label: 'Soft drop',
+    group: 'Move',
+    note: 'In the bottom strip',
+    stripNote: true,
+  },
+  {
+    gesture: 'Flick down',
+    label: 'Hard drop',
+    group: 'Move',
+    note: 'In the bottom strip',
+    stripNote: true,
+  },
 
-  { gesture: 'Tap left', label: 'Roll back', group: 'Rotate', note: 'Above the strip' },
-  { gesture: 'Tap right', label: 'Roll', group: 'Rotate', note: 'Above the strip' },
-  { gesture: 'Swipe left / right', label: 'Yaw', group: 'Rotate', note: 'Above the strip' },
-  { gesture: 'Swipe up / down', label: 'Pitch', group: 'Rotate', note: 'Above the strip' },
+  {
+    gesture: 'Tap left',
+    label: 'Roll back',
+    group: 'Rotate',
+    note: 'Above the strip',
+    stripNote: true,
+  },
+  {
+    gesture: 'Tap right',
+    label: 'Roll',
+    group: 'Rotate',
+    note: 'Above the strip',
+    stripNote: true,
+  },
+  {
+    gesture: 'Swipe left / right',
+    label: 'Yaw',
+    group: 'Rotate',
+    note: 'Above the strip',
+    stripNote: true,
+    needs: 'depthRotation',
+  },
+  {
+    gesture: 'Swipe up / down',
+    label: 'Pitch',
+    group: 'Rotate',
+    note: 'Above the strip',
+    stripNote: true,
+    needs: 'depthRotation',
+  },
 
   { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6' },
 ];
+
+/**
+ * Whether a mode answers to this row at all.
+ *
+ * One predicate, read by both panels, so the keyboard map and the touch map
+ * cannot disagree about what a mode offers.
+ */
+export function appliesToMode(
+  row: { readonly needs?: Capability },
+  mode: { readonly rotation: RotationPolicy; readonly depthNudge: DepthNudgePolicy }
+): boolean {
+  if (row.needs === 'depthRotation') return mode.rotation === 'all';
+  if (row.needs === 'depthNudge') return mode.depthNudge !== 'never';
+  return true;
+}
 
 /** The touch counterpart of `TURN_PROMPT_NOTE`. */
 export const TOUCH_TURN_NOTE =
