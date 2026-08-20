@@ -1112,20 +1112,28 @@ input,
 .title__cube {
   display: inline-flex;
   /*
-   * Cap height, not em. The cube stands in for a letter, so it has to measure
-   * like one -- an em-sized box sits noticeably small against the caps and reads
-   * as an icon dropped into the word rather than as the O.
+   * Larger than the caps, which is what the artwork does.
    *
-   * 0.69em is Refraction Display's cap height, measured off the rendered H
-   * rather than taken on trust. It was 0.74 for Oxanium's, and a cube sized to
-   * the wrong face's caps is exactly the kind of error that reads as "something
-   * is off about the O" without ever looking like a number.
+   * The obvious rule is that a letter's stand-in should measure a letter, and
+   * the screenshot overrules it: the voxel is 1.12 times cap height and 1.08
+   * times as wide, breaking the cap line top and bottom. It reads as deliberate
+   * rather than misaligned because a corner-on cube is pointed at both ends --
+   * cropping it to the cap line would flatten the two vertices that carry the
+   * projection and leave a shape doing a worse job of being a cube.
+   *
+   * Cap height here is 0.69em, so 1.12 of it is 0.77em.
    */
-  width: 0.69em;
-  height: 0.69em;
-  margin-inline: 0.1em;
-  /* The flex line centres on the em box; the caps sit a little above it. */
-  transform: translateY(-0.02em);
+  width: 0.77em;
+  height: 0.77em;
+  margin-inline: 0.14em;
+  /*
+   * Centred on the caps, not on the line.
+   *
+   * The flex line centres on the em box, and the caps sit above that -- so
+   * without this the voxel hangs low by half the difference. The value is the
+   * measured gap between the two centres, not an eyeballed nudge.
+   */
+  transform: translateY(-0.05em);
   color: var(--accent-beam);
 }
 

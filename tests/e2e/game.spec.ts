@@ -3518,6 +3518,92 @@ test.describe('the title screen', () => {
     expect(mark.weight).toBe('700');
   });
 
+  test('scales and centres the voxel against the cap line it stands on', async ({ page }) => {
+    /*
+     * The cube's size is a ratio to the letters' cap height, and the letters can
+     * change underneath it — which is not hypothetical. It was sized 0.74em to
+     * Oxanium's caps, the mark moved to a face whose caps are 0.69em, and nothing
+     * failed: the cube simply became the wrong size, in a way that reads as "the
+     * O looks off" rather than as a broken build.
+     *
+     * The numbers come from the source artwork: the voxel there is 1.12 times cap
+     * height and sits centred on the cap line, breaking it top and bottom. That
+     * overshoot is deliberate — a corner-on cube is pointed at both ends, and
+     * cropping it to the caps would flatten the two vertices carrying the
+     * projection.
+     *
+     * Cap height is measured off a canvas rather than read from a rectangle,
+     * because an element's box is line-height and glyph metrics, not ink.
+     */
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const fit = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const word = document.querySelector('.panel--boot .title__word') as HTMLElement;
+      const cube = word.querySelector('.title__cube') as HTMLElement;
+      const style = getComputedStyle(word);
+      const size = parseFloat(style.fontSize);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      ctx.fillStyle = '#fff';
+      ctx.font = `${style.fontWeight} ${size}px ${style.fontFamily}`;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('N', 40, 300);
+      const data = ctx.getImageData(0, 0, 400, 400).data;
+      let top = Infinity;
+      let bottom = -1;
+      for (let y = 0; y < 400; y += 1) {
+        for (let x = 0; x < 400; x += 1) {
+          if ((data[(y * 400 + x) * 4 + 3] ?? 0) > 128) {
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+          }
+        }
+      }
+      const capHeight = bottom - top + 1;
+      const capAboveBaseline = 300 - top;
+
+      /*
+       * Put the cap line on the screen.
+       *
+       * An element's box is line-height and font metrics, never ink, so the
+       * letters' rectangle cannot answer this directly — its centre sits below
+       * the cap centre by half a descender. The baseline is recovered from the
+       * half-leading instead: with a known line box and the face's own ascent and
+       * descent, everything else follows.
+       */
+      const letters = word.querySelector('.title__letters') as HTMLElement;
+      const lettersBox = letters.getBoundingClientRect();
+      const metrics = ctx.measureText('N');
+      const ascent = metrics.fontBoundingBoxAscent;
+      const descent = metrics.fontBoundingBoxDescent;
+      const halfLeading = (lettersBox.height - (ascent + descent)) / 2;
+      const baseline = lettersBox.top + halfLeading + ascent;
+      const capCentre = baseline - capAboveBaseline / 2;
+
+      const cubeBox = cube.getBoundingClientRect();
+      return {
+        capHeight,
+        cubeToCap: cubeBox.height / capHeight,
+        square: cubeBox.width / cubeBox.height,
+        centreOffset: (cubeBox.top + cubeBox.height / 2 - capCentre) / capHeight,
+      };
+    });
+
+    expect(fit.capHeight).toBeGreaterThan(20);
+    // 1.12 from the artwork; a tolerance wide enough for rasterisation, far too
+    // narrow for the cube to be sized to some other face's caps.
+    expect(fit.cubeToCap).toBeGreaterThan(1.05);
+    expect(fit.cubeToCap).toBeLessThan(1.2);
+    // A voxel is a cube: the box it is drawn in has to stay square.
+    expect(fit.square).toBeCloseTo(1, 2);
+    expect(Math.abs(fit.centreOffset)).toBeLessThan(0.06);
+  });
+
   test('hides the HUD, which belongs to a run', async ({ page }) => {
     /*
      * A score of zero, an empty NEXT and a Shift meter for a run nobody has

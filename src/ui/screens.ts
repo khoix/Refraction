@@ -123,16 +123,29 @@ function wordmark(tagline: boolean): HTMLElement {
   const cube = element('span', 'title__cube');
   cube.setAttribute('aria-hidden', 'true');
   /*
-   * Stroke 17, and the path inset to match it.
+   * The voxel, in the artwork's own projection.
    *
-   * The stroke is the wordmark's stem width, measured off the face rather than
-   * guessed: Refraction Display's I is 0.174 of its cap height, and the box is
-   * drawn at cap height, so 17.4 per hundred viewBox units. A stroke is centred
-   * on its path, so thickening one without moving the path pushes half the extra
-   * weight outside the box and quietly makes the cube taller than the letters
-   * beside it -- hence 9..91 rather than the 6..94 a thinner stroke wanted.
+   * Corner-on: yawed 45 degrees so no face is square to the viewer, and tilted
+   * about 20 degrees above the horizon. The silhouette is therefore a hexagon
+   * with two vertical sides, and three edges meet at a junction inside it --
+   * down to the bottom vertex, up-left and up-right to the shoulders.
+   *
+   * Every number here was read off the screenshot rather than chosen. Solving
+   * the orthographic projection against the measured silhouette -- half-height
+   * 57px, junction 18px above centre -- gives an elevation of 20.19 degrees, and
+   * that model then predicts a 75px vertical side edge where the artwork has 74.
+   *
+   * The tilt is the whole point, and it is what the first version got wrong. It
+   * had been drawn in cabinet projection -- a square front face with the top and
+   * side sheared off behind it -- which is a drawing convention rather than a
+   * viewpoint. True isometric would be wrong too, in the other direction: 35.26
+   * degrees lifts the junction to the middle of the shape and shows far more of
+   * the top face than the artwork does.
+   *
+   * The three faces carry different fills because the artwork lights them
+   * differently -- the top catches most, the right least.
    */
-  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"><path d="M9 33 L33 9 L91 9 L91 67 L67 91 L9 91 Z" fill="currentColor" fill-opacity="0.12" stroke="none"/><path d="M9 33 H67 V91 H9 Z"/><path d="M9 33 L33 9 H91 V67 L67 91"/><path d="M67 33 L91 9"/></g></svg>`;
+  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false" aria-hidden="true"><g><path d="M50 3 L96.6 19.1 L50 35.2 L3.4 19.1 Z" fill="currentColor" fill-opacity="0.2" stroke="none"/><path d="M3.4 19.1 L50 35.2 L50 97 L3.4 80.9 Z" fill="currentColor" fill-opacity="0.1" stroke="none"/><path d="M50 35.2 L96.6 19.1 L96.6 80.9 L50 97 Z" fill="currentColor" fill-opacity="0.075" stroke="none"/><g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M50 3 L96.6 19.1 L96.6 80.9 L50 97 L3.4 80.9 L3.4 19.1 Z"/><path d="M3.4 19.1 L50 35.2 L96.6 19.1 M50 35.2 L50 97"/></g></g></svg>`;
   const letterO = element('span', 'sr-only', 'O');
   word.append(cube, letterO, element('span', 'title__letters', 'N'));
 

@@ -34,6 +34,46 @@ The traced set is worth reading carefully. `A C E F I N R T` is every letter of
 REFRACTION except the O — because in the artwork the O was never a letter. It is
 the cube. The font's own O is left as plain Oxanium Bold, unused by the mark.
 
+### The voxel, turned to the artwork's own viewpoint
+
+The cube had been drawn in **cabinet projection** — a square front face with the
+top and side sheared off behind it. That is a drawing convention, not a
+viewpoint; nothing in the game is ever seen that way.
+
+The artwork's voxel is **corner-on**: yawed 45° so no face is square to the
+viewer, and tilted about 20° above the horizon. Its silhouette is a hexagon with
+two vertical sides, and three edges meet at a junction inside it — down to the
+bottom vertex, up-left and up-right to the shoulders.
+
+Every number was read off the screenshot rather than picked. Solving the
+orthographic projection against the measured silhouette — half-height 57 px,
+junction 18 px above centre — gives **20.19°**, and that model then predicts a
+75 px vertical side edge where the artwork has 74. True isometric would have been
+wrong in the other direction: 35.26° lifts the junction to the middle of the
+shape and shows far more of the top face than the artwork does.
+
+Two measurements settled the rest:
+
+- **Size: 0.69em → 0.77em.** The voxel is 1.12× cap height and breaks the cap
+  line top and bottom. Sizing a letter's stand-in to the caps is the obvious
+  rule, and the artwork overrules it — a corner-on cube is pointed at both ends,
+  so cropping it to the cap line would flatten the two vertices that carry the
+  projection.
+- **Stroke: 17 → 6.** The artwork's cube is a wireframe at roughly a sixth of the
+  letters' stem weight, not the stem-matched outline of M22c. A strictly
+  proportional stroke would be 2.6, which is a hairline at our size — the
+  artwork's cube is 110 px, ours is 54 px on a laptop and 20 px on a phone. Six
+  keeps the wireframe character where it is big and still survives where it is
+  small; at 11 and above the faces close up.
+
+The three faces now carry different fills, because the artwork lights them
+differently — the top catches most, the right least.
+
+While measuring this, one thing fell out that confirms the whole chain: the ink
+runs across the artwork's wordmark are 104, 94, 96, 104, 101, 97, 99, 18 px wide,
+against traced glyph widths of 105, 94, 96, 105, 101, 98, 99, 19 in the build
+script. This screenshot is the source the font was traced from.
+
 ### The cube, re-fitted to the face it now sits in
 
 Both of the cube's numbers are properties of the surrounding letters, so both
@@ -50,6 +90,11 @@ moved when the letters did, and both were measured rather than judged:
   taller than the letters beside it.
 
 Ink measures 48.07 px against a 48 px cap height.
+
+> Both numbers moved again once the voxel was turned to the artwork's projection,
+> above. The stem-matched stroke was a reasonable idea about a cube drawn flat and
+> a bad one about a cube drawn corner-on, where a stroke that heavy closes the
+> faces up entirely.
 
 ### Scoped to the mark, and not by preference
 
@@ -79,8 +124,11 @@ family-name assertion alone would have passed.
 
 ### Tested
 
-375 unit, and 31 e2e across the title screen, the front door and the phone
-layouts.
+375 unit, and 32 e2e across the title screen, the front door and the phone
+layouts. A second new test pins the voxel's fit — 1.12× cap height, a square box,
+centred on the cap line — because that ratio is tied to a font that has now
+changed underneath it once already, silently. Verified by sabotage: restoring the
+old 0.69em box fails the size, and removing the centring nudge fails the offset.
 
 ### Worth a look
 
