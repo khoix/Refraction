@@ -1390,22 +1390,38 @@ second, which is slower than almost any play. The bar would fill eventually
 whatever the player does, so Spectral Collapse becomes a reward for playing long
 enough rather than for keeping a pace up.
 
-That may be exactly right — the mechanic reads as unreachable at present, which
-is why the note exists. But it is a change of kind, not of degree, so it is worth
-naming before it ships:
+### Decided: cooling ÷5 and `HEAT_PER_LINE` 0.2 → 0.1
 
-- **A. As asked.** Cooling ÷5, earn rate untouched. Collapse arrives roughly
-  twice as often and is no longer conditional on pace.
-- **B. Keep the pressure.** Cooling ÷5 _and_ `HEAT_PER_LINE` down from 0.2 to
-  about 0.08, which restores a break-even near half the modelled rate while still
-  making the bar far more forgiving of a quiet spell. Slower to earn than A.
+Both constants move together, and the pair does something neither half does
+alone. Cooling ÷5 on its own doubles how often a collapse arrives; halving the
+earn rate alongside it puts that back almost exactly where it was, while keeping
+all of the forgiveness.
 
-Default is **A**, since it is what was asked for.
+|                                          | Now                        | Decided                     |
+| ---------------------------------------- | -------------------------- | --------------------------- |
+| `HEAT_PER_LINE`                          | 0.2                        | 0.1                         |
+| Cooling, per second                      | 1/26 ≈ 0.0385              | 1/130 ≈ 0.0077              |
+| Lines to fill, ignoring decay            | 5                          | 10                          |
+| Time to fill at the modelled 0.3 lines/s | ≈ 46 s                     | **≈ 45 s**                  |
+| Break-even clearing rate                 | 0.19 lines/s (64% of pace) | 0.077 lines/s (26% of pace) |
+| At half the modelled pace                | never fills                | fills in ≈ 137 s            |
 
-**Also in scope:** the `heatModel` unit tests pin both halves of the model, so the
-"never fills at half pace" case has to be rewritten rather than retuned — under A
-it is no longer a true statement about the game. The prose model in `game.ts` gets
-the new arithmetic.
+So the cost of _earning_ a collapse through sustained good play is unchanged —
+about three quarters of a minute either way — and what changes is the penalty for
+easing off. The old cliff, where dropping to two thirds of pace meant the bar
+could never fill at all, becomes a gradient: half pace still gets there, in a bit
+over two minutes.
+
+This also makes each line a **tenth** of the gauge rather than a fifth, so the bar
+moves in finer steps and reads more like a filling gauge and less like a five-slot
+counter. Worth a look on screen once it is in.
+
+**Also in scope:** the `heatModel` unit tests pin both halves of the old model.
+"Never fills at half pace" stops being a true statement about the game and has to
+be rewritten rather than retuned — the property that survives is that the bar
+still _loses_ ground below a quarter of the modelled pace. The prose model in
+`game.ts` gets the new arithmetic, including the note that the two constants were
+moved as a pair and why.
 
 ---
 
