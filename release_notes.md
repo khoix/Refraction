@@ -7,6 +7,64 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M17a — The gauge cools too fast
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+A play note: Spectral Collapse's bar drained too hard. Cooling is now a fifth of
+what it was — full to empty in 130 seconds of clearing nothing, rather than 26.
+
+### Why a second constant moved with it
+
+`HEAT_PER_LINE` went 0.2 → 0.1 in the same change, and the pair is the point.
+
+Cooling ÷5 on its own does two things, only one of which was asked for. It makes
+the bar forgiving, which was the request. It also doubles how often a collapse
+arrives — about 19 seconds of good play instead of about 45 — which turns a
+mechanic bought with pace into one bought with patience. Halving the earn rate
+alongside it puts the price back where it was and spends the entire change on
+forgiveness.
+
+|                                          | Before                     | Now                         |
+| ---------------------------------------- | -------------------------- | --------------------------- |
+| `HEAT_PER_LINE`                          | 0.2                        | 0.1                         |
+| Cooling, per second                      | 1/26 ≈ 0.0385              | 1/130 ≈ 0.0077              |
+| Time to fill at the modelled 0.3 lines/s | ≈ 46 s                     | ≈ 45 s                      |
+| Break-even clearing rate                 | 0.19 lines/s (64% of pace) | 0.077 lines/s (26% of pace) |
+| At half the modelled pace                | never fills                | fills in ≈ 137 s            |
+
+What actually changed is the penalty for easing off. Dropping to two thirds of
+pace used to mean the bar could never fill at all; that cliff is now a gradient,
+and half pace still gets there in a bit over two minutes. A line is also a tenth
+of the gauge rather than a fifth, so the bar moves in finer steps.
+
+### A test rewritten because it stopped being true
+
+`never fills at half that rate, however long the run lasts` asserted `Infinity`,
+and under the new constants half pace fills in 137 seconds. Retuning the bound
+would have kept a passing test that no longer described the game, so it was
+replaced by the claim the change actually makes — easing off costs time, not the
+mechanic — and a second test now holds what survives of the old cliff: below a
+quarter of the modelled pace the bar still loses ground, forever. That floor is
+the whole reason this is a rate mechanic and not a stopwatch.
+
+Both were checked by sabotage. Restoring the old cooling fails the first;
+over-cooling to `1 / 400_000` fails the second.
+
+### Tested
+
+375 unit tests. The change is in `src/core/game.ts` and touches nothing that
+renders, so the e2e suite is unaffected — no test anywhere hard-codes either
+constant's value, which is why only the two model tests needed attention.
+
+### Worth watching in play
+
+The arithmetic is settled and the feel is not. Two things to look for: whether a
+gauge that takes 130 seconds to empty now reads as permanently nearly-full, and
+whether tenths make the fill more legible or just less visible.
+
+---
+
 ## M22 — The front door, from the mockup
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

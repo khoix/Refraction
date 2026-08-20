@@ -1370,7 +1370,7 @@ watching in play — a large collapse can fill the meter and force a turn
 immediately. That may be a good moment or a confusing one, and only playing it
 will say.
 
-### M17a — The gauge cools too fast _(play note)_
+### M17a — The gauge cools too fast ✅ _(play note)_
 
 **Asked for:** cooling at a fifth of its current speed.
 
@@ -1422,6 +1422,21 @@ be rewritten rather than retuned — the property that survives is that the bar
 still _loses_ ground below a quarter of the modelled pace. The prose model in
 `game.ts` gets the new arithmetic, including the note that the two constants were
 moved as a pair and why.
+
+**Shipped.** Both constants moved, and the model in `game.ts` was rewritten
+rather than having its numbers edited. `never fills at half that rate` became
+`costs a player who eases off, without shutting them out` — it asserts that half
+pace takes more than twice as long as full pace and still arrives inside three
+minutes — and a new `still loses ground below a quarter of the modelled pace`
+holds the floor at `Infinity`, which is what keeps this a rate mechanic. Both
+were checked by sabotage: restoring the old cooling fails the first, and
+over-cooling to `1 / 400_000` fails the second.
+
+**Wants play, not arithmetic.** The break-even rate is 0.077 lines/second and the
+whole of this change lives in how it feels to sit near it. Worth watching for two
+things: whether a gauge that only empties over 130 seconds now reads as a bar
+that is always nearly full, and whether tenths make the fill legible or merely
+smaller.
 
 ---
 
