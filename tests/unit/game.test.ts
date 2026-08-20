@@ -819,10 +819,10 @@ describe('Spectral Collapse', () => {
  * fills instantly.
  *
  * What can be pinned is the arithmetic: at a stated clearing rate, does the bar
- * gain or lose ground, and how long does it take? Those are the two claims the
+ * gain or lose ground, and how long does it take? Those are the claims the
  * tuning actually rests on.
  */
-describe('the hot bar is reachable by good play and not by mediocre play', () => {
+describe('the hot bar is priced in pace, not in patience', () => {
   /**
    * Run the bar's own arithmetic at a given clearing rate.
    *
@@ -849,10 +849,22 @@ describe('the hot bar is reachable by good play and not by mediocre play', () =>
     expect(seconds).toBeLessThan(60);
   });
 
-  it('never fills at half that rate, however long the run lasts', () => {
-    // The pressure the mechanic exists to create: it is not a stopwatch, it is a
-    // question about whether you are clearing faster than it cools.
-    expect(heatModel(0.15, 600)).toBe(Infinity);
+  it('costs a player who eases off, without shutting them out', () => {
+    // Half the modelled pace. This used to assert `Infinity` -- under the
+    // original constants the bar could never fill at two thirds of pace, let
+    // alone half. Cooling went to a fifth because that cliff was too harsh in
+    // play, so the honest rewrite is not a retuned bound but a different claim:
+    // easing off costs time rather than the mechanic.
+    const eased = heatModel(0.15, 600);
+    expect(eased).toBeGreaterThan(2 * heatModel(0.3, 300));
+    expect(eased).toBeLessThan(180);
+  });
+
+  it('still loses ground below a quarter of the modelled pace', () => {
+    // What survives of the old cliff, and the reason this is a rate mechanic
+    // rather than a stopwatch: there is a floor beneath which waiting does not
+    // work, however long you wait.
+    expect(heatModel(0.07, 900)).toBe(Infinity);
   });
 
   it('is reachable at all, which a decay set too high would quietly prevent', () => {

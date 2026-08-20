@@ -176,14 +176,6 @@ function boot(root: HTMLElement): void {
     game.active = null;
   };
   stillTheTitle();
-  /**
-   * How long the title holds a face before turning to the next.
-   *
-   * Long enough to read the arrangement in that orientation -- which is the
-   * point, since the same stack is a different picture from each face.
-   */
-  const ATTRACT_DWELL_MS = 2600;
-  let attractDwell = 0;
   const renderer = new GameRenderer(canvas, {
     preserveDrawingBuffer: debug,
     turnDurationMs,
@@ -363,9 +355,23 @@ function boot(root: HTMLElement): void {
     onProgress: (progress) => screens.setLoading(progress.fraction),
   }).then((loaded) => {
     const theme = loaded.find((asset) => asset.id === THEME.id);
-    if (theme?.blob) audio.loadMusic(theme.blob);
+    // The fetched bytes are not handed on: the element is pointed at the same
+    // URL, which the fetch has just warmed in the HTTP cache. See `music.ts` for
+    // why a blob was the wrong thing to give it.
+    if (theme?.blob && themeSource) audio.loadMusic(themeSource.url);
     screens.setLoading(1);
     screens.setReady(true);
+    /*
+     * Say so when there will be no music.
+     *
+     * Silence is the one failure this whole arrangement keeps producing, and it
+     * looks identical from the outside whatever caused it -- an encoding the
+     * device refuses, a fetch that failed, a decoder that gave up. A player who
+     * gets no music deserves to know it is the game and not their volume, and it
+     * turns an invisible failure into a reportable one.
+     */
+    if (!themeSource) screens.setMusicNote('MUSIC UNAVAILABLE · FORMAT');
+    else if (!theme?.blob) screens.setMusicNote('MUSIC UNAVAILABLE · DOWNLOAD');
   });
 
   const playing = (): boolean => screens.screen === 'playing';
@@ -579,32 +585,21 @@ function boot(root: HTMLElement): void {
     if (menu) audio.playMusic();
     else audio.stopMusic();
 
-    // The title turns.
-    //
-    // The board presents each face in turn, using the game's own turn rather
-    // than a rotation written for the title: the front door is then a
-    // demonstration of the central mechanic, before anyone has pressed
-    // anything, and there is only one piece of turn choreography in the codebase
-    // rather than two that can drift apart.
-    //
-    // The boot gate turns too. It is the same picture with the same wordmark
-    // over it, and a board that started moving only once the door opened would
-    // make the first screen read as a still image of the second.
-    //
-    // Held between turns so it reads as presenting a face rather than as
-    // spinning. Suppressed entirely under reduced motion -- an unattended,
-    // unstoppable animation is exactly what that setting is for, and the still
-    // board is a perfectly good backdrop.
-    if ((screen === 'title' || screen === 'boot') && !save.settings.reducedMotion) {
-      attractDwell += elapsed;
-      if (!renderer.isTurning && attractDwell >= ATTRACT_DWELL_MS) {
-        attractDwell = 0;
-        renderer.startTurn('right');
-      }
-    } else {
-      attractDwell = 0;
-    }
-
+    /*
+     * The title no longer turns.
+     *
+     * It used to, and the reasoning was good while it lasted: the board
+     * presented each of its four faces using the game's own turn, so the front
+     * door demonstrated the central mechanic before anyone had pressed anything.
+     * That argument died with the composed stack. There is no board on the title
+     * now, so the turn presents nothing -- it just orbits the camera, and since
+     * the room is fixed in world space, orbiting the camera drags the entire
+     * background across the screen every few seconds.
+     *
+     * That was the shifting. Nothing in the room moves as a body any more, and
+     * the camera holding still is the last piece of it. It also takes the floor
+     * lattice away, which is gated on the turn and has no business under a menu.
+     */
     // Rendering never stops, even behind a menu. The engine is frozen, but the
     // room is not: the environment drifts and breathes on the title screen and
     // under the pause panel, which is the whole point of it. Skipping frames

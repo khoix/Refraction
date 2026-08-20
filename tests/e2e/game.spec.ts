@@ -3354,191 +3354,283 @@ test.describe('the gel material', () => {
  * shows it: a composed stack, turning by itself, under an achromatic masthead.
  */
 test.describe('the title screen', () => {
-  /** Mean luminance and maximum chroma inside a screen rectangle. */
-  async function patch(
-    page: Page,
-    box: { x: number; y: number; width: number; height: number }
-  ): Promise<{ luminance: number; chroma: number; peak: number }> {
-    const shot = await page.screenshot({ clip: box });
-    return page.evaluate(
-      async (bytes) => {
-        const blob = new Blob([new Uint8Array(bytes)], { type: 'image/png' });
-        const bitmap = await createImageBitmap(blob);
-        const canvas = document.createElement('canvas');
-        canvas.width = bitmap.width;
-        canvas.height = bitmap.height;
-        const context = canvas.getContext('2d');
-        if (!context) throw new Error('no 2d context');
-        context.drawImage(bitmap, 0, 0);
-        const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
-        let sum = 0;
-        let chroma = 0;
-        let peak = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          const r = data[i] as number;
-          const g = data[i + 1] as number;
-          const b = data[i + 2] as number;
-          const v = 0.2126 * r + 0.7152 * g + 0.0722 * b;
-          sum += v;
-          peak = Math.max(peak, v);
-          chroma = Math.max(chroma, Math.max(r, g, b) - Math.min(r, g, b));
-        }
-        return { luminance: sum / (data.length / 4), chroma, peak };
-      },
-      [...shot]
-    );
-  }
-
-  test('shows the scene rather than covering it', async ({ page }) => {
+  test('washes the front screens more lightly than it blacks out the rest', async ({ page }) => {
     /*
-     * The whole point of the redesign, restated for a title that no longer
-     * composes a stack.
+     * The decision, asserted directly instead of through the picture.
      *
-     * It used to be measured on hue in the well: the board held an arrangement
-     * and the scrim had to be light enough to let its colour through. There is
-     * no arrangement now — the room carries the picture — so the surviving claim
-     * is about the scrim itself, which is the part that was ever a decision. The
-     * title lets the scene through; every other screen keeps the heavy blackout,
-     * because there the scene is context rather than the subject.
+     * This was a pixel test for four milestones and it has earned its retirement.
+     * The original claim was that the title's scrim had to be light enough to let
+     * a composed stack's colour through, and it was measured in the well, where
+     * the stack was. There is no stack now, and every attempt to re-aim the
+     * camera at the surviving claim failed for a different reason worth
+     * recording:
+     *
+     * - Over the well **inverted** the result: a panel's own text lands there and
+     *   the settings panel is full of it.
+     * - A strip down the side measured almost nothing. With the shafts of light
+     *   gone the room's edges are near black, and the two screens came out 7.5
+     *   against 6.1 — a claim surviving only by a threshold nobody could defend.
+     * - The brightest pixels outside the panel inverted it again, because the HUD
+     *   comes back on the settings screen and its chrome sits exactly there.
+     *
+     * The room is a few dim floaters on a dark ground; there is no longer enough
+     * light in it to measure a scrim through. So this reads the scrim itself. It
+     * is a weaker test in one sense — it cannot catch the wash being defeated by
+     * something drawn over it — and a much stronger one in another: it is exact,
+     * it cannot go intermittent, and it says precisely what the design decided.
      */
+    const alphaOf = async (): Promise<number> =>
+      page.evaluate(() => {
+        const screens = document.querySelector('.screens');
+        if (!screens) return 1;
+        const colour = getComputedStyle(screens).backgroundColor;
+        const parts = colour.match(/[\d.]+/g) ?? [];
+        // `rgb(...)` with no fourth component is fully opaque.
+        return parts.length >= 4 ? Number(parts[3]) : 1;
+      });
+
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const gate = await alphaOf();
     await enter(page);
-    await page.waitForTimeout(400);
-
-    /*
-     * Measured at the edge of the window, not over the well.
-     *
-     * The well was the right place to look when a stack sat in it. It is the
-     * wrong place now, and measuring there does not merely lose signal — it
-     * inverts the result, because a panel's own text lands in that rectangle and
-     * the settings panel is full of it. The first version of this rewrite read
-     * the settings screen as *brighter* than the title for exactly that reason.
-     *
-     * Panels are centred and bounded, so a strip down the side carries the room
-     * and nothing else on every screen.
-     */
-    const box = await page.evaluate(() => ({
-      x: 0,
-      y: Math.round(window.innerHeight * 0.55),
-      width: Math.round(window.innerWidth * 0.12),
-      height: Math.round(window.innerHeight * 0.4),
-    }));
-    const title = await patch(page, box);
+    const title = await alphaOf();
 
     await page.getByRole('button', { name: 'SETTINGS' }).click();
     await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
-    const settings = await patch(page, box);
+    const settings = await alphaOf();
+
+    // The front door and the menu share one light wash; everything that sits
+    // over a run keeps the blackout.
+    expect(title).toBe(gate);
+    expect(title).toBeLessThan(settings);
+    expect(settings).toBeGreaterThan(0.8);
+  });
+  test('lights the masthead without tinting it, and keeps that light off the board', async ({
+    page,
+  }) => {
     /*
-     * A looser ratio than this test used to demand, and the reason is worth
-     * writing down rather than quietly retuning.
+     * §2.2, restated for a front door that now glows.
      *
-     * The old threshold was 0.55, and it was easy to meet because a lit stack sat
-     * in the measured rectangle: the title read around forty and the scrim had
-     * plenty to take away. The room alone reads under ten, and the scrim's own
-     * colour has a luminance near six — so no opacity can push the result far
-     * below that floor, and the achievable gap is much smaller than it was.
+     * The rule partitions the palette: a hue on screen means depth from the
+     * current camera. The mockup this screen was rebuilt from puts a cyan accent
+     * on the wordmark, and that is allowed for one reason only — the gate and the
+     * menu have no board on them, so there is nothing whose distance a colour
+     * could be mistaken for. The moment a board is on screen the old rule applies
+     * in full.
      *
-     * Still discriminating: giving the title the heavy scrim collapses the two to
-     * the same value, which fails this comfortably. Sabotage-verified.
+     * So this tests two things instead of one, and the second is the one that
+     * matters: the *lettering* stays neutral, and the accent never reaches
+     * anything that sits over a live board.
+     *
+     * Measured from declared colours, not pixels. A pixel reading measures the
+     * font rasteriser — Chrome renders white glyphs with subpixel antialiasing,
+     * so the masthead's rectangle came back at chroma 34 with nothing tinted.
      */
-    expect(settings.luminance).toBeLessThan(title.luminance * 0.8);
-  });
-
-  test('the masthead carries no hue', async ({ page }) => {
-    // §2.2 partitions the palette absolutely: the only hue on screen belongs to
-    // a cube. A wordmark running red to violet is the exact false inference the
-    // rule exists to prevent -- a second colour language with no marker
-    // separating it from the first.
-    //
-    // Measured from the declared colours, not from the pixels. A pixel reading
-    // was tried and it measures the font rasteriser: Chrome renders text with
-    // subpixel antialiasing, so white glyphs on a dark ground carry orange and
-    // blue fringes a pixel wide, and the maximum chroma in the masthead's
-    // rectangle came back at 34 with nothing tinted at all.
-    await page.goto('/?debug=1');
-    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-
-    const declared = await page.evaluate(() => {
-      const parts: string[] = [];
-      for (const selector of ['.title__word', '.title__rule']) {
-        const node = document.querySelector(selector);
-        if (node) parts.push(getComputedStyle(node).color);
-      }
-      // The hairlines are a gradient, so every stop in it counts too.
-      for (const node of document.querySelectorAll('.title__rules')) {
-        parts.push(getComputedStyle(node).backgroundImage);
-      }
-      return parts.join(' ');
-    });
-
-    const triples = [...declared.matchAll(/rgba?\(([^)]+)\)/g)].map((match) =>
-      (match[1] as string).split(/[,/]/).slice(0, 3).map(Number)
-    );
-    expect(triples.length).toBeGreaterThan(3);
-    for (const [r, g, b] of triples) {
-      // Forty, the same bar the room is held to. A cube at full chroma spans
-      // about 170 between its channels; the ink ramp's cool cast is 34 -- the
-      // tagline's `--text-dim` is `#8b93ad` -- and a threshold tight enough to
-      // fail that is measuring the neutral's temperature, not testing the rule.
-      expect(Math.max(r!, g!, b!) - Math.min(r!, g!, b!)).toBeLessThan(40);
-    }
-  });
-
-  test('hides the HUD, which belongs to a run', async ({ page }) => {
-    // A score of zero, an empty NEXT and a Shift meter for a run nobody has
-    // started are furniture from a different screen, and they were legible the
-    // moment the scrim stopped hiding them.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
-    await page.waitForTimeout(300);
-    const box = await page.locator('.hud__shift').boundingBox();
-    if (!box) throw new Error('no Shift meter');
 
-    const onTitle = await patch(page, box);
-    await page.getByRole('button', { name: 'PLAY' }).click();
-    await page.getByRole('button', { name: 'FLATLAND' }).click();
+    const chromaOf = (colour: string): number => {
+      const parts = (colour.match(/[\d.]+/g) ?? []).slice(0, 3).map(Number);
+      if (parts.length < 3) return 0;
+      return Math.max(...parts) - Math.min(...parts);
+    };
+
+    // The letters themselves. White type throwing coloured light reads as lit;
+    // tinted type reads as cheap, and would be a second colour language.
+    const letters = await page.evaluate(
+      () => getComputedStyle(document.querySelector('.title__letters') as Element).color
+    );
+    expect(chromaOf(letters)).toBeLessThan(12);
+
+    /*
+     * And now the part the rule is actually for.
+     *
+     * Every one of these sits over a live board. Forty is the same bar the room
+     * is held to: a cube at full chroma spans about 170 between its channels,
+     * while the neutral ink ramp's cool cast is 34, so a tighter threshold would
+     * be measuring the neutral's temperature rather than testing the rule.
+     */
+    await page.evaluate(() => window.__refraction?.play('ascent'));
     await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
-    await page.waitForTimeout(300);
-    const inPlay = await patch(page, box);
-
-    // Compared on the peak, not the mean. The meter's region is mostly dark
-    // either way -- panel chrome over a near-empty well -- so its average moves
-    // only a few levels and the ratio landed either side of the threshold from
-    // run to run: one attempt measured 0.74 and failed, the retry measured 0.57
-    // and passed. The peak is the meter's near-white SHIFT label, which is
-    // either drawn or it is not: 67 hidden against 147 in play, stable to four
-    // decimals across runs, and 138 with the hiding removed.
-    expect(onTitle.peak).toBeLessThan(inPlay.peak * 0.6);
-  });
-
-  test('turns by itself, and holds still under reduced motion', async ({ page }) => {
-    // The front door is a demonstration of the central mechanic, using the
-    // game's own turn rather than a rotation written for the title.
-    await page.goto('/?debug=1');
-    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    await expect
-      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
-      .toBe(true);
-
-    // An unattended, unstoppable animation is exactly what reduced motion is
-    // for, and a still board is a perfectly good backdrop.
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'refraction.save.v1',
-        JSON.stringify({ stats: {}, records: {}, settings: { reducedMotion: true } })
-      );
+    const overTheBoard = await page.evaluate(() => {
+      const read = (selector: string): string[] => {
+        const node = document.querySelector(selector);
+        if (!node) return [];
+        const style = getComputedStyle(node);
+        return [style.color, style.backgroundColor, style.borderColor, style.boxShadow];
+      };
+      return [...read('.hud__panel'), ...read('.meter__pip'), ...read('.hud__label')];
     });
-    await page.goto('/?debug=1');
-    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    const before = await page.evaluate(() => window.__refraction?.renderer.yaw);
-    await page.waitForTimeout(4000);
-    const after = await page.evaluate(() => window.__refraction?.renderer.yaw);
-    expect(after).toBe(before);
+    for (const colour of overTheBoard) {
+      for (const match of colour.matchAll(/rgba?\([^)]+\)/g)) {
+        expect(chromaOf(match[0])).toBeLessThan(40);
+      }
+    }
   });
 
+  test('sets the wordmark in the face it was drawn for, at the weight that face has', async ({
+    page,
+  }) => {
+    /*
+     * The mark has been wrong twice, in two different ways, and neither showed up
+     * as a broken build.
+     *
+     * First it was set in Oxanium 600 when the artwork is far heavier, which read
+     * as an entirely different typeface — a geometric face carries most of its
+     * identity in stem weight, so the wrong weight is indistinguishable from the
+     * wrong family by eye. Then it was Oxanium 800, closer and still wrong,
+     * because the artwork's letters were drawn rather than typed: A, C, E, F, I,
+     * N, R and T are traced glyphs, which is every letter of REFRACTION except
+     * the O the cube covers.
+     *
+     * Both failures rendered perfectly. Nothing threw, no request 404'd, and the
+     * only symptom was a person looking at it and saying that is not the font. So
+     * the assertion has to be that the *built face is the one actually drawing*,
+     * which is what document.fonts.check answers and what a font-family
+     * declaration on its own does not — a declaration naming a face that failed to
+     * load falls silently through to the next name in the stack.
+     */
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const mark = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const word = document.querySelector('.panel--boot .title__word') as HTMLElement;
+      const style = getComputedStyle(word);
+      return {
+        family: style.fontFamily,
+        weight: style.fontWeight,
+        loaded: document.fonts.check(`${style.fontWeight} ${style.fontSize} "Refraction Display"`),
+      };
+    });
+
+    expect(mark.family).toContain('Refraction Display');
+    expect(mark.loaded).toBe(true);
+
+    /*
+     * 700 exactly, and this half is not pedantry about a number.
+     *
+     * Refraction Display is a single static Bold. Ask it for 800 and the browser
+     * does not fail — it synthesises one, smearing glyphs that were traced by hand
+     * to a specific weight. That renders, ships, and looks subtly wrong forever.
+     */
+    expect(mark.weight).toBe('700');
+  });
+
+  test('scales and centres the voxel against the cap line it stands on', async ({ page }) => {
+    /*
+     * The cube's size is a ratio to the letters' cap height, and the letters can
+     * change underneath it — which is not hypothetical. It was sized 0.74em to
+     * Oxanium's caps, the mark moved to a face whose caps are 0.69em, and nothing
+     * failed: the cube simply became the wrong size, in a way that reads as "the
+     * O looks off" rather than as a broken build.
+     *
+     * The numbers come from the source artwork: the voxel there is 1.12 times cap
+     * height and sits centred on the cap line, breaking it top and bottom. That
+     * overshoot is deliberate — a corner-on cube is pointed at both ends, and
+     * cropping it to the caps would flatten the two vertices carrying the
+     * projection.
+     *
+     * Cap height is measured off a canvas rather than read from a rectangle,
+     * because an element's box is line-height and glyph metrics, not ink.
+     */
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const fit = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const word = document.querySelector('.panel--boot .title__word') as HTMLElement;
+      const cube = word.querySelector('.title__cube') as HTMLElement;
+      const style = getComputedStyle(word);
+      const size = parseFloat(style.fontSize);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = 400;
+      canvas.height = 400;
+      const ctx = canvas.getContext('2d') as CanvasRenderingContext2D;
+      ctx.fillStyle = '#fff';
+      ctx.font = `${style.fontWeight} ${size}px ${style.fontFamily}`;
+      ctx.textBaseline = 'alphabetic';
+      ctx.fillText('N', 40, 300);
+      const data = ctx.getImageData(0, 0, 400, 400).data;
+      let top = Infinity;
+      let bottom = -1;
+      for (let y = 0; y < 400; y += 1) {
+        for (let x = 0; x < 400; x += 1) {
+          if ((data[(y * 400 + x) * 4 + 3] ?? 0) > 128) {
+            if (y < top) top = y;
+            if (y > bottom) bottom = y;
+          }
+        }
+      }
+      const capHeight = bottom - top + 1;
+      const capAboveBaseline = 300 - top;
+
+      /*
+       * Put the cap line on the screen.
+       *
+       * An element's box is line-height and font metrics, never ink, so the
+       * letters' rectangle cannot answer this directly — its centre sits below
+       * the cap centre by half a descender. The baseline is recovered from the
+       * half-leading instead: with a known line box and the face's own ascent and
+       * descent, everything else follows.
+       */
+      const letters = word.querySelector('.title__letters') as HTMLElement;
+      const lettersBox = letters.getBoundingClientRect();
+      const metrics = ctx.measureText('N');
+      const ascent = metrics.fontBoundingBoxAscent;
+      const descent = metrics.fontBoundingBoxDescent;
+      const halfLeading = (lettersBox.height - (ascent + descent)) / 2;
+      const baseline = lettersBox.top + halfLeading + ascent;
+      const capCentre = baseline - capAboveBaseline / 2;
+
+      const cubeBox = cube.getBoundingClientRect();
+      return {
+        capHeight,
+        cubeToCap: cubeBox.height / capHeight,
+        square: cubeBox.width / cubeBox.height,
+        centreOffset: (cubeBox.top + cubeBox.height / 2 - capCentre) / capHeight,
+      };
+    });
+
+    expect(fit.capHeight).toBeGreaterThan(20);
+    // 1.12 from the artwork; a tolerance wide enough for rasterisation, far too
+    // narrow for the cube to be sized to some other face's caps.
+    expect(fit.cubeToCap).toBeGreaterThan(1.05);
+    expect(fit.cubeToCap).toBeLessThan(1.2);
+    // A voxel is a cube: the box it is drawn in has to stay square.
+    expect(fit.square).toBeCloseTo(1, 2);
+    expect(Math.abs(fit.centreOffset)).toBeLessThan(0.06);
+  });
+
+  test('hides the HUD, which belongs to a run', async ({ page }) => {
+    /*
+     * A score of zero, an empty NEXT and a Shift meter for a run nobody has
+     * started are furniture from a different screen.
+     *
+     * Read off the computed opacity rather than sampled from the meter's
+     * rectangle. The pixel version compared that rectangle on the title against
+     * in play, which worked while the room behind it was almost black — and the
+     * front door now glows, so the "hidden" reading rose to meet the visible one.
+     * The hiding is a single declaration and this is exactly what it claims,
+     * which also catches the failure it has actually had: `.hud--hidden` once
+     * landed nested inside another rule, became a descendant selector matching
+     * nothing, and the HUD simply stayed on screen.
+     */
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const opacity = (): Promise<string> =>
+      page.evaluate(() => getComputedStyle(document.querySelector('.hud') as Element).opacity);
+
+    expect(Number(await opacity())).toBe(0);
+    await enter(page);
+    expect(Number(await opacity())).toBe(0);
+
+    await page.evaluate(() => window.__refraction?.play('flatland'));
+    await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
+    expect(Number(await opacity())).toBe(1);
+  });
   test('a run starts on the face the engine is playing', async ({ page }) => {
     // The bug the attract turn introduced, and the reason a title that moves the
     // camera is not free. The renderer's yaw is its own state: after a few
@@ -3548,10 +3640,19 @@ test.describe('the title screen', () => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
-    // Let at least one attract turn land, so the camera is genuinely off front.
-    await expect
-      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
-      .toBe(true);
+
+    /*
+     * The camera is driven off front directly, because the attract turn that
+     * used to do it is gone.
+     *
+     * The invariant it guarded has not gone anywhere: the renderer's yaw is its
+     * own state and outlives any one run, so a player who turns the board, quits
+     * to the menu and starts again would otherwise come up on a board wearing
+     * the palette of a face nobody is playing, with every control pointing the
+     * wrong way. Turning the renderer by hand reaches that state in one step
+     * instead of waiting on a title animation that no longer exists.
+     */
+    await page.evaluate(() => window.__refraction?.renderer.startTurn('right'));
     await expect
       .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
       .toBe(false);

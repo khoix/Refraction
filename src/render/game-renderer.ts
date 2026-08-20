@@ -59,6 +59,22 @@ const BLOOM_THRESHOLD = 0.98;
 const BLOOM_STRENGTH = 0.55;
 const BLOOM_RADIUS = 0.3;
 
+/**
+ * What bloom becomes on the screens with no board on them.
+ *
+ * A lower threshold, because there the floaters *are* the picture and a little
+ * halo is what makes them read as lit rather than pasted on. Not much lower: 0.12
+ * was tuned when they were lines a pixel wide, and against solid gel cubes it
+ * washed every one of them to a milky pastel — the material's whole point is that
+ * a face renders at exactly its colour, and blowing it out throws that away.
+ *
+ * See `applyBloom` for why the restrained values above are not negotiable during
+ * a run.
+ */
+const FRONT_BLOOM_THRESHOLD = 0.62;
+const FRONT_BLOOM_STRENGTH = 0.45;
+const FRONT_BLOOM_RADIUS = 0.6;
+
 export interface GameRendererOptions {
   /** Tests read pixels back, which needs the drawing buffer preserved. */
   readonly preserveDrawingBuffer?: boolean;
@@ -460,6 +476,7 @@ export class GameRenderer {
   private readonly environment: Environment;
   private readonly debris = new Debris();
   private readonly composer: EffectComposer;
+  private readonly bloomPass: UnrealBloomPass;
   /** Every layer that draws cubes, for settings that apply to all of them. */
   private readonly voxelLayers: readonly VoxelLayer[];
   private readonly lights: SceneLights;
@@ -558,9 +575,13 @@ export class GameRenderer {
     // ever bloom, and the settled board never does.
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.composer.addPass(
-      new UnrealBloomPass(new THREE.Vector2(1, 1), BLOOM_STRENGTH, BLOOM_RADIUS, BLOOM_THRESHOLD)
+    this.bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(1, 1),
+      BLOOM_STRENGTH,
+      BLOOM_RADIUS,
+      BLOOM_THRESHOLD
     );
+    this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
 
     this.resize();
@@ -640,6 +661,26 @@ export class GameRenderer {
    */
   setBackdrop(on: boolean): void {
     this.backdropHeld = on;
+  }
+
+  /**
+   * Let the front door's floaters bloom.
+   *
+   * In a run the threshold sits just under white so that *only* a clear's
+   * additive glow or the Full Spectrum whiteout ever blooms — that restraint is
+   * the reason the settled board looks like tiles rather than neon, and it stays.
+   * A screen with no board on it has nothing to protect, and the floating cages
+   * are lines a pixel wide: without bloom they read as wire, and the whole point
+   * of them is that they read as light.
+   *
+   * Stepped with the backdrop's own ease so the two arrive together rather than
+   * one snapping while the other glides.
+   */
+  private applyBloom(): void {
+    const eased = easeInOutCubic(this.backdrop);
+    this.bloomPass.threshold = THREE.MathUtils.lerp(BLOOM_THRESHOLD, FRONT_BLOOM_THRESHOLD, eased);
+    this.bloomPass.strength = THREE.MathUtils.lerp(BLOOM_STRENGTH, FRONT_BLOOM_STRENGTH, eased);
+    this.bloomPass.radius = THREE.MathUtils.lerp(BLOOM_RADIUS, FRONT_BLOOM_RADIUS, eased);
   }
 
   /**
@@ -876,6 +917,7 @@ export class GameRenderer {
       0,
       1
     );
+    this.applyBloom();
     orientLights(this.lights, yaw);
     // The gel's own light travels with them, for the same reason they travel
     // with the camera: otherwise the material's highlight lands somewhere

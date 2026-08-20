@@ -7,6 +7,409 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22d — The wordmark's own face
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The title is set in **Refraction Display Bold**: Oxanium Bold with eight
+uppercase letters replaced by glyphs traced from the title artwork — `A C E F I
+N R T`. Built by `scripts/build-refraction-display.py`, which fetches the donor
+and reapplies the traces, so the vendored 12 KB `.woff2` is reproducible rather
+than a binary of unknown provenance. Derived from Oxanium under the SIL OFL 1.1;
+the licence ships beside it in `src/styles/fonts/OFL-Oxanium.txt`.
+
+### Three attempts, and why the first two looked like the same bug
+
+The mark shipped as Oxanium 600, then as Oxanium 800, and drew the same report
+both times: that is not the font. The diagnosis moved each time and the symptom
+did not, which is the interesting part.
+
+At 600 the defect really was weight. A geometric face keeps almost none of its
+identity in its outlines at display size — it is nearly all stem mass — so the
+wrong weight is genuinely indistinguishable from the wrong family by eye. 800 was
+closer and still wrong, for a reason no amount of adjusting a stock face could
+have reached: **the letters in the artwork were drawn, not typed.**
+
+The traced set is worth reading carefully. `A C E F I N R T` is every letter of
+REFRACTION except the O — because in the artwork the O was never a letter. It is
+the cube. The font's own O is left as plain Oxanium Bold, unused by the mark.
+
+### The voxel, turned to the artwork's own viewpoint
+
+The cube had been drawn in **cabinet projection** — a square front face with the
+top and side sheared off behind it. That is a drawing convention, not a
+viewpoint; nothing in the game is ever seen that way.
+
+The artwork's voxel is **corner-on**: yawed 45° so no face is square to the
+viewer, and tilted about 20° above the horizon. Its silhouette is a hexagon with
+two vertical sides, and three edges meet at a junction inside it — down to the
+bottom vertex, up-left and up-right to the shoulders.
+
+Every number was read off the screenshot rather than picked. Solving the
+orthographic projection against the measured silhouette — half-height 57 px,
+junction 18 px above centre — gives **20.19°**, and that model then predicts a
+75 px vertical side edge where the artwork has 74. True isometric would have been
+wrong in the other direction: 35.26° lifts the junction to the middle of the
+shape and shows far more of the top face than the artwork does.
+
+Two measurements settled the rest:
+
+- **Size: 0.69em → 0.77em.** The voxel is 1.12× cap height and breaks the cap
+  line top and bottom. Sizing a letter's stand-in to the caps is the obvious
+  rule, and the artwork overrules it — a corner-on cube is pointed at both ends,
+  so cropping it to the cap line would flatten the two vertices that carry the
+  projection.
+- **Stroke: 17 → 6.** The artwork's cube is a wireframe at roughly a sixth of the
+  letters' stem weight, not the stem-matched outline of M22c. A strictly
+  proportional stroke would be 2.6, which is a hairline at our size — the
+  artwork's cube is 110 px, ours is 54 px on a laptop and 20 px on a phone. Six
+  keeps the wireframe character where it is big and still survives where it is
+  small; at 11 and above the faces close up.
+
+The three faces now carry different fills, because the artwork lights them
+differently — the top catches most, the right least.
+
+While measuring this, one thing fell out that confirms the whole chain: the ink
+runs across the artwork's wordmark are 104, 94, 96, 104, 101, 97, 99, 18 px wide,
+against traced glyph widths of 105, 94, 96, 105, 101, 98, 99, 19 in the build
+script. This screenshot is the source the font was traced from.
+
+### The cube, re-fitted to the face it now sits in
+
+Both of the cube's numbers are properties of the surrounding letters, so both
+moved when the letters did, and both were measured rather than judged:
+
+- **Box: 0.74em → 0.69em.** Cap height, read off a rendered `H` rather than taken
+  from the metric. A cube sized to the wrong face's caps is exactly the sort of
+  error that reads as "something is off about the O" without ever presenting as a
+  number.
+- **Stroke: 14 → 17.** Refraction Display's `I` is 0.174 of its cap height, and
+  the box is drawn at cap height. The path was re-inset from 6..94 to 9..91 to
+  suit: a stroke is centred on its path, so thickening one without moving the
+  path pushes half the extra weight outside the box and quietly makes the cube
+  taller than the letters beside it.
+
+Ink measures 48.07 px against a 48 px cap height.
+
+> Both numbers moved again once the voxel was turned to the artwork's projection,
+> above. The stem-matched stroke was a reasonable idea about a cube drawn flat and
+> a bad one about a cube drawn corner-on, where a stroke that heavy closes the
+> faces up entirely.
+
+### Scoped to the mark, and not by preference
+
+The built face carries the full donor glyph set — lowercase, punctuation,
+accents — so nothing would fall back mid-word if it were pointed at other text.
+What stops it being the interface font is **weight, not coverage**: it is a single
+static Bold, and the UI is mostly weight 200, in seven places. Asking a one-weight
+face for 200 gets a browser's invented answer. So `--font-wordmark` is a second
+variable beside `--font-display`, and Oxanium stays the interface font, at the
+range it genuinely uses.
+
+The same reasoning fixes the weight at exactly 700: any other number asks the
+browser to synthesise a weight this face does not have, smearing glyphs that were
+traced by hand.
+
+### A test, because this failed silently twice
+
+Neither wrong setting broke anything. Nothing threw, no request 404'd, and the
+only symptom was a person looking at it. The new test therefore asserts that the
+built face **is the one actually drawing** — `document.fonts.check`, not a
+`font-family` declaration, since a declaration naming a face that failed to load
+falls silently through to the next name in the stack — and that the weight is 700.
+
+Both halves were verified by sabotage: asking for 800 fails on the weight, and
+pointing the `@font-face` at a missing file fails on the load, which a
+family-name assertion alone would have passed.
+
+### Tested
+
+375 unit, and 32 e2e across the title screen, the front door and the phone
+layouts. A second new test pins the voxel's fit — 1.12× cap height, a square box,
+centred on the cap line — because that ratio is tied to a font that has now
+changed underneath it once already, silently. Verified by sabotage: restoring the
+old 0.69em box fails the size, and removing the centring nudge fails the offset.
+
+### Worth a look
+
+The traced glyphs carry some pixel-level jitter from the source artwork — a small
+notch on the `T`'s top-left, a step on the `C`'s terminal — visible when you go
+looking at 3× and subtle at reading size. It is faithful to what was traced, so it
+is left alone rather than quietly smoothed.
+
+---
+
+## M17a — The gauge cools too fast
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+A play note: Spectral Collapse's bar drained too hard. Cooling is now a fifth of
+what it was — full to empty in 130 seconds of clearing nothing, rather than 26.
+
+### Why a second constant moved with it
+
+`HEAT_PER_LINE` went 0.2 → 0.1 in the same change, and the pair is the point.
+
+Cooling ÷5 on its own does two things, only one of which was asked for. It makes
+the bar forgiving, which was the request. It also doubles how often a collapse
+arrives — about 19 seconds of good play instead of about 45 — which turns a
+mechanic bought with pace into one bought with patience. Halving the earn rate
+alongside it puts the price back where it was and spends the entire change on
+forgiveness.
+
+|                                          | Before                     | Now                         |
+| ---------------------------------------- | -------------------------- | --------------------------- |
+| `HEAT_PER_LINE`                          | 0.2                        | 0.1                         |
+| Cooling, per second                      | 1/26 ≈ 0.0385              | 1/130 ≈ 0.0077              |
+| Time to fill at the modelled 0.3 lines/s | ≈ 46 s                     | ≈ 45 s                      |
+| Break-even clearing rate                 | 0.19 lines/s (64% of pace) | 0.077 lines/s (26% of pace) |
+| At half the modelled pace                | never fills                | fills in ≈ 137 s            |
+
+What actually changed is the penalty for easing off. Dropping to two thirds of
+pace used to mean the bar could never fill at all; that cliff is now a gradient,
+and half pace still gets there in a bit over two minutes. A line is also a tenth
+of the gauge rather than a fifth, so the bar moves in finer steps.
+
+### A test rewritten because it stopped being true
+
+`never fills at half that rate, however long the run lasts` asserted `Infinity`,
+and under the new constants half pace fills in 137 seconds. Retuning the bound
+would have kept a passing test that no longer described the game, so it was
+replaced by the claim the change actually makes — easing off costs time, not the
+mechanic — and a second test now holds what survives of the old cliff: below a
+quarter of the modelled pace the bar still loses ground, forever. That floor is
+the whole reason this is a rate mechanic and not a stopwatch.
+
+Both were checked by sabotage. Restoring the old cooling fails the first;
+over-cooling to `1 / 400_000` fails the second.
+
+### Tested
+
+375 unit tests. The change is in `src/core/game.ts` and touches nothing that
+renders, so the e2e suite is unaffected — no test anywhere hard-codes either
+constant's value, which is why only the two model tests needed attention.
+
+### Worth watching in play
+
+The arithmetic is settled and the feel is not. Two things to look for: whether a
+gauge that takes 130 seconds to empty now reads as permanently nearly-full, and
+whether tenths make the fill more legible or just less visible.
+
+---
+
+## M22 — The front door, from the mockup
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Built to a supplied conceptualization of the title screen. Oxanium, a glowing
+wordmark whose O is a cube, and a frame full of coloured wireframe cages.
+
+### The one rule this bends, and where it stops
+
+§2.2 reserves hue: a colour on screen means depth from the current camera and
+nothing else, which is why every piece of chrome in this game is a neutral ink
+ramp. The mockup puts a cyan accent on the wordmark, its rules and the button.
+
+That is allowed here for one reason: **the gate and the menu have no board on
+them.** There is nothing whose distance a colour could be mistaken for. The
+accent lives in `--accent-beam` and every rule using it is scoped to
+`[data-screen='boot']` or `[data-screen='title']`.
+
+The lettering itself stays white — white type throwing coloured light reads as
+lit, tinted type reads as cheap — and a test now asserts both halves: the letters
+carry no hue, and nothing sitting over a live board carries the accent.
+
+### Gel voxels
+
+The floaters use `gel.ts` — the same cast-resin material the board is made of,
+`MeshStandardMaterial` with the shader injection, the yaw-locked gloss and the
+bevelled edge. A title screen whose cubes are made of something else is a title
+screen advertising a different game.
+
+They passed through a wireframe-cage stage on the way, which was worth the detour
+only for what it ruled out: a cage is a _drawing_ of a cube. Two things had to be
+got right before gel would read at all.
+
+**Brightness and structure scale together.** The bevel, gloss and rim are white
+light added on top of the colour and do not scale with it, so dimming a floater
+while leaving them at full turned every cube milky — a pale body with a small
+saturated square at the centre. That square is the fidelity invariant working
+exactly as designed, and being drowned everywhere else on the face.
+
+**Size is not free.** The gel's masks are object-space: the bevel starts at a
+fraction of the cube's own half-width. A floater three times a board cube's size
+therefore shows the same structure three times larger on screen, and what reads as
+material at thirty pixels reads as a stamped pattern at ninety. They are sized
+within touching distance of a real cube now, which is what makes them look like
+the game's cubes rather than like something wearing its material.
+
+**Aimed into the frame.** The distance each floater is dealt is kept and only its
+_direction_ is chosen: pick the screen position, solve for depth. An orthographic
+camera does not shrink what is far away, so a ring at radius 26–48 sat almost
+entirely outside a frame nineteen units wide — the field existed and the screen
+was empty. And a keep-out band round the wordmark is enforced at placement, since
+a seed that clears the type on a laptop will not also clear it on a phone.
+
+### Bloom, on the screens that can afford it
+
+In a run the bloom threshold sits just under white so only a clear's additive glow
+or a Full Spectrum whiteout ever blooms; that restraint is why the settled board
+reads as tiles rather than neon, and it is untouched. On a boardless screen there
+is nothing to protect, so the threshold drops to 0.62 — eased on the same curve as
+the well's departure, so the two arrive together.
+
+It was 0.12 while the floaters were wireframes, and a one-pixel line needs all the
+help it can get. A gel cube does not: at 0.12 the bloom took the whole body of
+every floater, not its highlight, and the field came out pastel. The number is a
+property of what is being lit, not of the screen it is on.
+
+### The cube that stands in for the O
+
+Sized to Oxanium's cap height rather than to the em — an em-sized box sits
+noticeably small against the caps and reads as an icon dropped into the word
+instead of as the letter. Stroke weight matches the letterforms, only the visible
+edges are drawn so it reads as a solid form rather than a wire frame, and the
+front face carries a faint fill of its own colour.
+
+### Oxanium, vendored
+
+14 KB, variable, covering every weight. Fetched into the repo rather than linked:
+a static bundle should not need a third-party request to draw its own wordmark,
+and the front door is the worst place to wait on one.
+
+**Set at 800, which is the correction that mattered.** It shipped at 600 and drew
+the reasonable objection that it was not Oxanium at all. It was — the family
+resolves, and the vendored file measures to the pixel against Google's own binary
+— but a geometric face carries almost no identity in its outlines, so nearly all
+of what makes it recognisable at display size is stem weight. At 600 against a
+mockup set at 800 the mark reads as a different typeface, and "wrong font" is the
+honest description of what you see. The variable file already covers 200–800, so
+the fix costs nothing but the digit. The cube-O's stroke went 11 → 14 with it,
+since it is matched to the stems, not to the em.
+
+> **Superseded by M22d.** 800 was closer and still not right. The artwork's
+> letters were drawn rather than typed, so no setting of a stock face was ever
+> going to reach them. Oxanium remains the interface font, at the weight range the
+> interface actually uses; the mark moved to a traced face of its own.
+
+### Two tests rewritten, not retuned
+
+- **`the masthead carries no hue`** asserted the thing this milestone
+  deliberately changes. It now asserts what the rule actually protects: neutral
+  lettering, and no accent on anything over a live board.
+- **`hides the HUD`** compared the Shift meter's rectangle on the title against
+  in play. That worked while the room behind it was nearly black; the front door
+  now glows, so the "hidden" reading rose to meet the visible one. It reads the
+  computed opacity instead — exact, and it still catches the failure this has
+  actually had, when `.hud--hidden` was nested into a descendant selector matching
+  nothing.
+
+### Tested
+
+374 unit, and 52 e2e across the title screen, the front door, rendering, the
+x-ray, the landing marks, Spectral Collapse and the phone layouts.
+
+---
+
+## M21 — The room holds still
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Play note: the background is still shifting, and no disco lights. Plus a third
+report of no music on mobile.
+
+### What "shifting" actually was
+
+Twice misread. The first time it was taken as re-staging the field, the second as
+group rotation. Both were wrong, or at least incomplete — the largest source of
+movement was **the attract turn**.
+
+The title orbited the camera every 2.6 seconds. That was written when a composed
+stack sat in the well and the turn presented each of its four faces, which made
+the front door a demonstration of the central mechanic. With the stack gone the
+turn presents nothing: the room is fixed in world space, so orbiting the camera
+drags the entire background across the screen on a timer. It is gone, and with it
+the floor lattice, which is gated on the turn and had no business under a menu.
+
+The rest of the movement went too. Every group in the room rotated on Y — dust
+one way, the far dust the other, the floaters a third — which slid the background
+sideways behind a board that is itself the only thing meant to turn. Nothing moves
+as a body now. The floaters still bob and turn individually, which is what
+floating is.
+
+### No disco lights
+
+Five wide shafts of light drifted, spun and breathed across the room. They are
+deleted. A space made of light does not need a lighting rig.
+
+### The field is arranged, not rolled
+
+Fourteen items is a small enough sample that chance composes it badly on a fair
+number of loads — all behind the camera, or bunched in a corner, or simply absent.
+Tolerable for debris, not for the only thing on the title screen, and it was
+making two pixel tests intermittent for exactly that reason: they measured a
+different room each run.
+
+Placement now comes from a fixed seed, chosen by **measuring** candidates on how
+many floaters land inside the frame at a laptop's aspect and at a phone's. The
+first seed tried put almost nothing on screen at either — the hazard, demonstrated.
+
+### The title screen was never actually getting its light wash
+
+Found by a test, and only after the pixel test that should have found it was
+rewritten. The rule that gives the front screens their lighter scrim listed only
+`boot`; `title` was still taking the 0.86 blackout meant for panels over a paused
+game. Every pixel measurement of "does the title let the scene through" had been
+comparing 0.86 against 0.86, which is why they all came out marginal and why the
+thresholds kept needing defending.
+
+### A pixel test retired, and why
+
+`shows the scene rather than covering it` had been a pixel test for four
+milestones. Its premise — a lit stack in the well for the scrim to reveal — is
+gone, and three attempts to re-aim it each failed differently: over the well
+_inverted_ the result, because a panel's own text lands there; a strip down the
+side measured almost nothing; the brightest pixels outside the panel inverted it
+again, because the HUD returns on the settings screen and its chrome sits exactly
+there. That last one was diagnosed by finally opening the failure screenshot,
+which should have been the first move rather than the fourth.
+
+The room is a few dim floaters on a dark ground. There is no longer enough light
+in it to measure a scrim through, so the test now reads the scrim's own alpha. It
+is weaker in one way — it cannot catch the wash being defeated by something drawn
+over it — and much stronger in another: it is exact, it cannot go intermittent,
+and it caught the bug above on its first run.
+
+### Music on mobile: second attempt, still unconfirmed
+
+The element is pointed at the **network URL** rather than an object URL over the
+fetched bytes. WebKit serves media through a loader that expects byte-range
+requests and `blob:` sources are a long-standing weak spot there — a track that
+plays on every desktop browser can silently never start on an iPhone. The preload
+keeps both of its real jobs: it fills the bar honestly and warms the HTTP cache.
+
+And the gate now **says so when there will be no music**, with the reason:
+`MUSIC UNAVAILABLE · FORMAT` when no encoding is playable, `· DOWNLOAD` when the
+fetch failed. Silence is the one failure this keeps producing and it looks
+identical from the outside whatever caused it. A player deserves to know it is the
+game and not their volume — and if that line appears on the phone, it names the
+cause without anyone opening devtools.
+
+**Not fixed if neither is the cause**, and that cannot be settled from here. An
+AAC fallback was attempted: this machine has no ffmpeg, and the Chromium here
+reports `audio/mp4` recordable but cannot decode AAC, which means it would
+likely produce Opus-in-MP4 — a file that looks like a fallback and is not.
+
+### Tested
+
+17 e2e across the title screen and the front door, 374 unit. Two title tests
+rewritten rather than retuned: the attract turn they were built on no longer
+exists, so "turns by itself" became "holds completely still", and the snap-to-face
+guard now drives the renderer off front directly instead of waiting for a title
+animation.
+
+---
+
 ## M20a — Three corrections to M20
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

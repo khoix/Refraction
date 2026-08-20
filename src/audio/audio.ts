@@ -68,9 +68,9 @@ export class Audio {
 
   // -------------------------------------------------------------------- music
 
-  /** Hand over a fetched track. Starts playing if music was already asked for. */
-  loadMusic(blob: Blob): void {
-    this.music.load(blob);
+  /** Hand over the track's URL. Starts playing if music was already asked for. */
+  loadMusic(url: string): void {
+    this.music.load(url);
   }
 
   /** Idempotent, so callers may drive it from state rather than from an event. */

@@ -9,6 +9,47 @@
  * Shift pip or a rainbow banner would not be.
  */
 
+/*
+ * Oxanium, vendored rather than linked.
+ *
+ * A static bundle should not need a third-party request to draw its own
+ * wordmark, and the front door is the worst place to wait on one. It is a
+ * variable face, so a single 14 KB file covers every weight the interface uses
+ * -- and the interface genuinely uses the range, weight 200 in seven places.
+ */
+@font-face {
+  font-family: 'Oxanium';
+  src: url('./fonts/oxanium-latin.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Refraction Display Bold: the wordmark's own face, and only the wordmark's.
+ *
+ * Oxanium Bold with eight uppercase letters replaced by glyphs traced from the
+ * title artwork -- A, C, E, F, I, N, R, T. That set is exactly the letters of
+ * REFRACTION apart from the O, because in the artwork the O is not a letter at
+ * all; it is the cube. Built by `scripts/build-refraction-display.py`, which
+ * fetches the donor and reapplies the traces, so this file is reproducible
+ * rather than a binary of unknown provenance. Derived from Oxanium under the
+ * SIL OFL 1.1; the licence travels with it in `fonts/OFL-Oxanium.txt`.
+ *
+ * It carries the full donor glyph set -- lowercase, punctuation, accents -- so
+ * nothing falls back mid-word if it is ever pointed at other text. What stops
+ * it being the interface font is weight, not coverage: it is a single Bold, and
+ * the UI is mostly 200. Asking a one-weight face for 200 gets a browser's
+ * synthetic answer, so this stays scoped to the mark it was traced from.
+ */
+@font-face {
+  font-family: 'Refraction Display';
+  src: url('./fonts/refraction-display-bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --surface-void: #05060a;
   --surface-deep: #0a0c14;
@@ -23,7 +64,24 @@
   --accent-ui: #f3f6ff;
   --accent-ui-glow: 243 246 255;
 
-  --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /*
+   * The front door's accent, and the one exception to the achromatic chrome.
+   *
+   * §2.2 reserves hue because a colour on a rules-claiming surface is a claim
+   * about depth. That is a rule about screens with a board on them. The gate and
+   * the menu have none -- no cubes, no well, nothing whose distance a player
+   * could misread -- so the wordmark and its furniture are free to carry light.
+   *
+   * Used *only* under `[data-screen='boot']` and `[data-screen='title']`. It must
+   * never reach the HUD, the Shift meter or the gauge, all of which sit over a
+   * live board and all of which have tests saying so.
+   */
+  --accent-beam: #57daff;
+  --accent-beam-glow: 87 218 255;
+
+  --font-display: 'Oxanium', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* The wordmark only. Oxanium is the fallback because it is the donor. */
+  --font-wordmark: 'Refraction Display', 'Oxanium', 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
@@ -870,6 +928,66 @@ input,
   backdrop-filter: none;
 }
 
+/*
+ * The front screens light up.
+ *
+ * Everything here is scoped to the two screens with no board on them, which is
+ * the whole licence for it — see `--accent-beam`. The wordmark glows white with
+ * a cyan corona, the way something lit from inside does; the type is not tinted,
+ * because tinted white type reads as cheap where a white glyph throwing coloured
+ * light reads as lit.
+ */
+.screens[data-screen='boot'] .title__word,
+.screens[data-screen='title'] .title__word {
+  color: #fff;
+  text-shadow:
+    0 0 4px rgb(255 255 255 / 0.55),
+    0 0 22px rgb(var(--accent-beam-glow) / 0.5),
+    0 0 60px rgb(var(--accent-beam-glow) / 0.35);
+}
+
+.screens[data-screen='boot'] .title__cube svg,
+.screens[data-screen='title'] .title__cube svg {
+  filter: drop-shadow(0 0 6px rgb(var(--accent-beam-glow) / 0.9))
+    drop-shadow(0 0 18px rgb(var(--accent-beam-glow) / 0.55));
+}
+
+.screens[data-screen='boot'] .loading__note,
+.screens[data-screen='title'] .title__rule {
+  font-family: var(--font-display);
+  color: rgb(var(--accent-beam-glow) / 0.85);
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  text-shadow: 0 0 12px rgb(var(--accent-beam-glow) / 0.4);
+}
+
+/* The way in, lit like the mark it sits under. */
+.screens[data-screen='boot'] .button,
+.screens[data-screen='title'] .button {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  color: #eaf9ff;
+  border-color: rgb(var(--accent-beam-glow) / 0.65);
+  background: rgb(6 14 22 / 0.55);
+  box-shadow:
+    0 0 14px rgb(var(--accent-beam-glow) / 0.22),
+    inset 0 0 14px rgb(var(--accent-beam-glow) / 0.12);
+}
+
+.screens[data-screen='boot'] .button:hover,
+.screens[data-screen='boot'] .button:focus-visible,
+.screens[data-screen='title'] .button:hover,
+.screens[data-screen='title'] .button:focus-visible {
+  color: #fff;
+  border-color: rgb(var(--accent-beam-glow) / 0.95);
+  background: rgb(10 22 34 / 0.72);
+  box-shadow:
+    0 0 22px rgb(var(--accent-beam-glow) / 0.4),
+    inset 0 0 18px rgb(var(--accent-beam-glow) / 0.2);
+}
+
 /* Same measure as the title, since it holds the same wordmark. */
 .panel--boot {
   width: min(60rem, 100%);
@@ -927,6 +1045,12 @@ input,
   color: var(--text-dim);
 }
 
+/* Not an alarm — a fact the player would otherwise have to guess at. */
+.loading__note--warn {
+  color: var(--text-secondary);
+  font-size: 0.6rem;
+}
+
 /* The way in, once there is something to go in to. */
 .panel--boot.panel--ready .loading__note {
   color: var(--text-secondary);
@@ -944,22 +1068,99 @@ input,
 
 .title__word {
   /*
-   * Sized to fit rather than to fill. Ten characters at a third of an em of
+   * Sized to fit rather than to fill. Ten characters at a quarter of an em of
    * tracking is a very wide word, and at the previous 11vw it overran both
    * edges of a 1280px window -- the first and last letters were simply cut off.
    */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: clamp(1.5rem, 6.6vw, 4.4rem);
-  letter-spacing: 0.26em;
-  text-indent: 0.26em;
+  letter-spacing: 0.16em;
   line-height: 1;
+  /*
+   * The mark's own face, not the interface's.
+   *
+   * This went through two wrong answers before the right one, and both were
+   * wrong in the same direction -- reaching for a setting of a stock face when
+   * the artwork was never a setting of a stock face. It shipped as Oxanium 600,
+   * then as Oxanium 800; the second is closer and still not it, because the
+   * letters in the artwork were drawn, not typed.
+   *
+   * 700 exactly, and not by taste: the face is a single static Bold, so any
+   * other number here asks the browser to invent a weight it does not have and
+   * get back a synthetic smear over glyphs that were traced by hand.
+   */
+  font-family: var(--font-wordmark);
+  font-weight: 700;
+}
+
+.title__letters {
+  letter-spacing: inherit;
+  /* The tracking after the last letter would otherwise push the mark off centre
+     by half a space; only the gaps *between* letters should count. */
+  margin-right: -0.16em;
+}
+
+/*
+ * The cube that stands in for the O.
+ *
+ * Sized against the cap height rather than the em, so it matches the letters
+ * either side of it at every clamp step, and given the same tracking so it sits
+ * in the word's rhythm rather than beside it.
+ */
+.title__cube {
+  display: inline-flex;
+  /*
+   * Larger than the caps, which is what the artwork does.
+   *
+   * The obvious rule is that a letter's stand-in should measure a letter, and
+   * the screenshot overrules it: the voxel is 1.12 times cap height and 1.08
+   * times as wide, breaking the cap line top and bottom. It reads as deliberate
+   * rather than misaligned because a corner-on cube is pointed at both ends --
+   * cropping it to the cap line would flatten the two vertices that carry the
+   * projection and leave a shape doing a worse job of being a cube.
+   *
+   * Cap height here is 0.69em, so 1.12 of it is 0.77em.
+   */
+  width: 0.77em;
+  height: 0.77em;
+  margin-inline: 0.14em;
+  /*
+   * Centred on the caps, not on the line.
+   *
+   * The flex line centres on the em box, and the caps sit above that -- so
+   * without this the voxel hangs low by half the difference. The value is the
+   * measured gap between the two centres, not an eyeballed nudge.
+   */
+  transform: translateY(-0.05em);
+  color: var(--accent-beam);
+}
+
+.title__cube svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Only for assistive technology: the letter the cube is standing in for. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /*
  * Hairlines above and below the wordmark.
  *
- * Achromatic, like everything that is not a cube. They give the masthead an
- * edge to sit on without introducing a panel, and they fade out at the ends so
- * the mark reads as printed on the scene rather than boxed off from it.
+ * They give the masthead an edge to sit on without introducing a panel, and they
+ * fade out at the ends so the mark reads as printed on the scene rather than
+ * boxed off from it. The bright point at the centre is what stops them reading
+ * as two borders: a rule with a hot spot is a beam, and a beam belongs to a
+ * space made of light.
  */
 .title__rules {
   display: block;
@@ -973,6 +1174,22 @@ input,
     rgb(var(--accent-ui-glow) / 0.34) 78%,
     transparent
   );
+}
+
+.screens[data-screen='boot'] .title__rules,
+.screens[data-screen='title'] .title__rules {
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgb(var(--accent-beam-glow) / 0.28) 14%,
+    rgb(var(--accent-beam-glow) / 0.5) 38%,
+    rgb(255 255 255 / 0.95) 50%,
+    rgb(var(--accent-beam-glow) / 0.5) 62%,
+    rgb(var(--accent-beam-glow) / 0.28) 86%,
+    transparent 100%
+  );
+  box-shadow: 0 0 14px rgb(var(--accent-beam-glow) / 0.45);
 }
 
 .title__rule {

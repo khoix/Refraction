@@ -106,11 +106,50 @@ function wordmark(tagline: boolean): HTMLElement {
   // Hairlines bracket the wordmark. Presentational, so they are `<hr>` inside
   // the heading rather than borders on it -- the mark needs to breathe between
   // them, and a border cannot fade out at its ends.
-  title.append(
-    element('hr', 'title__rules'),
-    element('span', 'title__word', 'REFRACTION'),
-    element('hr', 'title__rules')
-  );
+  /*
+   * The O is a cube.
+   *
+   * The one place the wordmark is allowed to say what the game is about, and it
+   * costs nothing: `REFRACTI` + a drawn cube + `N` reads as the word at a glance
+   * and as a cube a moment later. Inline SVG rather than a glyph so it takes the
+   * heading's own colour and glow, and scales with the type instead of being a
+   * picture pasted next to it.
+   *
+   * Marked `aria-hidden` with the letter supplied to assistive technology
+   * separately, so the accessible name stays the word rather than "REFRACTI N".
+   */
+  const word = element('span', 'title__word');
+  word.append(element('span', 'title__letters', 'REFRACTI'));
+  const cube = element('span', 'title__cube');
+  cube.setAttribute('aria-hidden', 'true');
+  /*
+   * The voxel, in the artwork's own projection.
+   *
+   * Corner-on: yawed 45 degrees so no face is square to the viewer, and tilted
+   * about 20 degrees above the horizon. The silhouette is therefore a hexagon
+   * with two vertical sides, and three edges meet at a junction inside it --
+   * down to the bottom vertex, up-left and up-right to the shoulders.
+   *
+   * Every number here was read off the screenshot rather than chosen. Solving
+   * the orthographic projection against the measured silhouette -- half-height
+   * 57px, junction 18px above centre -- gives an elevation of 20.19 degrees, and
+   * that model then predicts a 75px vertical side edge where the artwork has 74.
+   *
+   * The tilt is the whole point, and it is what the first version got wrong. It
+   * had been drawn in cabinet projection -- a square front face with the top and
+   * side sheared off behind it -- which is a drawing convention rather than a
+   * viewpoint. True isometric would be wrong too, in the other direction: 35.26
+   * degrees lifts the junction to the middle of the shape and shows far more of
+   * the top face than the artwork does.
+   *
+   * The three faces carry different fills because the artwork lights them
+   * differently -- the top catches most, the right least.
+   */
+  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false" aria-hidden="true"><g><path d="M50 3 L96.6 19.1 L50 35.2 L3.4 19.1 Z" fill="currentColor" fill-opacity="0.2" stroke="none"/><path d="M3.4 19.1 L50 35.2 L50 97 L3.4 80.9 Z" fill="currentColor" fill-opacity="0.1" stroke="none"/><path d="M50 35.2 L96.6 19.1 L96.6 80.9 L50 97 Z" fill="currentColor" fill-opacity="0.075" stroke="none"/><g fill="none" stroke="currentColor" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"><path d="M50 3 L96.6 19.1 L96.6 80.9 L50 97 L3.4 80.9 L3.4 19.1 Z"/><path d="M3.4 19.1 L50 35.2 L96.6 19.1 M50 35.2 L50 97"/></g></g></svg>`;
+  const letterO = element('span', 'sr-only', 'O');
+  word.append(cube, letterO, element('span', 'title__letters', 'N'));
+
+  title.append(element('hr', 'title__rules'), word, element('hr', 'title__rules'));
   // The front door goes without it. The line is the game's thesis and it earns
   // its place over the menu, but the first screen is carrying a loading bar and
   // a way in already, and the mark reads harder with nothing under it.
@@ -284,6 +323,8 @@ export class Screens {
   private readonly loadingBar = element('div', 'loading__bar');
   private readonly loadingFill = element('div', 'loading__fill');
   private readonly loadingNote = element('p', 'loading__note', 'LOADING');
+  /** Says why there will be no music, when there will be none. */
+  private readonly musicNote = element('p', 'loading__note loading__note--warn', '');
   private readonly enterButton = button('TAP TO PLAY', 'button button--primary', () =>
     this.handlers.onEnter()
   );
@@ -344,8 +385,9 @@ export class Screens {
     this.loadingBar.setAttribute('aria-valuemax', '100');
     this.loadingBar.setAttribute('aria-label', 'Loading');
 
+    this.musicNote.hidden = true;
     const loading = element('div', 'loading');
-    loading.append(this.loadingBar, this.loadingNote);
+    loading.append(this.loadingBar, this.loadingNote, this.musicNote);
 
     const actions = element('div', 'panel__actions');
     actions.append(this.enterButton);
@@ -370,6 +412,18 @@ export class Screens {
     this.loadingFill.style.width = `${percent}%`;
     this.loadingBar.setAttribute('aria-valuenow', String(percent));
     this.loadingBar.dataset['value'] = String(percent);
+  }
+
+  /**
+   * Report that the music will not play, and why.
+   *
+   * On the gate rather than in a log, because the player is the one who notices
+   * the silence and has no other way to tell it apart from their own volume being
+   * down. Null clears it.
+   */
+  setMusicNote(note: string | null): void {
+    this.musicNote.textContent = note ?? '';
+    this.musicNote.hidden = note === null;
   }
 
   /** Reveal the way in. Idempotent, so it can be driven from state. */

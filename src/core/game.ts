@@ -50,20 +50,35 @@ import type { Cell, Face, TurnDirection } from './types';
  *   gains `0.3 * HEAT_PER_LINE` and loses `1000 * HEAT_DECAY_PER_MS`. At the
  *   values below that is a net 0.022 per second -- a collapse earned in about
  *   forty-five seconds of sustained good play.
- * - At half that clearing rate the bar loses ground and never fills, which is
- *   the pressure the mechanic exists to create.
+ * - Below about a quarter of that clearing rate the bar loses ground and never
+ *   fills, which is the pressure the mechanic exists to create.
  *
  * `heatModel` in the tests pins those two cases, so the intent is checkable even
  * though the pace behind it is an assumption. It wants playtesting to confirm.
+ *
+ * **The two constants were moved as a pair**, and that is the only reason the
+ * first number above is unchanged from the version that cooled five times
+ * faster. Play said the gauge cooled too hard, so cooling went to a fifth; on its
+ * own that halves the time to a collapse, turning a mechanic bought with pace
+ * into one bought with patience. Halving the earn rate alongside it puts the
+ * price back where it was and spends the whole of the change on forgiveness
+ * instead: what moves is not how long good play takes to earn a collapse, but how
+ * badly easing off is punished. The old cliff -- drop to two thirds of pace and
+ * the bar can never fill at all -- becomes a gradient, where half pace still
+ * arrives in a bit over two minutes. Only the floor stayed a cliff, which is what
+ * keeps this a rate mechanic rather than a stopwatch.
+ *
+ * A line is now a tenth of the gauge rather than a fifth, so the bar reads as
+ * something filling rather than as a five-slot counter.
  *
  * Cooling is per *tick*, not per wall-clock millisecond. A run is determined by
  * `(seed, input log)` and the engine steps on a fixed timestep, so this is free
  * if it reads `deltaMs` and silently breaks every replay and challenge code if
  * it ever reads a clock.
  */
-export const HEAT_PER_LINE = 0.2;
-/** Full to empty in twenty-six seconds of clearing nothing. */
-export const HEAT_DECAY_PER_MS = 1 / 26_000;
+export const HEAT_PER_LINE = 0.1;
+/** Full to empty in one hundred and thirty seconds of clearing nothing. */
+export const HEAT_DECAY_PER_MS = 1 / 130_000;
 
 export type GameStatus =
   'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'paused' | 'gameOver';

@@ -2,9 +2,17 @@
  * The reactive environment, and the debris a clear throws off.
  *
  * The room is made of **light, not colour**. Every element here is achromatic:
- * shafts of cool grey light, white dust, drifting voxels, a neutral floor
- * lattice, and rings that ripple outward when lines clear. It reacts to play
- * through brightness and motion, and never through hue.
+ * white dust, drifting voxels, a neutral floor lattice, and rings that ripple
+ * outward when lines clear. It reacts to play through brightness, and never
+ * through hue.
+ *
+ * **It does not sweep, and it has no moving lights.** Both were here and both
+ * were wrong for the same reason. Every group rotated on Y, which slid the whole
+ * background sideways behind a board that is itself the only thing meant to turn
+ * -- it read as the camera moving when it was not. And five wide shafts of light
+ * drifted and breathed across it, which is a lighting rig rather than a room.
+ * What is left holds still: the floaters each bob and turn on their own, which
+ * is what floating is, and nothing moves as a body.
  *
  * With one deliberate exception, added when the title screen stopped composing a
  * stack on the board and the room had to carry that picture alone: the drifting
@@ -27,11 +35,8 @@
  *
  * The craft rules that keep it from looking cheap:
  *
- * - **Beams fade at both ends.** A vertex-colour ramp runs bright at the
- *   board's height and falls to black top and bottom, so a shaft reads as light
- *   with no beginning and no end rather than as a rectangle someone drew.
- * - **Nothing moves in lockstep.** Each beam has its own drift, phase and peak,
- *   so the room breathes unevenly the way a real one does.
+ * - **Nothing moves in lockstep.** Each floater has its own phase and rate, so
+ *   what motion there is never reads as one mechanism.
  * - **The ground is a true neutral.** A saturated near-black is a tint, and
  *   dark tints read as dirt.
  *
@@ -48,6 +53,8 @@
 import * as THREE from 'three';
 import { BOARD_HEIGHT } from '@core/constants';
 import { depthColor } from '@core/spectrum';
+import { createRng } from '@core/rng';
+import { applyGel, setGelStrength } from './gel';
 
 const BACKDROP_ORDER = -10;
 
@@ -55,7 +62,7 @@ const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
 const DUST_COUNT = 520;
 
-const VOXEL_COUNT = 14;
+const VOXEL_COUNT = 28;
 /**
  * How far out the field floats, unchanged from the wireframes it replaces.
  *
@@ -74,19 +81,60 @@ const VOXEL_OUTER_RADIUS = 48;
  */
 const PLAY_COLUMN_HALF_WIDTH = 7;
 /**
+ * The seed the field is arranged from.
+ *
+ * Chosen by measuring, not by taste: candidate seeds were scored on how many
+ * floaters land inside the frame at a laptop's aspect and at a phone's, and this
+ * one puts six on screen at the first and three at the second. The first seed
+ * tried put almost nothing on screen at either, which is the whole hazard of
+ * composing fourteen items by chance.
+ */
+const VOXEL_SEED = 'still';
+/**
+ * The one large floater, and where it sits.
+ *
+ * Every other cube is scattered; this one is composed. It hangs above the
+ * wordmark because that is where the eye arrives, and it is amber because a
+ * single warm mass against a field of cool ones is what stops the room reading
+ * as one colour with variations.
+ */
+const HERO_SIZE = 2.3;
+const HERO_HUE = 0.17;
+const HERO_LEVEL = 1;
+const HERO_X = 1.5;
+const HERO_Y = 5.2;
+/**
+ * The band the wordmark occupies, in board units, which the field keeps out of.
+ *
+ * Measured on screen rather than in the world, which is legitimate here because
+ * the front door's camera never moves: screen-x is world x at yaw zero.
+ */
+const TYPE_HALF_WIDTH = 13;
+const TYPE_HALF_HEIGHT = 3.5;
+/**
+ * Roughly what the orthographic frame covers, in board units.
+ *
+ * Not exact and does not need to be: it is the spread the field is scattered
+ * over, and a floater past the edge is simply one nobody sees. The frame is
+ * narrower than this on a phone and about this wide on a laptop.
+ */
+const FRAME_HALF_WIDTH = 20;
+const FRAME_HALF_HEIGHT = 12;
+/**
+ * What the field is worth while a board is being read.
+ *
+ * The floaters are a title-screen element that happens to persist into a run, so
+ * during play they drop back to roughly the brightness of the wireframes they
+ * grew out of -- present, and never competing with the stack for attention.
+ */
+const PLAY_DIM = 0.2;
+/**
  * How long the drifting voxels take to gain or lose their colour.
  *
  * Slow enough that starting a run reads as the room settling rather than as a
  * light being switched off.
  */
 const CHROMA_EASE_MS = 700;
-/**
- * Fewer, wider, softer than the disco's seven hard strips. A shaft of light
- * only reads as light if there is room around it.
- */
-const BEAM_COUNT = 5;
-/** Vertical segments per beam, for the falloff ramp along its length. */
-const BEAM_SEGMENTS = 16;
 const RIPPLE_POOL = 5;
 const RIPPLE_LIFE_MS = 950;
 
@@ -139,31 +187,105 @@ function dustCloud(seedAngle: number): THREE.Points {
   return points;
 }
 
+/**
+ * Placed from a fixed seed, not from `Math.random`.
+ *
+ * Fourteen items is a small enough sample that chance composes it badly on a
+ * fair number of loads -- every one of them behind the camera, or bunched into
+ * one corner, or simply absent from the frame. That is tolerable for debris and
+ * not for the only thing on the title screen, and it made two pixel tests
+ * intermittent for exactly the same reason: they were measuring a different room
+ * each run.
+ *
+ * A constant seed makes the field an arrangement someone looked at rather than
+ * one rolled fresh for every player, and makes it the *same* arrangement the
+ * tests and the capture script see.
+ */
 function voxelField(): THREE.Group {
   const group = new THREE.Group();
+  const rng = createRng(VOXEL_SEED);
   for (let i = 0; i < VOXEL_COUNT; i += 1) {
-    const size = 1.1 + Math.random() * 2.6;
-    const material = new THREE.MeshLambertMaterial({ depthWrite: true, depthTest: true });
+    /*
+     * The same material the board is made of.
+     *
+     * These were wireframe cages, and a cage is a drawing of a cube rather than
+     * a cube. The game already has an answer to "what does a voxel look like" --
+     * `gel.ts`, cast resin with a bevelled edge, a directional gloss and a rim --
+     * and a title screen whose floaters are made of something else is a title
+     * screen advertising a different game.
+     *
+     * `MeshStandardMaterial` with `applyGel`, exactly as `VoxelLayer` builds it,
+     * so the shader injection, the yaw-locked highlight and the roughness all
+     * come along. Metalness stays at zero for the same reason it does there:
+     * with no environment map a metal has nothing to reflect, and the only thing
+     * a non-zero value does is subtract that fraction from the colour.
+     */
+    const hero = i === 0;
+    /*
+     * Sized near a board cube, deliberately.
+     *
+     * The gel's masks are object-space -- the bevel starts at a fraction of the
+     * cube's own half-width -- so a floater three times a board cube's size shows
+     * the same structure three times larger on screen, and what reads as material
+     * at thirty pixels reads as a pattern at ninety: a pale body with a saturated
+     * square stamped in the middle of it. Keeping them within touching distance
+     * of a real cube is what makes them look like the game's cubes rather than
+     * like something wearing its material.
+     */
+    const size = hero ? HERO_SIZE : 0.7 + rng.next() * 1.1;
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.34, metalness: 0 });
+    applyGel(material);
     const voxel = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
-    const angle = Math.random() * Math.PI * 2;
-    // Well clear of the board, so the field reads as distance rather than as
-    // clutter drawn across the well.
-    const radius = VOXEL_INNER_RADIUS + Math.random() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS);
-    voxel.position.set(
-      Math.cos(angle) * radius,
-      (Math.random() - 0.4) * BOARD_HEIGHT * 2.2,
-      Math.sin(angle) * radius
-    );
-    voxel.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-    // Where on the ramp this one sits, its own brightness, and its own drift, so
-    // the field is a scattering rather than a pattern.
-    voxel.userData['hue'] = Math.random();
-    voxel.userData['level'] = 0.16 + Math.random() * 0.22;
-    voxel.userData['bob'] = Math.random() * Math.PI * 2;
-    voxel.userData['rise'] = 0.5 + Math.random() * 1.4;
-    voxel.userData['home'] = voxel.position.y;
+    // Drawn before the board and depth-tested against it, so a floater behind
+    // the well is correctly hidden by whatever the player has stacked there.
     voxel.renderOrder = BACKDROP_ORDER;
     voxel.frustumCulled = false;
+
+    /*
+     * Aimed into the frame, and never across the wordmark.
+     *
+     * The distance a floater is dealt is kept; only the direction is chosen. An
+     * orthographic camera does not shrink what is far away, so a ring of them at
+     * radius 26 to 48 is almost entirely *outside* a frame about nineteen units
+     * wide -- the field was there, and the screen was empty. Picking the screen
+     * position and solving for depth puts them where they can be seen without
+     * bringing them any closer.
+     *
+     * The masthead is the one part of this screen that has to stay legible, and a
+     * floater drifting behind it turns the glow into mush. A seed can be chosen
+     * to avoid that on a laptop and will not also avoid it on a phone, so the
+     * keep-out is enforced at placement rather than hoped for: a candidate landing
+     * in the band gets re-rolled.
+     */
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const radius = VOXEL_INNER_RADIUS + rng.next() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS);
+      x = (rng.next() * 2 - 1) * FRAME_HALF_WIDTH;
+      y = (rng.next() * 2 - 1) * FRAME_HALF_HEIGHT;
+      z = Math.sqrt(Math.max(1, radius * radius - x * x)) * (rng.next() < 0.5 ? -1 : 1);
+      const acrossType = Math.abs(x) < TYPE_HALF_WIDTH + size;
+      const behindType = Math.abs(y) < TYPE_HALF_HEIGHT + size;
+      if (!(acrossType && behindType)) break;
+    }
+    voxel.position.set(x, y, z);
+    voxel.rotation.set(rng.next() * Math.PI, rng.next() * Math.PI, 0);
+
+    // Where on the ramp this one sits, its own brightness, and its own drift, so
+    // the field is a scattering rather than a pattern.
+    voxel.userData['hue'] = hero ? HERO_HUE : rng.next();
+    voxel.userData['level'] = hero ? HERO_LEVEL : 0.55 + rng.next() * 0.4;
+    voxel.userData['bob'] = rng.next() * Math.PI * 2;
+    voxel.userData['rise'] = 0.5 + rng.next() * 1.4;
+
+    if (hero) {
+      // Placed rather than scattered: the one large floater is a composition
+      // element, and it belongs above the wordmark where the eye lands first.
+      voxel.position.set(HERO_X, HERO_Y, -18);
+      voxel.rotation.set(0.42, 0.62, 0);
+    }
+    voxel.userData['home'] = voxel.position.y;
     group.add(voxel);
   }
   return group;
@@ -215,47 +337,6 @@ function floorLattice(): THREE.LineSegments {
  * vertex colours -- under additive blending, black is invisible -- so it costs
  * one attribute and no shader.
  */
-function lightShafts(): THREE.Group {
-  const group = new THREE.Group();
-  for (let i = 0; i < BEAM_COUNT; i += 1) {
-    const width = 2.2 + Math.random() * 2.0;
-    const geometry = new THREE.PlaneGeometry(width, 96, 1, BEAM_SEGMENTS);
-
-    // Brightest across the board's own height, falling to nothing top and
-    // bottom, so a shaft has no visible beginning or end.
-    const position = geometry.getAttribute('position');
-    const shade = new Float32Array(position.count * 3);
-    for (let v = 0; v < position.count; v += 1) {
-      const t = Math.abs(position.getY(v)) / 48;
-      const falloff = Math.max(0, 1 - t * t);
-      shade[v * 3] = falloff;
-      shade[v * 3 + 1] = falloff;
-      shade[v * 3 + 2] = falloff;
-    }
-    geometry.setAttribute('color', new THREE.BufferAttribute(shade, 3));
-
-    const material = new THREE.MeshBasicMaterial({
-      side: THREE.DoubleSide,
-      vertexColors: true,
-    });
-    backdropMaterialSettings(material);
-
-    const beam = new THREE.Mesh(geometry, material);
-    const angle = (i / BEAM_COUNT) * Math.PI * 2 + Math.random() * 0.5;
-    const radius = 15 + Math.random() * 9;
-    beam.position.set(Math.cos(angle) * radius, 0, Math.sin(angle) * radius);
-    beam.rotation.z = (Math.random() - 0.5) * 0.5;
-    // Its own drift, phase and peak, so no two breathe together.
-    beam.userData.spin = 0.00018 + Math.random() * 0.00022;
-    beam.userData.phase = Math.random() * Math.PI * 2;
-    beam.userData.peak = 0.5 + Math.random() * 0.5;
-    beam.renderOrder = BACKDROP_ORDER;
-    beam.frustumCulled = false;
-    group.add(beam);
-  }
-  return group;
-}
-
 interface Ripple {
   readonly ring: THREE.LineLoop;
   readonly material: THREE.LineBasicMaterial;
@@ -296,7 +377,6 @@ export class Environment {
   /** Reused for the keep-out test, for the same reason. */
   private readonly worldScratch = new THREE.Vector3();
   private readonly lattice: THREE.LineSegments;
-  private readonly beams: THREE.Group;
   private readonly ripples: Ripple[] = [];
 
   private pulse = 0;
@@ -304,7 +384,7 @@ export class Environment {
   /** 1 while the board is settled and dead-on, 0 at the midpoint of a turn. */
   private flatness = 1;
   private turnDrive = 0;
-  /** Free-running clock for the beams' individual breathing. */
+  /** Free-running clock for the floaters' individual bobbing. */
   private phase = 0;
   private readonly reducedMotion: boolean;
   private readonly intensity: number;
@@ -317,7 +397,6 @@ export class Environment {
     this.dustFar = dustCloud(2.1);
     this.voxels = voxelField();
     this.lattice = floorLattice();
-    this.beams = lightShafts();
 
     // The strobe is gone. It was the photosensitivity risk and the single
     // cheapest-looking thing in the room, and nothing replaced it: a space made
@@ -330,7 +409,6 @@ export class Environment {
       this.dustFar,
       this.voxels,
       this.lattice,
-      this.beams,
       ...this.ripples.map((ripple) => ripple.ring)
     );
   }
@@ -386,10 +464,16 @@ export class Environment {
     const step = deltaMs * 0.000018 * drive * this.intensity;
     this.phase += deltaMs * 0.00035 * (this.reducedMotion ? 0.4 : 1);
 
-    this.dustNear.rotation.y += step * 3;
-    this.dustFar.rotation.y -= step * 2;
-    this.voxels.rotation.y += step;
-    this.beams.rotation.y += step * 1.4;
+    /*
+     * The room does not sweep.
+     *
+     * Every group in here used to rotate on Y -- dust one way, the far dust the
+     * other, the floaters a third -- which made the whole background slide
+     * sideways behind a board that is itself the only thing meant to turn. It
+     * read as the camera moving when it was not. The floaters still move, but
+     * each on its own, which is what "floating" means; the field as a body is
+     * still.
+     */
 
     // One brightness signal for the whole room. Everything below is a level,
     // never a hue: the room answers the board by getting brighter, not by
@@ -440,12 +524,34 @@ export class Environment {
       const shown = this.chroma + (1 - this.chroma) * clear;
       voxel.visible = shown > 0.01;
       if (!voxel.visible) return;
-      const own = ((voxel.userData['level'] as number) + glow * 0.14) * shown;
+      const dim = PLAY_DIM + (1 - PLAY_DIM) * this.chroma;
+      const own = ((voxel.userData['level'] as number) + glow * 0.4) * shown * dim;
       const { r, g, b } = depthColor(voxel.userData['hue'] as number);
-      const material = voxel.material as THREE.MeshLambertMaterial;
+
+      /*
+       * The colour goes straight into the material, which is what the gel's
+       * fidelity invariant makes safe: every term the material adds is multiplied
+       * by a mask that is exactly zero at the centre of a face, so a floater
+       * renders at exactly the colour it is handed there and the bevel, gloss and
+       * rim live only at the edges. Scaling the colour therefore scales the cube,
+       * rather than fighting the material for control of it.
+       */
+      const material = voxel.material as THREE.MeshStandardMaterial;
       material.color
         .copy(light(own))
         .lerp(this.scratch.setRGB(r * own, g * own, b * own, THREE.SRGBColorSpace), this.chroma);
+      /*
+       * The gel's structure is scaled by the floater's *own* brightness, not just
+       * by the field's.
+       *
+       * The bevel, the gloss and the rim are white light added on top of the
+       * colour, and they do not scale with it. Dimming a floater to two thirds
+       * while leaving those at full turned every cube milky: a pale body with a
+       * small saturated square at the centre, which is the fidelity invariant
+       * working exactly as designed and being drowned everywhere else on the
+       * face. Scaling them together keeps the material's look and the colour.
+       */
+      setGelStrength(material, Math.min(1, own));
       voxel.rotation.x += step * 0.7;
       voxel.rotation.y += step * 0.4;
       // Floating: a slow rise and fall around where it was placed, each on its
@@ -464,15 +570,6 @@ export class Environment {
     (this.lattice.material as THREE.LineBasicMaterial).color.copy(
       light((0.085 + glow * 0.11) * (1 - this.flatness))
     );
-
-    this.beams.children.forEach((child) => {
-      const beam = child as THREE.Mesh;
-      beam.rotation.y += (beam.userData.spin as number) * deltaMs * drive;
-      // Its own phase and peak, so the room breathes unevenly.
-      const breath = 0.6 + 0.4 * Math.sin(this.phase + (beam.userData.phase as number));
-      const level = (beam.userData.peak as number) * breath * (0.05 + glow * 0.06);
-      (beam.material as THREE.MeshBasicMaterial).color.copy(light(level + this.turnDrive * 0.045));
-    });
 
     // A true neutral ground. A saturated near-black is a tint, and dark tints
     // read as dirt -- which is exactly how the old hue-cycled backdrop looked.

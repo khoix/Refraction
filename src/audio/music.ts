@@ -54,7 +54,6 @@ const SILENT = 0.001;
 
 export class Music {
   private element: HTMLAudioElement | null = null;
-  private objectUrl: string | null = null;
   /** Whether the player should be hearing music right now. */
   private wanted = false;
   /** Master level from `Audio`: volume, already folded with mute. */
@@ -66,17 +65,26 @@ export class Music {
   private failure: string | null = null;
 
   /**
-   * Take the fetched bytes.
+   * Point the element at the track.
    *
-   * An object URL rather than the original network URL: the preloader has
-   * already spent the bytes, and pointing the element back at the server would
-   * risk a second transfer on any cache the browser has decided not to keep.
+   * **The network URL, not an object URL over the fetched bytes.** It was a blob
+   * originally, on the reasoning that the preloader had already spent the bytes
+   * and pointing back at the server risked a second transfer. That reasoning is
+   * fine and the choice was still wrong: WebKit serves media elements through a
+   * loader that expects byte-range requests, and `blob:` sources are a
+   * long-standing weak spot there — a track that plays on every desktop browser
+   * can silently never start on an iPhone. A static file from the same origin is
+   * the boring path that every browser handles.
+   *
+   * The preload keeps its two real jobs: it fills the loading bar honestly, and
+   * it warms the HTTP cache so the element usually reads from disk rather than
+   * the network. Losing that race costs a re-fetch; losing the blob race costs
+   * all the music.
    */
-  load(blob: Blob): void {
+  load(url: string): void {
     this.release();
-    this.objectUrl = URL.createObjectURL(blob);
     const element = new window.Audio();
-    element.src = this.objectUrl;
+    element.src = url;
     element.loop = true;
     element.preload = 'auto';
     // A source the platform cannot decode fails here rather than silently
@@ -200,8 +208,6 @@ export class Music {
     this.failure = null;
     this.element?.pause();
     this.element = null;
-    if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
-    this.objectUrl = null;
   }
 
   dispose(): void {
