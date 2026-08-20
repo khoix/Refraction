@@ -1069,9 +1069,16 @@ input,
  */
 .title__cube {
   display: inline-flex;
-  width: 0.78em;
-  height: 0.78em;
-  margin-inline: 0.16em;
+  /*
+   * Cap height, not em. The cube stands in for a letter, so it has to measure
+   * like one -- an em-sized box sits noticeably small against Oxanium's caps and
+   * reads as an icon dropped into the word rather than as the O.
+   */
+  width: 0.74em;
+  height: 0.74em;
+  margin-inline: 0.1em;
+  /* The flex line centres on the em box; the caps sit a little above it. */
+  transform: translateY(-0.02em);
   color: var(--accent-beam);
 }
 

@@ -69,6 +69,14 @@ is nothing to protect and the cages are lines one pixel wide, so the threshold
 drops to 0.12 — eased on the same curve as the well's departure, so the two arrive
 together.
 
+### The cube that stands in for the O
+
+Sized to Oxanium's cap height rather than to the em — an em-sized box sits
+noticeably small against the caps and reads as an icon dropped into the word
+instead of as the letter. Stroke weight matches the letterforms, only the visible
+edges are drawn so it reads as a solid form rather than a wire frame, and the
+front face carries a faint fill of its own colour.
+
 ### Oxanium, vendored
 
 14 KB, variable, covering every weight. Fetched into the repo rather than linked:

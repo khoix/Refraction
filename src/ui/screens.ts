@@ -122,7 +122,7 @@ function wordmark(tagline: boolean): HTMLElement {
   word.append(element('span', 'title__letters', 'REFRACTI'));
   const cube = element('span', 'title__cube');
   cube.setAttribute('aria-hidden', 'true');
-  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false"><g fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round"><path d="M16 34 L60 34 L60 78 L16 78 Z"/><path d="M40 16 L84 16 L84 60 L40 60" /><path d="M16 34 L40 16"/><path d="M60 34 L84 16"/><path d="M60 78 L84 60"/></g></svg>`;
+  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="11" stroke-linecap="round" stroke-linejoin="round"><path d="M6 32 L32 6 L94 6 L94 68 L68 94 L6 94 Z" fill="currentColor" fill-opacity="0.12" stroke="none"/><path d="M6 32 H68 V94 H6 Z"/><path d="M6 32 L32 6 H94 V68 L68 94"/><path d="M68 32 L94 6"/></g></svg>`;
   const letterO = element('span', 'sr-only', 'O');
   word.append(cube, letterO, element('span', 'title__letters', 'N'));
 
