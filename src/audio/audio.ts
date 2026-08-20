@@ -15,9 +15,13 @@ export class Audio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
   /**
-   * Music hangs off the same master gain as the effects, so mute and volume
-   * reach it without knowing it exists. See `music.ts` for why that routing is
-   * not optional.
+   * Music does *not* go through the master gain.
+   *
+   * It used to, and on mobile that made it silent -- routing a media element
+   * into the Web Audio graph turns it into ambient audio, which iOS treats
+   * differently from media. `music.ts` has the full account. The rule that
+   * mattered was that mute and volume reach the music, and that is preserved by
+   * pushing the level at it from `applyGain` instead.
    */
   private readonly music = new Music();
   private enabled = true;
@@ -43,10 +47,23 @@ export class Audio {
       this.master.connect(this.context.destination);
     }
     if (this.context.state === 'suspended') void this.context.resume();
-    // Safe to repeat: `attach` is a no-op once it holds this context. The two
-    // are created together above, so the guard is for the type system rather
-    // than for a state this can actually be in.
-    if (this.master) this.music.attach(this.context, this.master);
+  }
+
+  /**
+   * Declare this page's audio as playback rather than ambient.
+   *
+   * iOS decides whether the hardware silent switch applies by what kind of audio
+   * it thinks the page is making, and its guess for a page using Web Audio is
+   * "ambient" -- which is right for a notification blip and wrong for a game,
+   * whose sound a player has deliberately turned on. Safari 16.4 added this to
+   * say so explicitly.
+   *
+   * Called at boot rather than inside the gesture: it describes the page, not a
+   * playback attempt. Absent everywhere but recent WebKit, hence the guard.
+   */
+  static declarePlayback(): void {
+    const session = (navigator as unknown as { audioSession?: { type: string } }).audioSession;
+    if (session) session.type = 'playback';
   }
 
   // -------------------------------------------------------------------- music
@@ -73,6 +90,11 @@ export class Audio {
     return this.music.playing;
   }
 
+  /** What the platform said when it refused the track, if it did. */
+  get musicError(): string | null {
+    return this.music.error;
+  }
+
   get muted(): boolean {
     return !this.enabled;
   }
@@ -97,6 +119,9 @@ export class Audio {
   }
 
   private applyGain(): void {
+    // Music is not downstream of `master`, so it is told separately. Same
+    // number, two destinations.
+    this.music.setLevel(this.gainValue);
     if (this.master) this.master.gain.value = this.gainValue;
   }
 

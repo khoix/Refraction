@@ -165,6 +165,9 @@ const MUTED_DIM = 0.74;
 const PEEK_ELEVATION_DEG = 8;
 const PEEK_EASE_MS = 180;
 
+/** Slow: this is a scene changing, not a control responding. */
+const BACKDROP_EASE_MS = 900;
+
 const easeInOutCubic = (t: number): number =>
   t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 
@@ -477,6 +480,9 @@ export class GameRenderer {
   /** 0 while dead-on, 1 while fully peeked. Eased, so it is never a step. */
   private peek = 0;
   private peekHeld = false;
+  /** 0 while framed for play, 1 while pushed back as the front door's scenery. */
+  private backdrop = 0;
+  private backdropHeld = false;
   private bottomReservePx = 0;
   private readonly turnDurationMs: number;
 
@@ -616,6 +622,36 @@ export class GameRenderer {
   /** Whether the camera is currently away from dead-on because of Peek. */
   get peeking(): boolean {
     return this.peek > 0;
+  }
+
+  /**
+   * Take the well away for the front door, or bring it back.
+   *
+   * The gate shows no board at all now -- there is no composed arrangement in it,
+   * and an empty box drawn in outline behind the wordmark is worse than nothing.
+   * So the frame and the corner posts fade out and the room carries the picture
+   * on its own.
+   *
+   * This used to zoom the camera as well, back when there *was* a stack to push
+   * past the edges of the frame. With the stack gone the zoom was magnifying an
+   * empty well and throwing the room's drifting voxels outside the viewport, so
+   * it is gone too. Eased rather than switched, so the well arrives with the menu
+   * rather than appearing on the same frame as it.
+   */
+  setBackdrop(on: boolean): void {
+    this.backdropHeld = on;
+  }
+
+  /**
+   * Whether the room's drifting voxels may carry the spectrum.
+   *
+   * Separate from `setBackdrop` on purpose, even though the menus turn both on:
+   * one is a camera framing and the other is a palette permission, and the
+   * screens they belong to are not guaranteed to stay the same. Folding them
+   * into one flag would make the next change to either a change to both.
+   */
+  setAmbientChroma(on: boolean): void {
+    this.environment.setChroma(on);
   }
 
   /** Begin the Full Spectrum bloom. */
@@ -831,13 +867,22 @@ export class GameRenderer {
     const elevation =
       TURN_ELEVATION_DEG * dimensional + PEEK_ELEVATION_DEG * easeInOutCubic(this.peek);
     positionCamera(this.camera, yaw, elevation, this.shakeOffset);
+
+    // The front door takes the well away. Eased on the same principle as Peek,
+    // and slower, because this one is a scene change rather than a held look.
+    const backdropStep = deltaMs / BACKDROP_EASE_MS;
+    this.backdrop = THREE.MathUtils.clamp(
+      this.backdrop + (this.backdropHeld ? backdropStep : -backdropStep),
+      0,
+      1
+    );
     orientLights(this.lights, yaw);
     // The gel's own light travels with them, for the same reason they travel
     // with the camera: otherwise the material's highlight lands somewhere
     // different on each of the four faces.
     setGelYaw(yaw);
     setLightingFlatness(this.lights, flatness);
-    setWellFlatness(this.well, flatness);
+    setWellFlatness(this.well, flatness, easeInOutCubic(this.backdrop));
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.

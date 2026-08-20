@@ -635,6 +635,103 @@ input,
   text-align: center;
 }
 
+/*
+ * Panels hand over rather than cut.
+ *
+ * An animation rather than a transition, because a panel arrives from
+ * `display: none` and there is no previous value for a transition to start
+ * from. The outgoing panel is kept on screen by `panel--leaving` for exactly as
+ * long as `CROSSFADE_MS` in `screens.ts`, which is the only coupling between
+ * the two files and the reason that constant has a comment on it.
+ *
+ * The two halves move the same way -- in from below, out upward -- so the
+ * wordmark on the front door reads as rising into the masthead position rather
+ * than as one mark disappearing and another appearing somewhere else.
+ */
+@keyframes panel-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/*
+ * The rise is only for the two screens it says something about.
+ *
+ * A translate on every panel makes every panel's geometry unsettled for the
+ * length of the fade, and the menus are measured while they are on screen --
+ * arrow-key navigation groups controls into rows by where they actually land, so
+ * a grid that is still moving is a grid whose rows are read wrong. It cost a
+ * real test failure, not a hypothetical one.
+ *
+ * Between the front door and the menu there is nothing being measured and the
+ * movement is the whole point, so those two keep it.
+ */
+@keyframes panel-rise {
+  from {
+    opacity: 0;
+    transform: translateY(1.4vh);
+  }
+}
+
+/*
+ * Leaving gets its own keyframes rather than the arrival's in reverse.
+ *
+ * Reversing would have been tidier and does not work: by the time a panel is
+ * leaving, its arrival animation finished long ago, and changing the direction
+ * of a finished animation does not replay it -- the panel would have sat at full
+ * opacity for the whole 280 ms and then vanished, which is the hard cut this
+ * whole block exists to remove. A different name starts a new animation, which
+ * is the only thing that reliably does.
+ */
+@keyframes panel-out {
+  to {
+    opacity: 0;
+  }
+}
+
+@keyframes panel-sink {
+  to {
+    opacity: 0;
+    /* Upward, the same way the arriving panel travels, so the pair reads as one
+       mark rising rather than as two passing each other. */
+    transform: translateY(-1.4vh);
+  }
+}
+
+.panel:not([hidden]) {
+  animation: panel-in 280ms var(--ease-snap) both;
+}
+
+.panel--boot:not([hidden]),
+.panel--title:not([hidden]) {
+  animation-name: panel-rise;
+}
+
+/*
+ * Specificity has to match the rule above, or the shorthand there resets the
+ * direction and duration this one is trying to set. `:not([hidden])` is what
+ * makes them equal, and being later is what makes this one win.
+ */
+.panel--leaving:not([hidden]) {
+  /* Out of the way of the incoming panel's clicks, and of its layout. */
+  position: absolute;
+  pointer-events: none;
+  animation: panel-out 280ms var(--ease-snap) both;
+}
+
+.panel--boot.panel--leaving:not([hidden]),
+.panel--title.panel--leaving:not([hidden]) {
+  animation-name: panel-sink;
+}
+
+/* An unattended cross-fade is exactly what this setting is for. */
+@media (prefers-reduced-motion: reduce) {
+  .panel:not([hidden]),
+  .panel--leaving:not([hidden]) {
+    animation-duration: 1ms;
+  }
+}
+
 .panel__title {
   margin: 0;
   font-size: clamp(1.1rem, 3vw, 1.5rem);
@@ -758,17 +855,32 @@ input,
  * centring in the whole viewport does not achieve -- it puts the button on top
  * of the cubes.
  */
+/*
+ * An even wash, not the title's masthead gradient.
+ *
+ * The gradient was shaped for a composition that no longer exists: opaque across
+ * the top where a masthead sat, clearing at the bottom where the stack was. With
+ * the block centred and the room carrying the whole picture, that shape darkens
+ * the wrong half -- it hides the drifting voxels above the type and leaves them
+ * brightest where the type is.
+ *
+ * So: a light flat wash to hold contrast everywhere, and a soft pool centred on
+ * the block so the wordmark and the button have their own ground without walling
+ * the room off. Deliberately gentle -- an earlier attempt at a centred vignette
+ * ran to 0.93 and drained the cubes to grey, which on the screen whose job is to
+ * say what this game looks like is the most expensive possible mistake.
+ */
 .screens[data-screen='boot'] {
-  background: linear-gradient(
-    to bottom,
-    rgb(5 6 10 / 0.94) 0%,
-    rgb(5 6 10 / 0.88) 32%,
-    rgb(5 6 10 / 0.58) 52%,
-    rgb(5 6 10 / 0.16) 74%,
-    rgb(5 6 10 / 0.04) 100%
-  );
+  background:
+    radial-gradient(
+      ellipse 62% 34% at 50% 47%,
+      rgb(5 6 10 / 0.82) 0%,
+      rgb(5 6 10 / 0.62) 45%,
+      rgb(5 6 10 / 0.18) 78%,
+      rgb(5 6 10 / 0) 100%
+    ),
+    rgb(5 6 10 / 0.42);
   backdrop-filter: none;
-  padding-bottom: 30vh;
 }
 
 /* Same measure as the title, since it holds the same wordmark. */

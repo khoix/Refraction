@@ -13,7 +13,12 @@ declare global {
       play: (mode: ModeId, seed?: string) => void;
       save: () => SaveData;
       screen: () => ScreenName;
-      music: () => { ready: boolean; playing: boolean };
+      music: () => {
+        ready: boolean;
+        playing: boolean;
+        error: string | null;
+        source: string | null;
+      };
       bindings: { action: string; label: string; keys: string[] }[];
     };
   }

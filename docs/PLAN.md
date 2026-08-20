@@ -1370,6 +1370,59 @@ watching in play — a large collapse can fill the meter and force a turn
 immediately. That may be a good moment or a confusing one, and only playing it
 will say.
 
+### M17a — The gauge cools too fast _(play note)_
+
+**Asked for:** cooling at a fifth of its current speed.
+
+One constant: `HEAT_DECAY_PER_MS` from `1 / 26_000` to `1 / 130_000`. The bar goes
+from full to empty in 130 seconds of clearing nothing rather than 26.
+
+**What that does to the model.** M17's numbers came from a model written down in
+`game.ts`, and this changes both halves of it. At the modelled pace — a brisk
+player at roughly a piece a second, clearing 0.3 lines per piece — a collapse is
+earned in about **19 seconds** instead of about 45.
+
+The second half is the one worth a decision rather than a shrug. The model's
+other claim was that **at half that clearing rate the bar loses ground and never
+fills**, which is the pressure the mechanic exists to create. At a fifth of the
+cooling that stops being true: the break-even rate drops to about 0.04 lines per
+second, which is slower than almost any play. The bar would fill eventually
+whatever the player does, so Spectral Collapse becomes a reward for playing long
+enough rather than for keeping a pace up.
+
+### Decided: cooling ÷5 and `HEAT_PER_LINE` 0.2 → 0.1
+
+Both constants move together, and the pair does something neither half does
+alone. Cooling ÷5 on its own doubles how often a collapse arrives; halving the
+earn rate alongside it puts that back almost exactly where it was, while keeping
+all of the forgiveness.
+
+|                                          | Now                        | Decided                     |
+| ---------------------------------------- | -------------------------- | --------------------------- |
+| `HEAT_PER_LINE`                          | 0.2                        | 0.1                         |
+| Cooling, per second                      | 1/26 ≈ 0.0385              | 1/130 ≈ 0.0077              |
+| Lines to fill, ignoring decay            | 5                          | 10                          |
+| Time to fill at the modelled 0.3 lines/s | ≈ 46 s                     | **≈ 45 s**                  |
+| Break-even clearing rate                 | 0.19 lines/s (64% of pace) | 0.077 lines/s (26% of pace) |
+| At half the modelled pace                | never fills                | fills in ≈ 137 s            |
+
+So the cost of _earning_ a collapse through sustained good play is unchanged —
+about three quarters of a minute either way — and what changes is the penalty for
+easing off. The old cliff, where dropping to two thirds of pace meant the bar
+could never fill at all, becomes a gradient: half pace still gets there, in a bit
+over two minutes.
+
+This also makes each line a **tenth** of the gauge rather than a fifth, so the bar
+moves in finer steps and reads more like a filling gauge and less like a five-slot
+counter. Worth a look on screen once it is in.
+
+**Also in scope:** the `heatModel` unit tests pin both halves of the old model.
+"Never fills at half pace" stops being a true statement about the game and has to
+be rewritten rather than retuned — the property that survives is that the bar
+still _loses_ ground below a quarter of the modelled pace. The prose model in
+`game.ts` gets the new arithmetic, including the note that the two constants were
+moved as a pair and why.
+
 ---
 
 ## M18 — The Front Door ✅
@@ -1401,6 +1454,46 @@ job was to collect one, menu music was not a thing this game could have.
   on a shared code has already chosen. The preload still runs behind the run.
 - **A missing track cannot jam the door.** The bar completes and the button
   appears regardless; the game is playable without music.
+
+---
+
+## M19 — Audible on a phone, and a door that settles ✅
+
+The theme played on a laptop and was silent on mobile. Music no longer goes
+through the Web Audio graph — `createMediaElementSource` moves output onto a path
+iOS treats as ambient and silences — so the element plays itself, mute is a pause
+rather than a zero level, and the page declares `audioSession.type = 'playback'`.
+A track is now a list of encodings chosen by `canPlayType` before the fetch, so a
+device that cannot decode WebM/Opus can be given an `.m4a` by dropping the file in.
+
+Also: the tagline is off the gate, the board is pushed into a true backdrop there
+(zoomed past its own edges, well frame faded), and panels cross-fade instead of
+cutting.
+
+**Open:** no `.m4a` ships, so if the cause is the codec rather than the routing,
+one has to be encoded. The command is in `tracks.ts`, and `?debug=1` reports
+`music().error` and `music().source` to tell the two apart.
+
+## M20 — The room becomes the title screen ✅
+
+The composed stack is gone from the title; the room carries the picture. The
+wireframe blocks are solid voxels of assorted sizes, coloured from the ramp on
+the menus and absent during a run.
+
+Two constraints shaped it, both from the orthographic projection:
+
+- **Visible width is fixed and aspect-dependent** — about ±19 units on a laptop,
+  about ±7 on a phone in portrait, which is inside the well. One ring cannot fill
+  both, so the field is two bands: beside the well, and above and below it.
+- **No radius keeps a floater out of the well's column**, since screen-x is
+  `r·cos(angle − yaw)` and the camera orbits. A solid cube behind the playfield
+  shows through every empty cell, which is why the wireframe field is kept for
+  play rather than replaced.
+
+Colour is gated by §2.2: hue means depth from the current camera, so the room
+shows the ramp only when no board is being read.
+
+---
 
 ### M18a — The rest of the music _(next)_
 

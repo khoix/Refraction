@@ -1028,7 +1028,7 @@ has to collect one. Any key press or menu click will do it, and for the effects
 that is enough — the first sound a player hears is a lock, and by then they have
 pressed something.
 
-Music cannot work that way. It has to be running *before* the player does
+Music cannot work that way. It has to be running _before_ the player does
 anything, which is a contradiction unless there is a screen whose entire job is
 to be the thing they do first. That is the boot gate: wordmark, a progress bar
 reporting a real fetch, and a button. The loading is genuine and the gesture is
@@ -1049,9 +1049,22 @@ route is a channel the player's settings do not control.
 
 **Streamed, not decoded.** Decoded audio is float32 at the context's rate — a
 two-minute track is tens of megabytes resident for a file that is under two on
-disk. Music plays through an `<audio>` element and a
-`MediaElementAudioSourceNode`; the cost is that its loop is not sample-exact, and
-that trade is right for a bed and wrong for an effect.
+disk. Music plays through an `<audio>` element; the cost is that its loop is not
+sample-exact, and that trade is right for a bed and wrong for an effect.
+
+**Played as media, not as Web Audio.** The element is _not_ routed through
+`createMediaElementSource`. Doing so moves its output onto the Web Audio path,
+which iOS classifies as ambient audio and silences with the hardware switch,
+while a plain media element plays like a video. The mute and volume settings
+still govern music — `Audio` pushes its level at it — but **mute is a pause**,
+not a zero level, because iOS ignores `volume` on a media element and a slider
+that cannot attenuate is a control that lies.
+
+**More than one encoding.** A track is a list, and the browser is asked which it
+can play before anything is fetched. WebM/Opus is preferred and is not universal;
+mobile WebKit is the case that fails, and it fails silently, since an element
+that cannot decode its source never says so. When nothing is playable the answer
+is "none" and no bytes are spent.
 
 **Opus in WebM**, because a loop is the point: MP3 and AAC pad the stream to fill
 the final block and that padding decodes as silence at the seam. Opus stores the

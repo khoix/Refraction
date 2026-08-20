@@ -14,10 +14,9 @@ import { GameRenderer } from '@render/game-renderer';
 import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
-import { THEME } from './audio/tracks';
+import { THEME, playableSource } from './audio/tracks';
 import { preload } from './assets/preload';
 import { Screens } from '@ui/screens';
-import { composeAttract } from '@ui/attract';
 import type { ScreenName } from '@ui/screens';
 import { toView } from '@core/projection';
 import { stageLabel } from '@core/stages';
@@ -74,7 +73,12 @@ interface DebugHandle {
    * to it, so the suite can tell "we asked for the theme" apart from "the theme
    * is running".
    */
-  music: () => { ready: boolean; playing: boolean };
+  music: () => {
+    ready: boolean;
+    playing: boolean;
+    error: string | null;
+    source: string | null;
+  };
   /**
    * The binding table, flattened for assertions. The end-to-end suite checks the
    * rendered key map against this rather than against a copy of the bindings
@@ -155,6 +159,23 @@ function boot(root: HTMLElement): void {
   };
 
   let game = newGame(startingSeed, mode);
+
+  /**
+   * Nothing hovering over the front door.
+   *
+   * A new `Game` spawns a piece immediately, and on a screen nobody is playing
+   * that piece is a cube hanging in mid-air with a ghost, a landing mark and a
+   * drop channel cut through the well beneath it -- all of it describing a move
+   * nobody is making. The composed arrangement used to clear it as a side effect;
+   * with that gone this has to say so itself.
+   *
+   * Only the piece in hand. Settled cells are left alone, so a player who quits
+   * part-way through still finds their own board behind the menu.
+   */
+  const stillTheTitle = (): void => {
+    game.active = null;
+  };
+  stillTheTitle();
   /**
    * How long the title holds a face before turning to the next.
    *
@@ -169,6 +190,9 @@ function boot(root: HTMLElement): void {
     reducedMotion: save.settings.reducedMotion,
   });
   const audio = new Audio();
+  // Says "this page plays media" before anything tries to. On iOS it is the
+  // difference between sound and the hardware silent switch swallowing it.
+  Audio.declarePlayback();
 
   /** Where the settings panel returns to when it is dismissed. */
   let settingsReturn: ScreenName = 'title';
@@ -285,9 +309,7 @@ function boot(root: HTMLElement): void {
       // From settings this is "back"; from pause it is "leave the run".
       if (screens.screen === 'settings') screens.show(settingsReturn);
       else {
-        // Quitting a run before anything landed would otherwise drop the title
-        // back to an empty well.
-        composeAttract(game);
+        stillTheTitle();
         screens.show('title');
       }
     },
@@ -298,10 +320,6 @@ function boot(root: HTMLElement): void {
       screens.show(screen);
     },
   });
-
-  // Something behind the title on a cold boot. Returning from a run the board
-  // still holds what the player built, and `composeAttract` leaves that alone.
-  composeAttract(game);
 
   root.replaceChildren(canvas, hud.root, screens.root);
   if (!storageAvailable()) screens.warnUnwritableStorage();
@@ -333,8 +351,15 @@ function boot(root: HTMLElement): void {
    * with no music and a door that still opens. A front door that can be jammed
    * shut by a missing file would be a strictly worse product than no front door
    * at all.
+   *
+   * The encoding is chosen before the fetch, not after. Downloading two
+   * megabytes and then discovering the platform cannot decode them is the same
+   * silence as downloading nothing, only slower -- and a device that can play
+   * none of the encodings should spend no bandwidth at all.
    */
-  void preload([{ id: THEME.id, url: THEME.url, bytes: THEME.bytes }], {
+  const themeSource = playableSource(THEME);
+  const wanted = themeSource ? [{ id: THEME.id, url: themeSource.url, bytes: THEME.bytes }] : [];
+  void preload(wanted, {
     onProgress: (progress) => screens.setLoading(progress.fraction),
   }).then((loaded) => {
     const theme = loaded.find((asset) => asset.id === THEME.id);
@@ -374,7 +399,14 @@ function boot(root: HTMLElement): void {
       },
       save: () => save,
       screen: () => screens.screen,
-      music: () => ({ ready: audio.musicReady, playing: audio.musicPlaying }),
+      music: () => ({
+        ready: audio.musicReady,
+        playing: audio.musicPlaying,
+        error: audio.musicError,
+        // Which encoding this browser said it could play, so a device that is
+        // silent can be asked *why* rather than guessed at.
+        source: playableSource(THEME)?.mime ?? null,
+      }),
       bindings: BINDINGS.map((binding) => ({
         action: binding.action,
         label: binding.label,
@@ -581,6 +613,16 @@ function boot(root: HTMLElement): void {
     // The HUD lays out first so the preview's rectangle is this frame's, not
     // last frame's -- otherwise the turning piece lags the panel by a frame
     // through every resize.
+    // On the front door the arrangement is scenery: pushed in until its edges
+    // run off the frame, so it reads as the room the wordmark is printed on
+    // rather than as a board sitting under it. It draws back to its playing
+    // framing as the menu arrives, which is half of what makes that handover
+    // feel like one screen settling instead of two screens swapping.
+    renderer.setBackdrop(screen === 'boot');
+    // The room shows the ramp while nobody is reading a board, and goes neutral
+    // for a run. §2.2, and the reason `setAmbientChroma` exists at all.
+    renderer.setAmbientChroma(menu || screen === 'boot');
+
     // The title screen is the board, not the HUD. Nor is the gate in front of it.
     hud.setHidden(screen === 'title' || screen === 'boot');
     hud.setHeat(game.spectralAllowed ? game.heat : null, game.spectralReady);
