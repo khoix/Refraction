@@ -2,14 +2,16 @@
  * The reactive environment, and the debris a clear throws off.
  *
  * The room is made of **light, not colour**. Every element here is achromatic:
- * shafts of cool grey light, white dust, dim wireframe, a neutral floor
+ * shafts of cool grey light, white dust, drifting voxels, a neutral floor
  * lattice, and rings that ripple outward when lines clear. It reacts to play
  * through brightness and motion, and never through hue.
  *
  * With one deliberate exception, added when the title screen stopped composing a
  * stack on the board and the room had to carry that picture alone: the drifting
  * voxels take colour from the ramp **on the menus only**, and fade back to
- * neutral for a run. See `setChroma`.
+ * neutral for a run. See `setChroma`. They also fade out where they would cross
+ * the play column, so a solid cube never shows through an empty cell of a board
+ * someone is reading.
  *
  * That is a rule, not a preference. This space once ran on a single hue clock
  * -- dust, fragments, lattice, beams, strobe and backdrop all cycling the
@@ -53,12 +55,24 @@ const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
 const DUST_COUNT = 520;
 
-const FRAGMENT_COUNT = 14;
-const VOXEL_COUNT = 30;
-/** Clear of the well, which is about four units to a side. */
-const VOXEL_INNER_RADIUS = 11;
-/** Inside the orthographic frame, which is about nineteen units to a side. */
-const VOXEL_OUTER_RADIUS = 30;
+const VOXEL_COUNT = 14;
+/**
+ * How far out the field floats, unchanged from the wireframes it replaces.
+ *
+ * A previous pass moved them in to 11-30 so more of them landed inside the frame.
+ * That was answering a question nobody asked: the note was to make the floaters
+ * *voxels*, not to re-stage them. Distance is what makes the field read as a room
+ * the board is in rather than as clutter drawn around it.
+ */
+const VOXEL_INNER_RADIUS = 26;
+const VOXEL_OUTER_RADIUS = 48;
+/**
+ * Half-width of the region the play column occupies on screen, in board units.
+ *
+ * The widest the board ever projects is its 45-degree diagonal, `√2/2 × 16 / 2`,
+ * a little over 5.6 -- so seven clears it at every yaw with room to spare.
+ */
+const PLAY_COLUMN_HALF_WIDTH = 7;
 /**
  * How long the drifting voxels take to gain or lose their colour.
  *
@@ -125,108 +139,21 @@ function dustCloud(seedAngle: number): THREE.Points {
   return points;
 }
 
-/**
- * The wireframe field a *run* is played against.
- *
- * Kept, rather than replaced by the solid voxels below, and the reason is
- * measurable rather than aesthetic. The projection is orthographic and the
- * camera orbits, so a floater's screen position along the horizontal is
- * `r·cos(angle − yaw)` -- which sweeps the full ±r as the board turns. **No
- * radius keeps a floater out of the well's column.** That is harmless for a
- * wireframe, which is a few thin lines at a twentieth of full brightness, and
- * not harmless at all for a solid cube: one drifting behind the playfield shows
- * through every empty cell, and the end-to-end suite caught it doing exactly
- * that -- three pixel measurements of the landing marks swung by 70 to 80 levels
- * depending on where the randomly-placed field happened to land, which read as
- * flakiness and was not.
- *
- * So the room a board is read against is the one that was tuned and measured for
- * that job, and the solid field belongs to the screens with no board on them.
- */
-function fragmentField(): THREE.Group {
+function voxelField(): THREE.Group {
   const group = new THREE.Group();
-  for (let i = 0; i < FRAGMENT_COUNT; i += 1) {
+  for (let i = 0; i < VOXEL_COUNT; i += 1) {
     const size = 1.1 + Math.random() * 2.6;
-    const edges = new THREE.EdgesGeometry(new THREE.BoxGeometry(size, size, size));
-    const material = new THREE.LineBasicMaterial();
-    backdropMaterialSettings(material);
-    const fragment = new THREE.LineSegments(edges, material);
+    const material = new THREE.MeshLambertMaterial({ depthWrite: true, depthTest: true });
+    const voxel = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
     const angle = Math.random() * Math.PI * 2;
     // Well clear of the board, so the field reads as distance rather than as
     // clutter drawn across the well.
-    const radius = 26 + Math.random() * 22;
-    fragment.position.set(
+    const radius = VOXEL_INNER_RADIUS + Math.random() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS);
+    voxel.position.set(
       Math.cos(angle) * radius,
       (Math.random() - 0.4) * BOARD_HEIGHT * 2.2,
       Math.sin(angle) * radius
     );
-    fragment.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
-    fragment.renderOrder = BACKDROP_ORDER;
-    fragment.frustumCulled = false;
-    group.add(fragment);
-  }
-  return group;
-}
-
-/**
- * Solid voxels of assorted sizes, drifting well outside the well.
- *
- * These were wireframe boxes. Solid reads as the same material the game is made
- * of rather than as scaffolding around it, which is what the front door wants
- * now that the composed stack is gone from the board -- the room *is* the title
- * screen's picture, so it has to carry the game's look on its own.
- *
- * **Lit, not flat.** `MeshLambertMaterial` rather than `MeshBasicMaterial`: an
- * unlit cube renders every face the same colour, so a rotating one is a flat
- * hexagon silhouette rather than a cube. The scene's own lights differentiate
- * the faces, which is the entire reason to use cubes here.
- *
- * **Depth-tested, unlike everything else in this file.** The rest of the room is
- * additive and depth-blind, which is right for dust and shafts of light: they
- * are luminous, they have no surfaces, and summing them is what they should do.
- * A field of solid cubes summing where it overlaps would light up at every
- * crossing and, worse, mix hues that are not on the ramp -- a red and a blue
- * cube overlapping would paint magenta. So these occlude one another properly
- * and sit behind the board, which is nearer and wins.
- */
-function voxelField(): THREE.Group {
-  const group = new THREE.Group();
-  for (let i = 0; i < VOXEL_COUNT; i += 1) {
-    const size = 0.7 + Math.random() * 3.2;
-    const material = new THREE.MeshLambertMaterial({ depthWrite: true, depthTest: true });
-    const voxel = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
-    const angle = Math.random() * Math.PI * 2;
-    /*
-     * Two bands, because one cannot serve both shapes of screen.
-     *
-     * The wireframes this replaces sat at radius 26 to 48, which put nearly all
-     * of them off screen. The projection is orthographic, so the visible width is
-     * fixed -- and it is fixed at very different values by aspect: about nineteen
-     * units either side of centre on a laptop, and about *seven* on a phone in
-     * portrait, where the fit is limited by width rather than height.
-     *
-     * Seven is inside the well. So on a portrait screen there is simply no
-     * on-screen room beside the board, and a ring alone leaves the field empty
-     * there however it is tuned. The answer is that a voxel clears the playfield
-     * either by being outside it or by being above or below it:
-     *
-     * - **Beside**, at a radius that clears the well. Fills the sides of a wide
-     *   window, and mostly falls outside a narrow one.
-     * - **Over and under**, close in but past the top or bottom of the board.
-     *   Fills a tall window, and reads as depth above the well on a wide one.
-     *
-     * Both keep out of the board's own volume, so during a run nothing drifts
-     * behind the cubes the player is reading.
-     */
-    const beside = Math.random() < 0.5;
-    const radius = beside
-      ? VOXEL_INNER_RADIUS + Math.random() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS)
-      : Math.random() * VOXEL_INNER_RADIUS;
-    const height = beside
-      ? (Math.random() - 0.5) * BOARD_HEIGHT * 1.9
-      : (BOARD_HEIGHT / 2 + 2.5 + Math.random() * 7) * (Math.random() < 0.5 ? -1 : 1);
-    voxel.position.set(Math.cos(angle) * radius, height, Math.sin(angle) * radius);
-    voxel.userData['beside'] = beside;
     voxel.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, 0);
     // Where on the ramp this one sits, its own brightness, and its own drift, so
     // the field is a scattering rather than a pattern.
@@ -360,13 +287,14 @@ export class Environment {
 
   private readonly dustNear: THREE.Points;
   private readonly dustFar: THREE.Points;
-  private readonly fragments: THREE.Group;
   private readonly voxels: THREE.Group;
   /** How much of the ramp the drifting voxels are showing, 0 to 1. */
   private chroma = 0;
   private chromaTarget = 0;
   /** Reused so tinting the field allocates nothing per frame. */
   private readonly scratch = new THREE.Color();
+  /** Reused for the keep-out test, for the same reason. */
+  private readonly worldScratch = new THREE.Vector3();
   private readonly lattice: THREE.LineSegments;
   private readonly beams: THREE.Group;
   private readonly ripples: Ripple[] = [];
@@ -387,7 +315,6 @@ export class Environment {
 
     this.dustNear = dustCloud(0);
     this.dustFar = dustCloud(2.1);
-    this.fragments = fragmentField();
     this.voxels = voxelField();
     this.lattice = floorLattice();
     this.beams = lightShafts();
@@ -401,7 +328,6 @@ export class Environment {
     this.group.add(
       this.dustNear,
       this.dustFar,
-      this.fragments,
       this.voxels,
       this.lattice,
       this.beams,
@@ -462,7 +388,6 @@ export class Environment {
 
     this.dustNear.rotation.y += step * 3;
     this.dustFar.rotation.y -= step * 2;
-    this.fragments.rotation.y += step;
     this.voxels.rotation.y += step;
     this.beams.rotation.y += step * 1.4;
 
@@ -476,60 +401,63 @@ export class Environment {
     (this.dustNear.material as THREE.PointsMaterial).size = 1.9 + this.pulse * 1.2;
 
     /*
-     * Two fields, one at a time.
+     * One field, kept out of the play column.
      *
-     * The wireframes are what a run is played against; the solid voxels are what
-     * a screen with no board on it shows. `chroma` cross-fades between them --
-     * eased, so neither arrives on a single frame.
+     * There were briefly two -- wireframes for a run, solid voxels for the menus
+     * -- because a solid cube behind the playfield shows through every empty
+     * cell, and orthographic projection with an orbiting camera means *no radius
+     * keeps a floater out of the well's column*: screen-x is `r·cos(angle − yaw)`
+     * and sweeps the full ±r as the board turns.
      *
-     * The solid field's *visibility* rides the target rather than the eased
-     * value, so it stops drawing the instant a run begins instead of lingering
-     * through the fade. That is deliberate and it is not for looks: orthographic
-     * projection plus an orbiting camera means no radius keeps a floater out of
-     * the well's column, so a solid cube behind the playfield shows through
-     * every empty cell. Half a second of that during the handover is half a
-     * second of a board that cannot be trusted. The wireframes fading up cover
-     * the swap.
+     * Two fields was the wrong answer to a real problem. The floaters are one
+     * thing that happens to be dimmer during a run, not two things; and the
+     * problem is not that they are solid, it is that a few of them pass behind
+     * the board. So the fix is aimed at the few: a voxel fades out as it crosses
+     * the column and back in as it leaves, and only while there is a board to
+     * protect. On the menus nothing fades, because there is nothing to read.
+     *
+     * The keep-out is computed from the *world* position, so the field's own slow
+     * rotation is included -- the group turns, and a voxel that was clear a
+     * minute ago need not be now.
      */
     this.chroma += Math.min(1, deltaMs / CHROMA_EASE_MS) * (this.chromaTarget - this.chroma);
-    const showVoxels = this.chromaTarget > 0;
-    this.voxels.visible = showVoxels;
-    this.fragments.visible = this.chroma < 0.98;
+    // The screen-right vector, matching the camera convention in `scene.ts`.
+    const viewYaw = THREE.MathUtils.degToRad(yawDegrees);
+    const rightX = Math.cos(viewYaw);
+    const rightZ = -Math.sin(viewYaw);
 
-    this.fragments.children.forEach((child, index) => {
-      const fragment = child as THREE.LineSegments;
-      // Each fragment sits at its own level, so the field has depth rather
-      // than reading as one flat sheet of wireframe.
-      const own = 0.055 + (((index * 37) % 11) / 11) * 0.05;
-      (fragment.material as THREE.LineBasicMaterial).color.copy(
-        light((own + glow * 0.14) * (1 - this.chroma))
+    this.voxels.children.forEach((child) => {
+      const voxel = child as THREE.Mesh;
+      voxel.getWorldPosition(this.worldScratch);
+      const screenX = this.worldScratch.x * rightX + this.worldScratch.z * rightZ;
+      // Full strength once a board's width clear of the column, nothing inside
+      // it, and a soft ramp between so a turn does not make them blink.
+      const clear = THREE.MathUtils.smoothstep(
+        Math.abs(screenX),
+        PLAY_COLUMN_HALF_WIDTH,
+        PLAY_COLUMN_HALF_WIDTH * 2
       );
-      fragment.rotation.x += step * 0.7;
-      fragment.scale.setScalar(1 + this.pulse * 0.1);
+      const shown = this.chroma + (1 - this.chroma) * clear;
+      voxel.visible = shown > 0.01;
+      if (!voxel.visible) return;
+      const own = ((voxel.userData['level'] as number) + glow * 0.14) * shown;
+      const { r, g, b } = depthColor(voxel.userData['hue'] as number);
+      const material = voxel.material as THREE.MeshLambertMaterial;
+      material.color
+        .copy(light(own))
+        .lerp(this.scratch.setRGB(r * own, g * own, b * own, THREE.SRGBColorSpace), this.chroma);
+      voxel.rotation.x += step * 0.7;
+      voxel.rotation.y += step * 0.4;
+      // Floating: a slow rise and fall around where it was placed, each on its
+      // own phase so the field never moves as one body.
+      voxel.position.y =
+        (voxel.userData['home'] as number) +
+        Math.sin(
+          this.phase * (voxel.userData['rise'] as number) + (voxel.userData['bob'] as number)
+        ) *
+          1.4;
+      voxel.scale.setScalar(1 + this.pulse * 0.1);
     });
-
-    // The menus' field: solid, coloured, and never on screen during a run.
-    if (showVoxels)
-      this.voxels.children.forEach((child) => {
-        const voxel = child as THREE.Mesh;
-        const own = ((voxel.userData['level'] as number) + glow * 0.14) * this.chroma;
-        const { r, g, b } = depthColor(voxel.userData['hue'] as number);
-        const material = voxel.material as THREE.MeshLambertMaterial;
-        material.color
-          .copy(light(own))
-          .lerp(this.scratch.setRGB(r * own, g * own, b * own, THREE.SRGBColorSpace), this.chroma);
-        voxel.rotation.x += step * 0.7;
-        voxel.rotation.y += step * 0.4;
-        // Floating: a slow rise and fall around where it was placed, each on its
-        // own phase so the field never moves as one body.
-        voxel.position.y =
-          (voxel.userData['home'] as number) +
-          Math.sin(
-            this.phase * (voxel.userData['rise'] as number) + (voxel.userData['bob'] as number)
-          ) *
-            1.4;
-        voxel.scale.setScalar(1 + this.pulse * 0.1);
-      });
 
     // Nothing at all when the board is dead-on, where this would be a hard white
     // rule rather than a floor. See `floorLattice`.

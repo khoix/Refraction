@@ -7,7 +7,54 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
-## M20 — The room becomes the title screen
+## M20a — Three corrections to M20
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Play notes on M20, all three of them cases of the milestone doing more than was
+asked.
+
+### The field was re-staged when it only needed re-made
+
+The note was to make the floaters **voxels**, like the wireframe boxes were. M20
+also moved them: in to radius 11–30, split into two bands, and up from 14 to 30 of
+them, on the reasoning that the old radius 26–48 put most of them off screen.
+That reasoning was sound and answered a question nobody had asked. Distance is
+what makes the field read as a room the board is in rather than as clutter drawn
+around it.
+
+Placement, count and size are back to exactly the wireframes'. The only change
+from before M20 is that they are solid and coloured.
+
+### One field again
+
+M20 ended with two — wireframes for a run, solid voxels for the menus — because a
+solid cube behind the playfield shows through every empty cell, and no radius
+avoids that: with an orthographic projection and an orbiting camera, screen-x is
+`r·cos(angle − yaw)` and sweeps the full ±r as the board turns.
+
+Two fields was the wrong answer to a real problem. The floaters are one thing that
+is dimmer during a run, not two things, and the problem was never that they are
+solid — it is that a few of them pass behind the board. So the fix aims at the
+few: a voxel fades out as it crosses the play column and back in as it leaves,
+computed from its world position so the field's own rotation counts, and applied
+only while there is a board to protect.
+
+### The play column, and the menu's alignment
+
+- **The well is gone from every screen where nobody is playing**, not just the
+  boot gate. An empty box drawn in outline around nothing was left behind when
+  the composed stack went.
+- **The menu is vertically centred**, like the front door it hands over from. It
+  was top-aligned with a gradient opaque behind the masthead and clearing at the
+  bottom, both of which existed to make room for a stack in the lower half. With
+  no stack the reason for both is gone, so the two screens now share one
+  treatment rather than each having its own.
+
+### Tested
+
+36 e2e across the front door, the title screen, the landing marks and the phone
+layouts — including the phone strip test that failed CI on M19.
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
 

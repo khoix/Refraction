@@ -791,38 +791,24 @@ input,
 }
 
 /*
- * The title screen lets the board through.
+ * The title screen lets the room through, and centres in it.
  *
  * Every other screen is a panel over a paused game, and an 86% scrim is right
- * for those: the board is context, not the subject. The title is the opposite --
- * the board *is* the subject, and it was being covered by the same blackout and
- * then, on a cold boot, showing nothing underneath anyway.
+ * for those: the scene is context, not the subject. The title is the opposite.
  *
- * A gradient rather than a flat wash, opaque behind the masthead at the top and
- * clearing toward the bottom, where the stack sits. The type keeps the contrast
- * it needs and the cubes are simply visible. That is also why the panel aligns
- * to the top here instead of centring: the composition is a masthead over a live
- * scene, so the type has to vacate the part of the well the board occupies.
+ * It used to align to the top with a gradient opaque behind the masthead and
+ * clearing toward the bottom, because a composed stack sat in the lower half and
+ * the type had to vacate it. There is no stack now — the room carries the
+ * picture — so the reason for both is gone, and the menu centres like the front
+ * door it hands over from. The two screens are the same composition a moment
+ * apart, so they share a treatment rather than each having their own.
  */
 .screens[data-screen='title'] {
-  background: linear-gradient(
-    to bottom,
-    rgb(5 6 10 / 0.94) 0%,
-    rgb(5 6 10 / 0.86) 30%,
-    rgb(5 6 10 / 0.42) 56%,
-    rgb(5 6 10 / 0.1) 78%,
-    rgb(5 6 10 / 0.04) 100%
-  );
   backdrop-filter: none;
-  /* Align to the top, justify to the centre. `place-items` takes align first,
-     and getting that round the wrong way flushed the masthead to the left edge
-     and ran the wordmark off both sides of the window. */
-  place-items: start safe center;
-  padding-top: clamp(2rem, 9vh, 5rem);
 }
 
-/* Wider than the other panels, which are sized for prose and controls. This one
-   holds a wordmark that is mostly letter-spacing. */
+/* Wider than the other panels, which are sized for prose and controls. These
+   hold a wordmark that is mostly letter-spacing. */
 .panel--title {
   width: min(60rem, 100%);
 }
@@ -870,7 +856,8 @@ input,
  * ran to 0.93 and drained the cubes to grey, which on the screen whose job is to
  * say what this game looks like is the most expensive possible mistake.
  */
-.screens[data-screen='boot'] {
+.screens[data-screen='boot'],
+.screens[data-screen='title'] {
   background:
     radial-gradient(
       ellipse 62% 34% at 50% 47%,
