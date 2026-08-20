@@ -14,12 +14,38 @@
  *
  * A static bundle should not need a third-party request to draw its own
  * wordmark, and the front door is the worst place to wait on one. It is a
- * variable face, so a single 14 KB file covers every weight the interface uses.
+ * variable face, so a single 14 KB file covers every weight the interface uses
+ * -- and the interface genuinely uses the range, weight 200 in seven places.
  */
 @font-face {
   font-family: 'Oxanium';
   src: url('./fonts/oxanium-latin.woff2') format('woff2');
   font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
+/*
+ * Refraction Display Bold: the wordmark's own face, and only the wordmark's.
+ *
+ * Oxanium Bold with eight uppercase letters replaced by glyphs traced from the
+ * title artwork -- A, C, E, F, I, N, R, T. That set is exactly the letters of
+ * REFRACTION apart from the O, because in the artwork the O is not a letter at
+ * all; it is the cube. Built by `scripts/build-refraction-display.py`, which
+ * fetches the donor and reapplies the traces, so this file is reproducible
+ * rather than a binary of unknown provenance. Derived from Oxanium under the
+ * SIL OFL 1.1; the licence travels with it in `fonts/OFL-Oxanium.txt`.
+ *
+ * It carries the full donor glyph set -- lowercase, punctuation, accents -- so
+ * nothing falls back mid-word if it is ever pointed at other text. What stops
+ * it being the interface font is weight, not coverage: it is a single Bold, and
+ * the UI is mostly 200. Asking a one-weight face for 200 gets a browser's
+ * synthetic answer, so this stays scoped to the mark it was traced from.
+ */
+@font-face {
+  font-family: 'Refraction Display';
+  src: url('./fonts/refraction-display-bold.woff2') format('woff2');
+  font-weight: 700;
   font-style: normal;
   font-display: swap;
 }
@@ -54,6 +80,8 @@
   --accent-beam-glow: 87 218 255;
 
   --font-display: 'Oxanium', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /* The wordmark only. Oxanium is the fallback because it is the donor. */
+  --font-wordmark: 'Refraction Display', 'Oxanium', 'Inter', system-ui, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
@@ -1051,14 +1079,20 @@ input,
   letter-spacing: 0.16em;
   line-height: 1;
   /*
-   * Oxanium's heaviest weight, which is what the mockup's mark is set in.
+   * The mark's own face, not the interface's.
    *
-   * It shipped at 600 first and read as a different typeface entirely -- the
-   * family was right and the weight was not, which is a distinction easy to lose
-   * when a face is this geometric. The variable file covers 200-800, so this
-   * costs nothing.
+   * This went through two wrong answers before the right one, and both were
+   * wrong in the same direction -- reaching for a setting of a stock face when
+   * the artwork was never a setting of a stock face. It shipped as Oxanium 600,
+   * then as Oxanium 800; the second is closer and still not it, because the
+   * letters in the artwork were drawn, not typed.
+   *
+   * 700 exactly, and not by taste: the face is a single static Bold, so any
+   * other number here asks the browser to invent a weight it does not have and
+   * get back a synthetic smear over glyphs that were traced by hand.
    */
-  font-weight: 800;
+  font-family: var(--font-wordmark);
+  font-weight: 700;
 }
 
 .title__letters {
@@ -1079,11 +1113,16 @@ input,
   display: inline-flex;
   /*
    * Cap height, not em. The cube stands in for a letter, so it has to measure
-   * like one -- an em-sized box sits noticeably small against Oxanium's caps and
-   * reads as an icon dropped into the word rather than as the O.
+   * like one -- an em-sized box sits noticeably small against the caps and reads
+   * as an icon dropped into the word rather than as the O.
+   *
+   * 0.69em is Refraction Display's cap height, measured off the rendered H
+   * rather than taken on trust. It was 0.74 for Oxanium's, and a cube sized to
+   * the wrong face's caps is exactly the kind of error that reads as "something
+   * is off about the O" without ever looking like a number.
    */
-  width: 0.74em;
-  height: 0.74em;
+  width: 0.69em;
+  height: 0.69em;
   margin-inline: 0.1em;
   /* The flex line centres on the em box; the caps sit a little above it. */
   transform: translateY(-0.02em);

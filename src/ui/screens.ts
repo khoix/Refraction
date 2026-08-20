@@ -122,7 +122,17 @@ function wordmark(tagline: boolean): HTMLElement {
   word.append(element('span', 'title__letters', 'REFRACTI'));
   const cube = element('span', 'title__cube');
   cube.setAttribute('aria-hidden', 'true');
-  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"><path d="M6 32 L32 6 L94 6 L94 68 L68 94 L6 94 Z" fill="currentColor" fill-opacity="0.12" stroke="none"/><path d="M6 32 H68 V94 H6 Z"/><path d="M6 32 L32 6 H94 V68 L68 94"/><path d="M68 32 L94 6"/></g></svg>`;
+  /*
+   * Stroke 17, and the path inset to match it.
+   *
+   * The stroke is the wordmark's stem width, measured off the face rather than
+   * guessed: Refraction Display's I is 0.174 of its cap height, and the box is
+   * drawn at cap height, so 17.4 per hundred viewBox units. A stroke is centred
+   * on its path, so thickening one without moving the path pushes half the extra
+   * weight outside the box and quietly makes the cube taller than the letters
+   * beside it -- hence 9..91 rather than the 6..94 a thinner stroke wanted.
+   */
+  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false" aria-hidden="true"><g fill="none" stroke="currentColor" stroke-width="17" stroke-linecap="round" stroke-linejoin="round"><path d="M9 33 L33 9 L91 9 L91 67 L67 91 L9 91 Z" fill="currentColor" fill-opacity="0.12" stroke="none"/><path d="M9 33 H67 V91 H9 Z"/><path d="M9 33 L33 9 H91 V67 L67 91"/><path d="M67 33 L91 9"/></g></svg>`;
   const letterO = element('span', 'sr-only', 'O');
   word.append(cube, letterO, element('span', 'title__letters', 'N'));
 

@@ -7,6 +7,90 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22d — The wordmark's own face
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+The title is set in **Refraction Display Bold**: Oxanium Bold with eight
+uppercase letters replaced by glyphs traced from the title artwork — `A C E F I
+N R T`. Built by `scripts/build-refraction-display.py`, which fetches the donor
+and reapplies the traces, so the vendored 12 KB `.woff2` is reproducible rather
+than a binary of unknown provenance. Derived from Oxanium under the SIL OFL 1.1;
+the licence ships beside it in `src/styles/fonts/OFL-Oxanium.txt`.
+
+### Three attempts, and why the first two looked like the same bug
+
+The mark shipped as Oxanium 600, then as Oxanium 800, and drew the same report
+both times: that is not the font. The diagnosis moved each time and the symptom
+did not, which is the interesting part.
+
+At 600 the defect really was weight. A geometric face keeps almost none of its
+identity in its outlines at display size — it is nearly all stem mass — so the
+wrong weight is genuinely indistinguishable from the wrong family by eye. 800 was
+closer and still wrong, for a reason no amount of adjusting a stock face could
+have reached: **the letters in the artwork were drawn, not typed.**
+
+The traced set is worth reading carefully. `A C E F I N R T` is every letter of
+REFRACTION except the O — because in the artwork the O was never a letter. It is
+the cube. The font's own O is left as plain Oxanium Bold, unused by the mark.
+
+### The cube, re-fitted to the face it now sits in
+
+Both of the cube's numbers are properties of the surrounding letters, so both
+moved when the letters did, and both were measured rather than judged:
+
+- **Box: 0.74em → 0.69em.** Cap height, read off a rendered `H` rather than taken
+  from the metric. A cube sized to the wrong face's caps is exactly the sort of
+  error that reads as "something is off about the O" without ever presenting as a
+  number.
+- **Stroke: 14 → 17.** Refraction Display's `I` is 0.174 of its cap height, and
+  the box is drawn at cap height. The path was re-inset from 6..94 to 9..91 to
+  suit: a stroke is centred on its path, so thickening one without moving the
+  path pushes half the extra weight outside the box and quietly makes the cube
+  taller than the letters beside it.
+
+Ink measures 48.07 px against a 48 px cap height.
+
+### Scoped to the mark, and not by preference
+
+The built face carries the full donor glyph set — lowercase, punctuation,
+accents — so nothing would fall back mid-word if it were pointed at other text.
+What stops it being the interface font is **weight, not coverage**: it is a single
+static Bold, and the UI is mostly weight 200, in seven places. Asking a one-weight
+face for 200 gets a browser's invented answer. So `--font-wordmark` is a second
+variable beside `--font-display`, and Oxanium stays the interface font, at the
+range it genuinely uses.
+
+The same reasoning fixes the weight at exactly 700: any other number asks the
+browser to synthesise a weight this face does not have, smearing glyphs that were
+traced by hand.
+
+### A test, because this failed silently twice
+
+Neither wrong setting broke anything. Nothing threw, no request 404'd, and the
+only symptom was a person looking at it. The new test therefore asserts that the
+built face **is the one actually drawing** — `document.fonts.check`, not a
+`font-family` declaration, since a declaration naming a face that failed to load
+falls silently through to the next name in the stack — and that the weight is 700.
+
+Both halves were verified by sabotage: asking for 800 fails on the weight, and
+pointing the `@font-face` at a missing file fails on the load, which a
+family-name assertion alone would have passed.
+
+### Tested
+
+375 unit, and 31 e2e across the title screen, the front door and the phone
+layouts.
+
+### Worth a look
+
+The traced glyphs carry some pixel-level jitter from the source artwork — a small
+notch on the `T`'s top-left, a step on the `C`'s terminal — visible when you go
+looking at 3× and subtle at reading size. It is faithful to what was traced, so it
+is left alone rather than quietly smoothed.
+
+---
+
 ## M17a — The gauge cools too fast
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
@@ -154,6 +238,11 @@ mockup set at 800 the mark reads as a different typeface, and "wrong font" is th
 honest description of what you see. The variable file already covers 200–800, so
 the fix costs nothing but the digit. The cube-O's stroke went 11 → 14 with it,
 since it is matched to the stems, not to the em.
+
+> **Superseded by M22d.** 800 was closer and still not right. The artwork's
+> letters were drawn rather than typed, so no setting of a stock face was ever
+> going to reach them. Oxanium remains the interface font, at the weight range the
+> interface actually uses; the mark moved to a traced face of its own.
 
 ### Two tests rewritten, not retuned
 

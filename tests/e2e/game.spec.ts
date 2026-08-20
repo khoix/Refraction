@@ -3469,6 +3469,55 @@ test.describe('the title screen', () => {
     }
   });
 
+  test('sets the wordmark in the face it was drawn for, at the weight that face has', async ({
+    page,
+  }) => {
+    /*
+     * The mark has been wrong twice, in two different ways, and neither showed up
+     * as a broken build.
+     *
+     * First it was set in Oxanium 600 when the artwork is far heavier, which read
+     * as an entirely different typeface — a geometric face carries most of its
+     * identity in stem weight, so the wrong weight is indistinguishable from the
+     * wrong family by eye. Then it was Oxanium 800, closer and still wrong,
+     * because the artwork's letters were drawn rather than typed: A, C, E, F, I,
+     * N, R and T are traced glyphs, which is every letter of REFRACTION except
+     * the O the cube covers.
+     *
+     * Both failures rendered perfectly. Nothing threw, no request 404'd, and the
+     * only symptom was a person looking at it and saying that is not the font. So
+     * the assertion has to be that the *built face is the one actually drawing*,
+     * which is what document.fonts.check answers and what a font-family
+     * declaration on its own does not — a declaration naming a face that failed to
+     * load falls silently through to the next name in the stack.
+     */
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    const mark = await page.evaluate(async () => {
+      await document.fonts.ready;
+      const word = document.querySelector('.panel--boot .title__word') as HTMLElement;
+      const style = getComputedStyle(word);
+      return {
+        family: style.fontFamily,
+        weight: style.fontWeight,
+        loaded: document.fonts.check(`${style.fontWeight} ${style.fontSize} "Refraction Display"`),
+      };
+    });
+
+    expect(mark.family).toContain('Refraction Display');
+    expect(mark.loaded).toBe(true);
+
+    /*
+     * 700 exactly, and this half is not pedantry about a number.
+     *
+     * Refraction Display is a single static Bold. Ask it for 800 and the browser
+     * does not fail — it synthesises one, smearing glyphs that were traced by hand
+     * to a specific weight. That renders, ships, and looks subtly wrong forever.
+     */
+    expect(mark.weight).toBe('700');
+  });
+
   test('hides the HUD, which belongs to a run', async ({ page }) => {
     /*
      * A score of zero, an empty NEXT and a Shift meter for a run nobody has
