@@ -54,6 +54,7 @@ import * as THREE from 'three';
 import { BOARD_HEIGHT } from '@core/constants';
 import { depthColor } from '@core/spectrum';
 import { createRng } from '@core/rng';
+import { applyGel, setGelStrength } from './gel';
 
 const BACKDROP_ORDER = -10;
 
@@ -61,7 +62,7 @@ const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
 const DUST_COUNT = 520;
 
-const VOXEL_COUNT = 30;
+const VOXEL_COUNT = 28;
 /**
  * How far out the field floats, unchanged from the wireframes it replaces.
  *
@@ -97,11 +98,11 @@ const VOXEL_SEED = 'still';
  * single warm mass against a field of cool ones is what stops the room reading
  * as one colour with variations.
  */
-const HERO_SIZE = 4;
-const HERO_HUE = 0.09;
-const HERO_LEVEL = 1.15;
+const HERO_SIZE = 2.3;
+const HERO_HUE = 0.17;
+const HERO_LEVEL = 1;
 const HERO_X = 1.5;
-const HERO_Y = 5.6;
+const HERO_Y = 5.2;
 /**
  * The band the wordmark occupies, in board units, which the field keeps out of.
  *
@@ -119,8 +120,6 @@ const TYPE_HALF_HEIGHT = 3.5;
  */
 const FRAME_HALF_WIDTH = 20;
 const FRAME_HALF_HEIGHT = 12;
-/** How much of the cage's brightness the pane inside it gets. */
-const FILL_SHARE = 0.1;
 /**
  * What the field is worth while a board is being read.
  *
@@ -207,39 +206,40 @@ function voxelField(): THREE.Group {
   const rng = createRng(VOXEL_SEED);
   for (let i = 0; i < VOXEL_COUNT; i += 1) {
     /*
-     * Each floater is an edge cage with a faint pane of light inside it.
+     * The same material the board is made of.
      *
-     * Solid lit cubes were tried and they read as paper: an orthographic camera
-     * flattens a diffuse box into a grey polygon, and the more of them there
-     * were the more the room looked like confetti. What makes a voxel read as a
-     * voxel here is its *edges* -- which is what the wireframes this replaced had
-     * right, and all they had right, being colourless and unlit.
+     * These were wireframe cages, and a cage is a drawing of a cube rather than
+     * a cube. The game already has an answer to "what does a voxel look like" --
+     * `gel.ts`, cast resin with a bevelled edge, a directional gloss and a rim --
+     * and a title screen whose floaters are made of something else is a title
+     * screen advertising a different game.
      *
-     * So both. The cage carries the colour and does the glowing; the fill is a
-     * tenth of its strength and only there to stop the cage reading as an empty
-     * outline. Additive and depth-blind, like everything else in this room,
-     * because they are light rather than surfaces -- and because that is what
-     * lets them overlap without the solid version's problem of one cube visibly
-     * cutting a hole in another.
+     * `MeshStandardMaterial` with `applyGel`, exactly as `VoxelLayer` builds it,
+     * so the shader injection, the yaw-locked highlight and the roughness all
+     * come along. Metalness stays at zero for the same reason it does there:
+     * with no environment map a metal has nothing to reflect, and the only thing
+     * a non-zero value does is subtract that fraction from the colour.
      */
     const hero = i === 0;
-    const size = hero ? HERO_SIZE : 0.8 + rng.next() * 2.2;
-    const box = new THREE.BoxGeometry(size, size, size);
-
-    const cageMaterial = new THREE.LineBasicMaterial();
-    backdropMaterialSettings(cageMaterial);
-    const cage = new THREE.LineSegments(new THREE.EdgesGeometry(box), cageMaterial);
-    cage.renderOrder = BACKDROP_ORDER;
-    cage.frustumCulled = false;
-
-    const fillMaterial = new THREE.MeshBasicMaterial();
-    backdropMaterialSettings(fillMaterial);
-    const fill = new THREE.Mesh(box, fillMaterial);
-    fill.renderOrder = BACKDROP_ORDER;
-    fill.frustumCulled = false;
-
-    const voxel = new THREE.Group();
-    voxel.add(fill, cage);
+    /*
+     * Sized near a board cube, deliberately.
+     *
+     * The gel's masks are object-space -- the bevel starts at a fraction of the
+     * cube's own half-width -- so a floater three times a board cube's size shows
+     * the same structure three times larger on screen, and what reads as material
+     * at thirty pixels reads as a pattern at ninety: a pale body with a saturated
+     * square stamped in the middle of it. Keeping them within touching distance
+     * of a real cube is what makes them look like the game's cubes rather than
+     * like something wearing its material.
+     */
+    const size = hero ? HERO_SIZE : 0.7 + rng.next() * 1.1;
+    const material = new THREE.MeshStandardMaterial({ roughness: 0.34, metalness: 0 });
+    applyGel(material);
+    const voxel = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
+    // Drawn before the board and depth-tested against it, so a floater behind
+    // the well is correctly hidden by whatever the player has stacked there.
+    voxel.renderOrder = BACKDROP_ORDER;
+    voxel.frustumCulled = false;
 
     /*
      * Aimed into the frame, and never across the wordmark.
@@ -251,14 +251,11 @@ function voxelField(): THREE.Group {
      * position and solving for depth puts them where they can be seen without
      * bringing them any closer.
      *
-     *
      * The masthead is the one part of this screen that has to stay legible, and a
      * floater drifting behind it turns the glow into mush. A seed can be chosen
      * to avoid that on a laptop and will not also avoid it on a phone, so the
      * keep-out is enforced at placement rather than hoped for: a candidate landing
-     * in the band gets re-rolled. Ten tries is far more than enough — the band is
-     * a small part of the sphere — and giving up after that simply accepts one,
-     * which is better than looping.
+     * in the band gets re-rolled.
      */
     let x = 0;
     let y = 0;
@@ -267,8 +264,6 @@ function voxelField(): THREE.Group {
       const radius = VOXEL_INNER_RADIUS + rng.next() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS);
       x = (rng.next() * 2 - 1) * FRAME_HALF_WIDTH;
       y = (rng.next() * 2 - 1) * FRAME_HALF_HEIGHT;
-      // The rest of the radius goes into depth, so the floater keeps the distance
-      // it was dealt and only its *direction* is chosen.
       z = Math.sqrt(Math.max(1, radius * radius - x * x)) * (rng.next() < 0.5 ? -1 : 1);
       const acrossType = Math.abs(x) < TYPE_HALF_WIDTH + size;
       const behindType = Math.abs(y) < TYPE_HALF_HEIGHT + size;
@@ -276,14 +271,13 @@ function voxelField(): THREE.Group {
     }
     voxel.position.set(x, y, z);
     voxel.rotation.set(rng.next() * Math.PI, rng.next() * Math.PI, 0);
+
     // Where on the ramp this one sits, its own brightness, and its own drift, so
     // the field is a scattering rather than a pattern.
     voxel.userData['hue'] = hero ? HERO_HUE : rng.next();
-    voxel.userData['level'] = hero ? HERO_LEVEL : 0.7 + rng.next() * 0.6;
+    voxel.userData['level'] = hero ? HERO_LEVEL : 0.55 + rng.next() * 0.4;
     voxel.userData['bob'] = rng.next() * Math.PI * 2;
     voxel.userData['rise'] = 0.5 + rng.next() * 1.4;
-    voxel.userData['cage'] = cage;
-    voxel.userData['fill'] = fill;
 
     if (hero) {
       // Placed rather than scattered: the one large floater is a composition
@@ -517,7 +511,7 @@ export class Environment {
     const rightZ = -Math.sin(viewYaw);
 
     this.voxels.children.forEach((child) => {
-      const voxel = child as THREE.Group;
+      const voxel = child as THREE.Mesh;
       voxel.getWorldPosition(this.worldScratch);
       const screenX = this.worldScratch.x * rightX + this.worldScratch.z * rightZ;
       // Full strength once a board's width clear of the column, nothing inside
@@ -535,21 +529,29 @@ export class Environment {
       const { r, g, b } = depthColor(voxel.userData['hue'] as number);
 
       /*
-       * The cage carries the colour; the fill is a whisper of it.
-       *
-       * A tenth, and the ratio matters more than either number. Much above it the
-       * cube reads as a solid tinted block again and the edges stop being the
-       * shape; much below and the cage is an empty outline with nothing inside.
+       * The colour goes straight into the material, which is what the gel's
+       * fidelity invariant makes safe: every term the material adds is multiplied
+       * by a mask that is exactly zero at the centre of a face, so a floater
+       * renders at exactly the colour it is handed there and the bevel, gloss and
+       * rim live only at the edges. Scaling the colour therefore scales the cube,
+       * rather than fighting the material for control of it.
        */
-      const cage = voxel.userData['cage'] as THREE.LineSegments;
-      const fill = voxel.userData['fill'] as THREE.Mesh;
-      const tint = (level: number): THREE.Color =>
-        light(level).lerp(
-          this.scratch.setRGB(r * level, g * level, b * level, THREE.SRGBColorSpace),
-          this.chroma
-        );
-      (cage.material as THREE.LineBasicMaterial).color.copy(tint(own));
-      (fill.material as THREE.MeshBasicMaterial).color.copy(tint(own * FILL_SHARE));
+      const material = voxel.material as THREE.MeshStandardMaterial;
+      material.color
+        .copy(light(own))
+        .lerp(this.scratch.setRGB(r * own, g * own, b * own, THREE.SRGBColorSpace), this.chroma);
+      /*
+       * The gel's structure is scaled by the floater's *own* brightness, not just
+       * by the field's.
+       *
+       * The bevel, the gloss and the rim are white light added on top of the
+       * colour, and they do not scale with it. Dimming a floater to two thirds
+       * while leaving those at full turned every cube milky: a pale body with a
+       * small saturated square at the centre, which is the fidelity invariant
+       * working exactly as designed and being drowned everywhere else on the
+       * face. Scaling them together keeps the material's look and the colour.
+       */
+      setGelStrength(material, Math.min(1, own));
       voxel.rotation.x += step * 0.7;
       voxel.rotation.y += step * 0.4;
       // Floating: a slow rise and fall around where it was placed, each on its

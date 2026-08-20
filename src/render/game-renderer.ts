@@ -62,13 +62,18 @@ const BLOOM_RADIUS = 0.3;
 /**
  * What bloom becomes on the screens with no board on them.
  *
- * A far lower threshold, because there the glowing cages *are* the picture and
- * they are drawn as lines a pixel wide. See `applyBloom` for why the restrained
- * values above are not negotiable during a run.
+ * A lower threshold, because there the floaters *are* the picture and a little
+ * halo is what makes them read as lit rather than pasted on. Not much lower: 0.12
+ * was tuned when they were lines a pixel wide, and against solid gel cubes it
+ * washed every one of them to a milky pastel — the material's whole point is that
+ * a face renders at exactly its colour, and blowing it out throws that away.
+ *
+ * See `applyBloom` for why the restrained values above are not negotiable during
+ * a run.
  */
-const FRONT_BLOOM_THRESHOLD = 0.12;
-const FRONT_BLOOM_STRENGTH = 0.85;
-const FRONT_BLOOM_RADIUS = 0.75;
+const FRONT_BLOOM_THRESHOLD = 0.62;
+const FRONT_BLOOM_STRENGTH = 0.45;
+const FRONT_BLOOM_RADIUS = 0.6;
 
 export interface GameRendererOptions {
   /** Tests read pixels back, which needs the drawing buffer preserved. */

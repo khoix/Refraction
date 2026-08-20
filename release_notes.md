@@ -29,14 +29,29 @@ The lettering itself stays white — white type throwing coloured light reads as
 lit, tinted type reads as cheap — and a test now asserts both halves: the letters
 carry no hue, and nothing sitting over a live board carries the accent.
 
-### Cages, not solids
+### Gel voxels
 
-The floaters are an edge cage with a faint pane of light inside it, at a tenth of
-the cage's brightness. Solid lit cubes were wrong twice over: an orthographic
-camera flattens a diffuse box into a grey polygon, and enough of them made the
-room look like confetti. What makes a voxel read as a voxel is its edges — which
-is the thing the original wireframes had right and the only thing, being
-colourless and unlit.
+The floaters use `gel.ts` — the same cast-resin material the board is made of,
+`MeshStandardMaterial` with the shader injection, the yaw-locked gloss and the
+bevelled edge. A title screen whose cubes are made of something else is a title
+screen advertising a different game.
+
+They passed through a wireframe-cage stage on the way, which was worth the detour
+only for what it ruled out: a cage is a _drawing_ of a cube. Two things had to be
+got right before gel would read at all.
+
+**Brightness and structure scale together.** The bevel, gloss and rim are white
+light added on top of the colour and do not scale with it, so dimming a floater
+while leaving them at full turned every cube milky — a pale body with a small
+saturated square at the centre. That square is the fidelity invariant working
+exactly as designed, and being drowned everywhere else on the face.
+
+**Size is not free.** The gel's masks are object-space: the bevel starts at a
+fraction of the cube's own half-width. A floater three times a board cube's size
+therefore shows the same structure three times larger on screen, and what reads as
+material at thirty pixels reads as a stamped pattern at ninety. They are sized
+within touching distance of a real cube now, which is what makes them look like
+the game's cubes rather than like something wearing its material.
 
 **Aimed into the frame.** The distance each floater is dealt is kept and only its
 _direction_ is chosen: pick the screen position, solve for depth. An orthographic
