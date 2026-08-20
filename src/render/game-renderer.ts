@@ -600,6 +600,25 @@ export class GameRenderer {
   }
 
   /**
+   * Where a world point lands across the screen, in board units.
+   *
+   * Signed distance from the centre of the view, positive to the right, so the
+   * only thing it is really good for is comparing two moments: did this point
+   * travel left or right as the camera moved.
+   *
+   * That question has an interface answering to it. A turn direction names its
+   * *destination* -- `left` fetches the left-hand face -- and getting there
+   * sweeps what is currently on screen the opposite way, so "which way does the
+   * board appear to move" cannot be read off the direction's name. It is a
+   * property of the camera, and this is the camera answering.
+   */
+  screenXOf(x: number, y: number, z: number): number {
+    this.camera.updateMatrixWorld();
+    const m = this.camera.matrixWorldInverse.elements;
+    return (m[0] ?? 0) * x + (m[4] ?? 0) * y + (m[8] ?? 0) * z + (m[12] ?? 0);
+  }
+
+  /**
    * Put the camera on a face immediately, with no travel.
    *
    * For starting a run. The title screen turns the board by itself, so by the

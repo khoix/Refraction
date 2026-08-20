@@ -3723,6 +3723,130 @@ test.describe('on a phone', () => {
     await page.waitForTimeout(300);
   }
 
+  /**
+   * Put the game in front of the turn prompt without playing to it.
+   *
+   * The prompt is a timed state, and its clock only runs while the game is in
+   * it -- so a run that has never reached one arrives here with a full timeout
+   * ahead of it, which is all these tests need.
+   */
+  async function awaitTurn(page: Page): Promise<void> {
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('no game');
+      game.status = 'awaitingTurn';
+    });
+    await page.waitForTimeout(120);
+  }
+
+  /**
+   * Where a fixed point of the board lands across the screen.
+   *
+   * Read through the live camera rather than off pixels: the board is mostly
+   * empty during a turn prompt, and a centroid of whatever cubes exist measures
+   * the seed as much as the camera.
+   */
+  const boardPointX = (page: Page): Promise<number> =>
+    page.evaluate(() => window.__refraction?.renderer.screenXOf(3, 0, 3) ?? 0);
+
+  /** A horizontal drag inside the movement strip, which is where turns are read. */
+  async function swipe(page: Page, dx: number): Promise<void> {
+    const y = (await stripTop(page)) + 40;
+    await page.evaluate(
+      async ({ dx, y }) => {
+        const root = document.querySelector('#app');
+        if (!root) throw new Error('no root');
+        const startX = window.innerWidth / 2 - dx / 2;
+        const send = (type: string, x: number): void => {
+          root.dispatchEvent(
+            new PointerEvent(type, {
+              pointerId: 1,
+              pointerType: 'touch',
+              isPrimary: true,
+              bubbles: true,
+              clientX: x,
+              clientY: y,
+            })
+          );
+        };
+        send('pointerdown', startX);
+        for (let i = 1; i <= 12; i += 1) {
+          send('pointermove', startX + (dx * i) / 12);
+          await new Promise((done) => setTimeout(done, 20));
+        }
+        send('pointerup', startX + dx);
+      },
+      { dx, y }
+    );
+    await page.waitForTimeout(900);
+  }
+
+  test('the board follows the finger when a turn is being chosen', async ({ browser }) => {
+    /*
+     * A swipe is direct manipulation, and a surface that slides away from the
+     * finger is simply broken. This shipped inverted.
+     *
+     * The assertion is deliberately about *motion on screen* rather than about
+     * which face is chosen, because the naming is the part that misleads. A turn
+     * direction names its destination -- `left` brings the left-hand face to the
+     * front -- and reaching that destination sweeps everything currently visible
+     * to the right. So the correct mapping reads backwards written down, and a
+     * test asserting `swipe right picks left` would look like the bug.
+     *
+     * What a player can actually see is the only thing worth pinning: drag right,
+     * the board goes right.
+     */
+    const page = await phone(browser);
+    await play(page, 'ascent');
+    await awaitTurn(page);
+
+    const before = await boardPointX(page);
+    await swipe(page, 160);
+    const after = await boardPointX(page);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  test('a swipe the other way carries the board the other way', async ({ browser }) => {
+    const page = await phone(browser);
+    await play(page, 'ascent');
+    await awaitTurn(page);
+
+    const before = await boardPointX(page);
+    await swipe(page, -160);
+    const after = await boardPointX(page);
+    expect(after).toBeLessThan(before);
+  });
+
+  test('the turn prompt offers two targets that are actually pressable', async ({ browser }) => {
+    /*
+     * The prompt is a full-screen scrim over a stalled board with two labelled
+     * faces on it, arrows animating. It looked pressable and was not: the HUD is
+     * `pointer-events: none` throughout so a drag can reach the board, and
+     * nothing in the prompt opted back in.
+     *
+     * That is a failure no unit test could see and no rendering check would
+     * catch -- the markup was right, the styling was right, and the events went
+     * to the canvas underneath. Tapping and asserting the board turned is the
+     * only level at which it shows up.
+     */
+    const page = await phone(browser);
+    await play(page, 'ascent');
+    await awaitTurn(page);
+
+    const choices = page.locator('.prompt__choice');
+    await expect(choices).toHaveCount(2);
+
+    const destination = (await choices.nth(0).textContent())?.replace(/[^A-Z]/g, '') ?? '';
+    expect(destination.length).toBeGreaterThan(0);
+
+    await choices.nth(0).tap();
+    await page.waitForTimeout(900);
+
+    // The half is labelled with where it goes, so the board has to end up there.
+    const face = await page.evaluate(() => window.__refraction?.game.face);
+    expect(String(face).toUpperCase()).toBe(destination);
+  });
+
   test('is what the layout thinks it is', async ({ browser }) => {
     const page = await phone(browser);
     // The premise every other test here rests on. If the profile stopped

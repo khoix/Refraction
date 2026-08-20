@@ -7,6 +7,80 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M23 — Two things the turn prompt got wrong on a phone
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Both from play notes, both only visible on a touch device, and neither one
+capable of failing a build.
+
+### The board now follows the finger
+
+The swipe that chooses a face was inverted: drag right and the board went left.
+
+The cause is a genuine trap in the naming. A turn direction names its
+**destination** — `left` fetches the face on the player's left — and reaching
+that destination orbits the camera to −90° of yaw, which sweeps everything
+currently on screen to the _right_. So the correct mapping reads backwards
+written down: **a rightward drag is a `left` turn.** The old code paired the
+names up, which is the reading that looks right on the page and is wrong in the
+hand.
+
+Measured rather than reasoned, because sign conventions are exactly where this
+goes wrong twice. Projecting a fixed board point through the live camera
+mid-turn moves it **+0.27** board units for `left` and **−0.31** for `right`.
+
+The keyboard deliberately keeps the opposite mapping — Left picks the LEFT face.
+Pressing an arrow is choosing from a menu; dragging is pushing a surface, and a
+surface that slides away from the finger is broken.
+
+### The prompt's two halves are buttons now
+
+They always looked like buttons — two face names, an arrow each, the arrows
+animating — and were inert spans. Worse than inert: the HUD is
+`pointer-events: none` throughout so that a drag can reach the board underneath
+it, and nothing in the prompt opted back in. Even after making them real
+`<button>` elements the taps still went to the canvas; **one line of CSS was the
+actual fix**, and without it the failing test reports "canvas intercepts pointer
+events", which is precisely the symptom.
+
+Only the halves opt in, not the scrim. A scrim that accepted pointers would
+swallow the swipe, which is the primary way to answer this prompt on a phone.
+
+They fire on `click` rather than `pointerdown` — unlike the collapse gauge, and
+for a reason the gauge does not have. The pill sits mid-screen and the same
+state accepts a drag anywhere, including across the pill, so firing on press
+would let a swipe that merely _began_ on a button be claimed by it — and since a
+tap names a destination while a drag pushes the board, the button's answer can be
+the opposite of the swipe's. Waiting for the release settles it with no
+arbitration: a press dragged off the button raises no click, and the gesture
+layer, which sees the same events by bubbling, turns the board instead.
+
+### One new renderer accessor
+
+`screenXOf(x, y, z)` — signed distance from the centre of the view, in board
+units. Added because "which way does the board appear to move" is a property of
+the camera and cannot be read off a direction's name, so the test for it needed
+the camera to answer rather than a private field to be poked through a cast.
+
+### Tested
+
+375 unit, and three new e2e. The swipe pair asserts **motion on screen**, not
+which face is chosen — a test reading `swipe right picks left` would look like
+the bug it is guarding. All three verified by sabotage: restoring the old
+mapping fails both swipe tests, and deleting the one line of CSS fails the tap
+test with the canvas swallowing the event.
+
+### Not a bug: Flatland has no Spectral Collapse
+
+Reported alongside these, and it is deliberate — `spectralCollapse: false` in
+`src/core/modes.ts`, with a note there and an e2e test asserting the gauge, the
+key row and the gesture row are all absent in a mode without it. The reasoning
+was that Flatland is where a new player starts and already carries the game's one
+strange idea on its own, so a second meter fed by the same action as the Shift
+meter is noise against learning that colour means depth. Worth revisiting if it
+reads as something missing rather than as something withheld.
+
 ## M22d — The wordmark's own face
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

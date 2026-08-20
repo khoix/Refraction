@@ -591,6 +591,54 @@ input,
   color: var(--text-secondary);
 }
 
+/*
+ * Each half of the pill is a button, and has to be big enough to be one.
+ *
+ * The pill is the only thing on screen during the prompt, so the targets are
+ * sized for a thumb rather than to the text they contain -- 44px is the usual
+ * floor and the padding here clears it at every clamp step.
+ */
+.prompt__choice {
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  min-height: 44px;
+  /*
+   * The HUD is `pointer-events: none` throughout so a drag reaches the board
+   * underneath it. These opt back in -- and this line is the whole of why the
+   * prompt was unresponsive: the halves looked like buttons, animated like
+   * buttons, and never received a single event.
+   *
+   * Only the halves opt in, not the scrim. A scrim that accepted pointers would
+   * take the swipe as well, and the swipe is the primary way to answer this
+   * prompt on a phone.
+   */
+  pointer-events: auto;
+  padding: 0.35rem 0.8rem;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: none;
+  font: inherit;
+  letter-spacing: inherit;
+  color: inherit;
+  cursor: pointer;
+  /* A press must not raise a selection or a callout over a stalled board. */
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.prompt__choice:hover,
+.prompt__choice:focus-visible {
+  border-color: rgb(var(--accent-ui-glow) / 0.5);
+  background: rgb(255 255 255 / 0.05);
+}
+
+.prompt__choice:active {
+  background: rgb(255 255 255 / 0.1);
+}
+
 .prompt__arrow {
   font-size: 1.3rem;
   color: var(--accent-ui);

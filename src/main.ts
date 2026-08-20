@@ -480,6 +480,13 @@ function boot(root: HTMLElement): void {
     game.triggerCollapse();
   });
 
+  // The turn prompt's two halves. Same engine call as the keys and the drag, so
+  // the mode's rules and the timeout apply identically however the turn arrives.
+  hud.onTurnTap((direction) => {
+    audio.resume();
+    game.chooseTurn(direction);
+  });
+
   window.addEventListener('resize', () => {
     applyStripReserve();
     renderer.resize();

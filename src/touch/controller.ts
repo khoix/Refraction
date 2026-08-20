@@ -166,11 +166,26 @@ export class TouchController {
     if (game.status === 'awaitingTurn') {
       for (const intent of intents) {
         if (intent.kind !== 'columnStep' || intent.steps === 0) continue;
-        // The drag's *direction*, not the column it landed on. A column was
-        // meaningful while movement was absolute; with a relative scheme the
-        // number says how far the finger moved, and its sign says which way --
-        // which is the more natural reading of this gesture anyway.
-        this.handlers.onTurn(intent.steps < 0 ? 'left' : 'right');
+        /*
+         * The board follows the finger, which inverts the name of the turn.
+         *
+         * A turn direction names the *destination face* -- turning `left` brings
+         * the face on the player's left to the front. Getting there orbits the
+         * camera to -90 degrees of yaw, and orbiting that way sweeps everything
+         * currently on screen to the **right**. So a drag to the right, which
+         * should carry the board right with it, is a `left` turn.
+         *
+         * That reads backwards written down and is the only thing that feels
+         * right in the hand: a swipe is direct manipulation, and a surface that
+         * slides away from the finger is simply broken. The keyboard keeps the
+         * opposite mapping on purpose -- Left picks the LEFT face -- because
+         * pressing an arrow is choosing from a menu, not pushing anything.
+         *
+         * Measured rather than reasoned: projecting a fixed board point through
+         * the live camera mid-turn moves it +0.27 board units for `left` and
+         * -0.31 for `right`.
+         */
+        this.handlers.onTurn(intent.steps < 0 ? 'right' : 'left');
         return;
       }
       return;

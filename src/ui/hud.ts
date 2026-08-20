@@ -11,7 +11,7 @@ import { DEPTH_LANES } from '@core/constants';
 import { PIECES_BY_ID, extent, normalize } from '@core/pieces';
 import type { PieceId } from '@core/pieces';
 import { depthColorHex, laneToDepthParameter } from '@core/spectrum';
-import type { Cell, Face } from '@core/types';
+import type { Cell, Face, TurnDirection } from '@core/types';
 
 /**
  * Preview fill when depth colour is off, matching the board's neutral.
@@ -107,6 +107,7 @@ export class Hud {
    * and never rotates out of sight.
    */
   private collapseHandler: (() => void) | null = null;
+  private turnHandler: ((direction: TurnDirection) => void) | null = null;
   private readonly gauge = element('div', 'gauge');
   private readonly gaugeFill = element('div', 'gauge__fill');
   private readonly shift = element('div', 'hud__shift');
@@ -168,13 +169,25 @@ export class Hud {
     this.mute.textContent = 'MUTED';
     this.stageBanner.hidden = true;
 
+    /*
+     * Each half of the pill is a target, not a caption.
+     *
+     * It always looked like one -- two face names with an arrow apiece, and the
+     * arrows animating -- while being inert spans, so a player tapping the thing
+     * the game was pointing at got nothing. On a phone the prompt is a
+     * full-screen scrim over a stalled board, which makes an unresponsive label
+     * the worst kind: the only thing on screen, clearly asking to be pressed.
+     *
+     * These select a *destination face*, which is the same thing the keyboard's
+     * arrows do and the opposite of what a drag does -- see the turn handling in
+     * `touch/controller.ts`. A label naming where you will end up can only mean
+     * one thing, so the two idioms do not collide.
+     */
     const pill = element('div', 'prompt__pill');
     pill.append(
-      element('span', 'prompt__arrow', '←'),
-      this.promptLeft,
+      this.turnTarget('left', element('span', 'prompt__arrow', '←'), this.promptLeft),
       element('span', 'prompt__text', '·'),
-      this.promptRight,
-      element('span', 'prompt__arrow', '→')
+      this.turnTarget('right', this.promptRight, element('span', 'prompt__arrow', '→'))
     );
     this.prompt.append(pill);
     this.prompt.hidden = true;
@@ -192,6 +205,32 @@ export class Hud {
       this.banner,
       this.prompt
     );
+  }
+
+  /**
+   * One half of the turn prompt, as a button.
+   *
+   * `click`, deliberately, where the gauge uses `pointerdown`.
+   *
+   * The pill sits in the middle of the screen and the same state accepts a drag
+   * anywhere, including across the pill. Firing on press would let a swipe that
+   * merely *began* on a button be claimed by it -- and since a tap names a
+   * destination while a drag pushes the board, the button's answer can be the
+   * opposite of the one the swipe was going to give. Waiting for the release
+   * settles it without arbitration: a press dragged off the button raises no
+   * click, and the gesture layer, which sees the same events by bubbling, turns
+   * the board instead.
+   *
+   * A real `<button>` rather than a span with a handler, so it takes focus,
+   * answers Enter and Space, and announces itself.
+   */
+  private turnTarget(direction: TurnDirection, ...content: HTMLElement[]): HTMLElement {
+    const target = document.createElement('button');
+    target.type = 'button';
+    target.className = 'prompt__choice';
+    target.append(...content);
+    target.addEventListener('click', () => this.turnHandler?.(direction));
+    return target;
   }
 
   private stat(label: string, value: HTMLElement): HTMLElement {
@@ -350,6 +389,11 @@ export class Hud {
   /** What a tap on a ready gauge should do. */
   onCollapseTap(handler: () => void): void {
     this.collapseHandler = handler;
+  }
+
+  /** What a tap on either half of the turn prompt should do. */
+  onTurnTap(handler: (direction: TurnDirection) => void): void {
+    this.turnHandler = handler;
   }
 
   setHeat(heat: number | null, ready: boolean): void {
