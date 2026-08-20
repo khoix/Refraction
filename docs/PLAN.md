@@ -1370,6 +1370,43 @@ watching in play — a large collapse can fill the meter and force a turn
 immediately. That may be a good moment or a confusing one, and only playing it
 will say.
 
+### M17a — The gauge cools too fast _(play note)_
+
+**Asked for:** cooling at a fifth of its current speed.
+
+One constant: `HEAT_DECAY_PER_MS` from `1 / 26_000` to `1 / 130_000`. The bar goes
+from full to empty in 130 seconds of clearing nothing rather than 26.
+
+**What that does to the model.** M17's numbers came from a model written down in
+`game.ts`, and this changes both halves of it. At the modelled pace — a brisk
+player at roughly a piece a second, clearing 0.3 lines per piece — a collapse is
+earned in about **19 seconds** instead of about 45.
+
+The second half is the one worth a decision rather than a shrug. The model's
+other claim was that **at half that clearing rate the bar loses ground and never
+fills**, which is the pressure the mechanic exists to create. At a fifth of the
+cooling that stops being true: the break-even rate drops to about 0.04 lines per
+second, which is slower than almost any play. The bar would fill eventually
+whatever the player does, so Spectral Collapse becomes a reward for playing long
+enough rather than for keeping a pace up.
+
+That may be exactly right — the mechanic reads as unreachable at present, which
+is why the note exists. But it is a change of kind, not of degree, so it is worth
+naming before it ships:
+
+- **A. As asked.** Cooling ÷5, earn rate untouched. Collapse arrives roughly
+  twice as often and is no longer conditional on pace.
+- **B. Keep the pressure.** Cooling ÷5 _and_ `HEAT_PER_LINE` down from 0.2 to
+  about 0.08, which restores a break-even near half the modelled rate while still
+  making the bar far more forgiving of a quiet spell. Slower to earn than A.
+
+Default is **A**, since it is what was asked for.
+
+**Also in scope:** the `heatModel` unit tests pin both halves of the model, so the
+"never fills at half pace" case has to be rewritten rather than retuned — under A
+it is no longer a true statement about the game. The prose model in `game.ts` gets
+the new arithmetic.
+
 ---
 
 ## M18 — The Front Door ✅
