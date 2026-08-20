@@ -618,7 +618,9 @@ function boot(root: HTMLElement): void {
     // rather than as a board sitting under it. It draws back to its playing
     // framing as the menu arrives, which is half of what makes that handover
     // feel like one screen settling instead of two screens swapping.
-    renderer.setBackdrop(screen === 'boot');
+    // The well goes with the board: on every screen where nobody is playing,
+    // the frame and posts are an empty box drawn around nothing.
+    renderer.setBackdrop(menu || screen === 'boot');
     // The room shows the ramp while nobody is reading a board, and goes neutral
     // for a run. §2.2, and the reason `setAmbientChroma` exists at all.
     renderer.setAmbientChroma(menu || screen === 'boot');

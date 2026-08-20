@@ -1495,6 +1495,16 @@ shows the ramp only when no board is being read.
 
 ---
 
+### M20a — Corrections to M20 ✅
+
+Placement, count and size of the drifting field restored to the wireframes' own —
+the note was to change what they are made of, not where they float. One field
+again, with a fade that keeps a voxel out of the play column while a board is
+being read, since no radius can do that geometrically. The well is hidden on every
+screen where nobody is playing, and the menu is vertically centred like the gate.
+
+---
+
 ### M18a — The rest of the music _(next)_
 
 Five more tracks sit in `src/audio/tracks/` unreferenced, and the interesting
