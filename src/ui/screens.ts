@@ -106,11 +106,27 @@ function wordmark(tagline: boolean): HTMLElement {
   // Hairlines bracket the wordmark. Presentational, so they are `<hr>` inside
   // the heading rather than borders on it -- the mark needs to breathe between
   // them, and a border cannot fade out at its ends.
-  title.append(
-    element('hr', 'title__rules'),
-    element('span', 'title__word', 'REFRACTION'),
-    element('hr', 'title__rules')
-  );
+  /*
+   * The O is a cube.
+   *
+   * The one place the wordmark is allowed to say what the game is about, and it
+   * costs nothing: `REFRACTI` + a drawn cube + `N` reads as the word at a glance
+   * and as a cube a moment later. Inline SVG rather than a glyph so it takes the
+   * heading's own colour and glow, and scales with the type instead of being a
+   * picture pasted next to it.
+   *
+   * Marked `aria-hidden` with the letter supplied to assistive technology
+   * separately, so the accessible name stays the word rather than "REFRACTI N".
+   */
+  const word = element('span', 'title__word');
+  word.append(element('span', 'title__letters', 'REFRACTI'));
+  const cube = element('span', 'title__cube');
+  cube.setAttribute('aria-hidden', 'true');
+  cube.innerHTML = `<svg viewBox="0 0 100 100" focusable="false"><g fill="none" stroke="currentColor" stroke-width="7" stroke-linejoin="round"><path d="M16 34 L60 34 L60 78 L16 78 Z"/><path d="M40 16 L84 16 L84 60 L40 60" /><path d="M16 34 L40 16"/><path d="M60 34 L84 16"/><path d="M60 78 L84 60"/></g></svg>`;
+  const letterO = element('span', 'sr-only', 'O');
+  word.append(cube, letterO, element('span', 'title__letters', 'N'));
+
+  title.append(element('hr', 'title__rules'), word, element('hr', 'title__rules'));
   // The front door goes without it. The line is the game's thesis and it earns
   // its place over the menu, but the first screen is carrying a loading bar and
   // a way in already, and the mark reads harder with nothing under it.

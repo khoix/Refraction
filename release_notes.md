@@ -7,6 +7,78 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22 — The front door, from the mockup
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Built to a supplied conceptualization of the title screen. Oxanium, a glowing
+wordmark whose O is a cube, and a frame full of coloured wireframe cages.
+
+### The one rule this bends, and where it stops
+
+§2.2 reserves hue: a colour on screen means depth from the current camera and
+nothing else, which is why every piece of chrome in this game is a neutral ink
+ramp. The mockup puts a cyan accent on the wordmark, its rules and the button.
+
+That is allowed here for one reason: **the gate and the menu have no board on
+them.** There is nothing whose distance a colour could be mistaken for. The
+accent lives in `--accent-beam` and every rule using it is scoped to
+`[data-screen='boot']` or `[data-screen='title']`.
+
+The lettering itself stays white — white type throwing coloured light reads as
+lit, tinted type reads as cheap — and a test now asserts both halves: the letters
+carry no hue, and nothing sitting over a live board carries the accent.
+
+### Cages, not solids
+
+The floaters are an edge cage with a faint pane of light inside it, at a tenth of
+the cage's brightness. Solid lit cubes were wrong twice over: an orthographic
+camera flattens a diffuse box into a grey polygon, and enough of them made the
+room look like confetti. What makes a voxel read as a voxel is its edges — which
+is the thing the original wireframes had right and the only thing, being
+colourless and unlit.
+
+**Aimed into the frame.** The distance each floater is dealt is kept and only its
+_direction_ is chosen: pick the screen position, solve for depth. An orthographic
+camera does not shrink what is far away, so a ring at radius 26–48 sat almost
+entirely outside a frame nineteen units wide — the field existed and the screen
+was empty. And a keep-out band round the wordmark is enforced at placement, since
+a seed that clears the type on a laptop will not also clear it on a phone.
+
+### Bloom, on the screens that can afford it
+
+In a run the bloom threshold sits just under white so only a clear's additive glow
+or a Full Spectrum whiteout ever blooms; that restraint is why the settled board
+reads as tiles rather than neon, and it is untouched. On a boardless screen there
+is nothing to protect and the cages are lines one pixel wide, so the threshold
+drops to 0.12 — eased on the same curve as the well's departure, so the two arrive
+together.
+
+### Oxanium, vendored
+
+14 KB, variable, covering every weight. Fetched into the repo rather than linked:
+a static bundle should not need a third-party request to draw its own wordmark,
+and the front door is the worst place to wait on one.
+
+### Two tests rewritten, not retuned
+
+- **`the masthead carries no hue`** asserted the thing this milestone
+  deliberately changes. It now asserts what the rule actually protects: neutral
+  lettering, and no accent on anything over a live board.
+- **`hides the HUD`** compared the Shift meter's rectangle on the title against
+  in play. That worked while the room behind it was nearly black; the front door
+  now glows, so the "hidden" reading rose to meet the visible one. It reads the
+  computed opacity instead — exact, and it still catches the failure this has
+  actually had, when `.hud--hidden` was nested into a descendant selector matching
+  nothing.
+
+### Tested
+
+374 unit, and 52 e2e across the title screen, the front door, rendering, the
+x-ray, the landing marks, Spectral Collapse and the phone layouts.
+
+---
+
 ## M21 — The room holds still
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

@@ -61,7 +61,7 @@ const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
 const DUST_COUNT = 520;
 
-const VOXEL_COUNT = 14;
+const VOXEL_COUNT = 30;
 /**
  * How far out the field floats, unchanged from the wireframes it replaces.
  *
@@ -89,6 +89,46 @@ const PLAY_COLUMN_HALF_WIDTH = 7;
  * composing fourteen items by chance.
  */
 const VOXEL_SEED = 'still';
+/**
+ * The one large floater, and where it sits.
+ *
+ * Every other cube is scattered; this one is composed. It hangs above the
+ * wordmark because that is where the eye arrives, and it is amber because a
+ * single warm mass against a field of cool ones is what stops the room reading
+ * as one colour with variations.
+ */
+const HERO_SIZE = 4;
+const HERO_HUE = 0.09;
+const HERO_LEVEL = 1.15;
+const HERO_X = 1.5;
+const HERO_Y = 5.6;
+/**
+ * The band the wordmark occupies, in board units, which the field keeps out of.
+ *
+ * Measured on screen rather than in the world, which is legitimate here because
+ * the front door's camera never moves: screen-x is world x at yaw zero.
+ */
+const TYPE_HALF_WIDTH = 13;
+const TYPE_HALF_HEIGHT = 3.5;
+/**
+ * Roughly what the orthographic frame covers, in board units.
+ *
+ * Not exact and does not need to be: it is the spread the field is scattered
+ * over, and a floater past the edge is simply one nobody sees. The frame is
+ * narrower than this on a phone and about this wide on a laptop.
+ */
+const FRAME_HALF_WIDTH = 20;
+const FRAME_HALF_HEIGHT = 12;
+/** How much of the cage's brightness the pane inside it gets. */
+const FILL_SHARE = 0.1;
+/**
+ * What the field is worth while a board is being read.
+ *
+ * The floaters are a title-screen element that happens to persist into a run, so
+ * during play they drop back to roughly the brightness of the wireframes they
+ * grew out of -- present, and never competing with the stack for attention.
+ */
+const PLAY_DIM = 0.2;
 /**
  * How long the drifting voxels take to gain or lose their colour.
  *
@@ -166,28 +206,92 @@ function voxelField(): THREE.Group {
   const group = new THREE.Group();
   const rng = createRng(VOXEL_SEED);
   for (let i = 0; i < VOXEL_COUNT; i += 1) {
-    const size = 1.1 + rng.next() * 2.6;
-    const material = new THREE.MeshLambertMaterial({ depthWrite: true, depthTest: true });
-    const voxel = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
-    const angle = rng.next() * Math.PI * 2;
-    // Well clear of the board, so the field reads as distance rather than as
-    // clutter drawn across the well.
-    const radius = VOXEL_INNER_RADIUS + rng.next() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS);
-    voxel.position.set(
-      Math.cos(angle) * radius,
-      (rng.next() - 0.4) * BOARD_HEIGHT * 2.2,
-      Math.sin(angle) * radius
-    );
+    /*
+     * Each floater is an edge cage with a faint pane of light inside it.
+     *
+     * Solid lit cubes were tried and they read as paper: an orthographic camera
+     * flattens a diffuse box into a grey polygon, and the more of them there
+     * were the more the room looked like confetti. What makes a voxel read as a
+     * voxel here is its *edges* -- which is what the wireframes this replaced had
+     * right, and all they had right, being colourless and unlit.
+     *
+     * So both. The cage carries the colour and does the glowing; the fill is a
+     * tenth of its strength and only there to stop the cage reading as an empty
+     * outline. Additive and depth-blind, like everything else in this room,
+     * because they are light rather than surfaces -- and because that is what
+     * lets them overlap without the solid version's problem of one cube visibly
+     * cutting a hole in another.
+     */
+    const hero = i === 0;
+    const size = hero ? HERO_SIZE : 0.8 + rng.next() * 2.2;
+    const box = new THREE.BoxGeometry(size, size, size);
+
+    const cageMaterial = new THREE.LineBasicMaterial();
+    backdropMaterialSettings(cageMaterial);
+    const cage = new THREE.LineSegments(new THREE.EdgesGeometry(box), cageMaterial);
+    cage.renderOrder = BACKDROP_ORDER;
+    cage.frustumCulled = false;
+
+    const fillMaterial = new THREE.MeshBasicMaterial();
+    backdropMaterialSettings(fillMaterial);
+    const fill = new THREE.Mesh(box, fillMaterial);
+    fill.renderOrder = BACKDROP_ORDER;
+    fill.frustumCulled = false;
+
+    const voxel = new THREE.Group();
+    voxel.add(fill, cage);
+
+    /*
+     * Aimed into the frame, and never across the wordmark.
+     *
+     * The distance a floater is dealt is kept; only the direction is chosen. An
+     * orthographic camera does not shrink what is far away, so a ring of them at
+     * radius 26 to 48 is almost entirely *outside* a frame about nineteen units
+     * wide -- the field was there, and the screen was empty. Picking the screen
+     * position and solving for depth puts them where they can be seen without
+     * bringing them any closer.
+     *
+     *
+     * The masthead is the one part of this screen that has to stay legible, and a
+     * floater drifting behind it turns the glow into mush. A seed can be chosen
+     * to avoid that on a laptop and will not also avoid it on a phone, so the
+     * keep-out is enforced at placement rather than hoped for: a candidate landing
+     * in the band gets re-rolled. Ten tries is far more than enough — the band is
+     * a small part of the sphere — and giving up after that simply accepts one,
+     * which is better than looping.
+     */
+    let x = 0;
+    let y = 0;
+    let z = 0;
+    for (let attempt = 0; attempt < 10; attempt += 1) {
+      const radius = VOXEL_INNER_RADIUS + rng.next() * (VOXEL_OUTER_RADIUS - VOXEL_INNER_RADIUS);
+      x = (rng.next() * 2 - 1) * FRAME_HALF_WIDTH;
+      y = (rng.next() * 2 - 1) * FRAME_HALF_HEIGHT;
+      // The rest of the radius goes into depth, so the floater keeps the distance
+      // it was dealt and only its *direction* is chosen.
+      z = Math.sqrt(Math.max(1, radius * radius - x * x)) * (rng.next() < 0.5 ? -1 : 1);
+      const acrossType = Math.abs(x) < TYPE_HALF_WIDTH + size;
+      const behindType = Math.abs(y) < TYPE_HALF_HEIGHT + size;
+      if (!(acrossType && behindType)) break;
+    }
+    voxel.position.set(x, y, z);
     voxel.rotation.set(rng.next() * Math.PI, rng.next() * Math.PI, 0);
     // Where on the ramp this one sits, its own brightness, and its own drift, so
     // the field is a scattering rather than a pattern.
-    voxel.userData['hue'] = rng.next();
-    voxel.userData['level'] = 0.16 + rng.next() * 0.22;
+    voxel.userData['hue'] = hero ? HERO_HUE : rng.next();
+    voxel.userData['level'] = hero ? HERO_LEVEL : 0.7 + rng.next() * 0.6;
     voxel.userData['bob'] = rng.next() * Math.PI * 2;
     voxel.userData['rise'] = 0.5 + rng.next() * 1.4;
+    voxel.userData['cage'] = cage;
+    voxel.userData['fill'] = fill;
+
+    if (hero) {
+      // Placed rather than scattered: the one large floater is a composition
+      // element, and it belongs above the wordmark where the eye lands first.
+      voxel.position.set(HERO_X, HERO_Y, -18);
+      voxel.rotation.set(0.42, 0.62, 0);
+    }
     voxel.userData['home'] = voxel.position.y;
-    voxel.renderOrder = BACKDROP_ORDER;
-    voxel.frustumCulled = false;
     group.add(voxel);
   }
   return group;
@@ -413,7 +517,7 @@ export class Environment {
     const rightZ = -Math.sin(viewYaw);
 
     this.voxels.children.forEach((child) => {
-      const voxel = child as THREE.Mesh;
+      const voxel = child as THREE.Group;
       voxel.getWorldPosition(this.worldScratch);
       const screenX = this.worldScratch.x * rightX + this.worldScratch.z * rightZ;
       // Full strength once a board's width clear of the column, nothing inside
@@ -426,12 +530,26 @@ export class Environment {
       const shown = this.chroma + (1 - this.chroma) * clear;
       voxel.visible = shown > 0.01;
       if (!voxel.visible) return;
-      const own = ((voxel.userData['level'] as number) + glow * 0.14) * shown;
+      const dim = PLAY_DIM + (1 - PLAY_DIM) * this.chroma;
+      const own = ((voxel.userData['level'] as number) + glow * 0.4) * shown * dim;
       const { r, g, b } = depthColor(voxel.userData['hue'] as number);
-      const material = voxel.material as THREE.MeshLambertMaterial;
-      material.color
-        .copy(light(own))
-        .lerp(this.scratch.setRGB(r * own, g * own, b * own, THREE.SRGBColorSpace), this.chroma);
+
+      /*
+       * The cage carries the colour; the fill is a whisper of it.
+       *
+       * A tenth, and the ratio matters more than either number. Much above it the
+       * cube reads as a solid tinted block again and the edges stop being the
+       * shape; much below and the cage is an empty outline with nothing inside.
+       */
+      const cage = voxel.userData['cage'] as THREE.LineSegments;
+      const fill = voxel.userData['fill'] as THREE.Mesh;
+      const tint = (level: number): THREE.Color =>
+        light(level).lerp(
+          this.scratch.setRGB(r * level, g * level, b * level, THREE.SRGBColorSpace),
+          this.chroma
+        );
+      (cage.material as THREE.LineBasicMaterial).color.copy(tint(own));
+      (fill.material as THREE.MeshBasicMaterial).color.copy(tint(own * FILL_SHARE));
       voxel.rotation.x += step * 0.7;
       voxel.rotation.y += step * 0.4;
       // Floating: a slow rise and fall around where it was placed, each on its

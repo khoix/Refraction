@@ -9,6 +9,21 @@
  * Shift pip or a rainbow banner would not be.
  */
 
+/*
+ * Oxanium, vendored rather than linked.
+ *
+ * A static bundle should not need a third-party request to draw its own
+ * wordmark, and the front door is the worst place to wait on one. It is a
+ * variable face, so a single 14 KB file covers every weight the interface uses.
+ */
+@font-face {
+  font-family: 'Oxanium';
+  src: url('./fonts/oxanium-latin.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
   --surface-void: #05060a;
   --surface-deep: #0a0c14;
@@ -23,7 +38,22 @@
   --accent-ui: #f3f6ff;
   --accent-ui-glow: 243 246 255;
 
-  --font-display: 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
+  /*
+   * The front door's accent, and the one exception to the achromatic chrome.
+   *
+   * §2.2 reserves hue because a colour on a rules-claiming surface is a claim
+   * about depth. That is a rule about screens with a board on them. The gate and
+   * the menu have none -- no cubes, no well, nothing whose distance a player
+   * could misread -- so the wordmark and its furniture are free to carry light.
+   *
+   * Used *only* under `[data-screen='boot']` and `[data-screen='title']`. It must
+   * never reach the HUD, the Shift meter or the gauge, all of which sit over a
+   * live board and all of which have tests saying so.
+   */
+  --accent-beam: #57daff;
+  --accent-beam-glow: 87 218 255;
+
+  --font-display: 'Oxanium', 'Inter', 'Segoe UI', system-ui, -apple-system, sans-serif;
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
@@ -870,6 +900,66 @@ input,
   backdrop-filter: none;
 }
 
+/*
+ * The front screens light up.
+ *
+ * Everything here is scoped to the two screens with no board on them, which is
+ * the whole licence for it — see `--accent-beam`. The wordmark glows white with
+ * a cyan corona, the way something lit from inside does; the type is not tinted,
+ * because tinted white type reads as cheap where a white glyph throwing coloured
+ * light reads as lit.
+ */
+.screens[data-screen='boot'] .title__word,
+.screens[data-screen='title'] .title__word {
+  color: #fff;
+  text-shadow:
+    0 0 4px rgb(255 255 255 / 0.55),
+    0 0 22px rgb(var(--accent-beam-glow) / 0.5),
+    0 0 60px rgb(var(--accent-beam-glow) / 0.35);
+}
+
+.screens[data-screen='boot'] .title__cube svg,
+.screens[data-screen='title'] .title__cube svg {
+  filter: drop-shadow(0 0 6px rgb(var(--accent-beam-glow) / 0.9))
+    drop-shadow(0 0 18px rgb(var(--accent-beam-glow) / 0.55));
+}
+
+.screens[data-screen='boot'] .loading__note,
+.screens[data-screen='title'] .title__rule {
+  font-family: var(--font-display);
+  color: rgb(var(--accent-beam-glow) / 0.85);
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  text-shadow: 0 0 12px rgb(var(--accent-beam-glow) / 0.4);
+}
+
+/* The way in, lit like the mark it sits under. */
+.screens[data-screen='boot'] .button,
+.screens[data-screen='title'] .button {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  text-indent: 0.28em;
+  color: #eaf9ff;
+  border-color: rgb(var(--accent-beam-glow) / 0.65);
+  background: rgb(6 14 22 / 0.55);
+  box-shadow:
+    0 0 14px rgb(var(--accent-beam-glow) / 0.22),
+    inset 0 0 14px rgb(var(--accent-beam-glow) / 0.12);
+}
+
+.screens[data-screen='boot'] .button:hover,
+.screens[data-screen='boot'] .button:focus-visible,
+.screens[data-screen='title'] .button:hover,
+.screens[data-screen='title'] .button:focus-visible {
+  color: #fff;
+  border-color: rgb(var(--accent-beam-glow) / 0.95);
+  background: rgb(10 22 34 / 0.72);
+  box-shadow:
+    0 0 22px rgb(var(--accent-beam-glow) / 0.4),
+    inset 0 0 18px rgb(var(--accent-beam-glow) / 0.2);
+}
+
 /* Same measure as the title, since it holds the same wordmark. */
 .panel--boot {
   width: min(60rem, 100%);
@@ -950,22 +1040,65 @@ input,
 
 .title__word {
   /*
-   * Sized to fit rather than to fill. Ten characters at a third of an em of
+   * Sized to fit rather than to fill. Ten characters at a quarter of an em of
    * tracking is a very wide word, and at the previous 11vw it overran both
    * edges of a 1280px window -- the first and last letters were simply cut off.
    */
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: clamp(1.5rem, 6.6vw, 4.4rem);
-  letter-spacing: 0.26em;
-  text-indent: 0.26em;
+  letter-spacing: 0.16em;
   line-height: 1;
+  font-weight: 600;
+}
+
+.title__letters {
+  letter-spacing: inherit;
+  /* The tracking after the last letter would otherwise push the mark off centre
+     by half a space; only the gaps *between* letters should count. */
+  margin-right: -0.16em;
+}
+
+/*
+ * The cube that stands in for the O.
+ *
+ * Sized against the cap height rather than the em, so it matches the letters
+ * either side of it at every clamp step, and given the same tracking so it sits
+ * in the word's rhythm rather than beside it.
+ */
+.title__cube {
+  display: inline-flex;
+  width: 0.78em;
+  height: 0.78em;
+  margin-inline: 0.16em;
+  color: var(--accent-beam);
+}
+
+.title__cube svg {
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+/* Only for assistive technology: the letter the cube is standing in for. */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 /*
  * Hairlines above and below the wordmark.
  *
- * Achromatic, like everything that is not a cube. They give the masthead an
- * edge to sit on without introducing a panel, and they fade out at the ends so
- * the mark reads as printed on the scene rather than boxed off from it.
+ * They give the masthead an edge to sit on without introducing a panel, and they
+ * fade out at the ends so the mark reads as printed on the scene rather than
+ * boxed off from it. The bright point at the centre is what stops them reading
+ * as two borders: a rule with a hot spot is a beam, and a beam belongs to a
+ * space made of light.
  */
 .title__rules {
   display: block;
@@ -979,6 +1112,22 @@ input,
     rgb(var(--accent-ui-glow) / 0.34) 78%,
     transparent
   );
+}
+
+.screens[data-screen='boot'] .title__rules,
+.screens[data-screen='title'] .title__rules {
+  height: 2px;
+  background: linear-gradient(
+    to right,
+    transparent 0%,
+    rgb(var(--accent-beam-glow) / 0.28) 14%,
+    rgb(var(--accent-beam-glow) / 0.5) 38%,
+    rgb(255 255 255 / 0.95) 50%,
+    rgb(var(--accent-beam-glow) / 0.5) 62%,
+    rgb(var(--accent-beam-glow) / 0.28) 86%,
+    transparent 100%
+  );
+  box-shadow: 0 0 14px rgb(var(--accent-beam-glow) / 0.45);
 }
 
 .title__rule {
