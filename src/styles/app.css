@@ -1050,7 +1050,15 @@ input,
   font-size: clamp(1.5rem, 6.6vw, 4.4rem);
   letter-spacing: 0.16em;
   line-height: 1;
-  font-weight: 600;
+  /*
+   * Oxanium's heaviest weight, which is what the mockup's mark is set in.
+   *
+   * It shipped at 600 first and read as a different typeface entirely -- the
+   * family was right and the weight was not, which is a distinction easy to lose
+   * when a face is this geometric. The variable file covers 200-800, so this
+   * costs nothing.
+   */
+  font-weight: 800;
 }
 
 .title__letters {

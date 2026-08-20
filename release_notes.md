@@ -65,9 +65,13 @@ a seed that clears the type on a laptop will not also clear it on a phone.
 In a run the bloom threshold sits just under white so only a clear's additive glow
 or a Full Spectrum whiteout ever blooms; that restraint is why the settled board
 reads as tiles rather than neon, and it is untouched. On a boardless screen there
-is nothing to protect and the cages are lines one pixel wide, so the threshold
-drops to 0.12 — eased on the same curve as the well's departure, so the two arrive
-together.
+is nothing to protect, so the threshold drops to 0.62 — eased on the same curve as
+the well's departure, so the two arrive together.
+
+It was 0.12 while the floaters were wireframes, and a one-pixel line needs all the
+help it can get. A gel cube does not: at 0.12 the bloom took the whole body of
+every floater, not its highlight, and the field came out pastel. The number is a
+property of what is being lit, not of the screen it is on.
 
 ### The cube that stands in for the O
 
@@ -82,6 +86,16 @@ front face carries a faint fill of its own colour.
 14 KB, variable, covering every weight. Fetched into the repo rather than linked:
 a static bundle should not need a third-party request to draw its own wordmark,
 and the front door is the worst place to wait on one.
+
+**Set at 800, which is the correction that mattered.** It shipped at 600 and drew
+the reasonable objection that it was not Oxanium at all. It was — the family
+resolves, and the vendored file measures to the pixel against Google's own binary
+— but a geometric face carries almost no identity in its outlines, so nearly all
+of what makes it recognisable at display size is stem weight. At 600 against a
+mockup set at 800 the mark reads as a different typeface, and "wrong font" is the
+honest description of what you see. The variable file already covers 200–800, so
+the fix costs nothing but the digit. The cube-O's stroke went 11 → 14 with it,
+since it is matched to the stems, not to the em.
 
 ### Two tests rewritten, not retuned
 
