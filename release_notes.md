@@ -7,6 +7,105 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M21 — The room holds still
+
+**Branch:** `claude/webapp-game-plan-vtrxqx`
+
+Play note: the background is still shifting, and no disco lights. Plus a third
+report of no music on mobile.
+
+### What "shifting" actually was
+
+Twice misread. The first time it was taken as re-staging the field, the second as
+group rotation. Both were wrong, or at least incomplete — the largest source of
+movement was **the attract turn**.
+
+The title orbited the camera every 2.6 seconds. That was written when a composed
+stack sat in the well and the turn presented each of its four faces, which made
+the front door a demonstration of the central mechanic. With the stack gone the
+turn presents nothing: the room is fixed in world space, so orbiting the camera
+drags the entire background across the screen on a timer. It is gone, and with it
+the floor lattice, which is gated on the turn and had no business under a menu.
+
+The rest of the movement went too. Every group in the room rotated on Y — dust
+one way, the far dust the other, the floaters a third — which slid the background
+sideways behind a board that is itself the only thing meant to turn. Nothing moves
+as a body now. The floaters still bob and turn individually, which is what
+floating is.
+
+### No disco lights
+
+Five wide shafts of light drifted, spun and breathed across the room. They are
+deleted. A space made of light does not need a lighting rig.
+
+### The field is arranged, not rolled
+
+Fourteen items is a small enough sample that chance composes it badly on a fair
+number of loads — all behind the camera, or bunched in a corner, or simply absent.
+Tolerable for debris, not for the only thing on the title screen, and it was
+making two pixel tests intermittent for exactly that reason: they measured a
+different room each run.
+
+Placement now comes from a fixed seed, chosen by **measuring** candidates on how
+many floaters land inside the frame at a laptop's aspect and at a phone's. The
+first seed tried put almost nothing on screen at either — the hazard, demonstrated.
+
+### The title screen was never actually getting its light wash
+
+Found by a test, and only after the pixel test that should have found it was
+rewritten. The rule that gives the front screens their lighter scrim listed only
+`boot`; `title` was still taking the 0.86 blackout meant for panels over a paused
+game. Every pixel measurement of "does the title let the scene through" had been
+comparing 0.86 against 0.86, which is why they all came out marginal and why the
+thresholds kept needing defending.
+
+### A pixel test retired, and why
+
+`shows the scene rather than covering it` had been a pixel test for four
+milestones. Its premise — a lit stack in the well for the scrim to reveal — is
+gone, and three attempts to re-aim it each failed differently: over the well
+_inverted_ the result, because a panel's own text lands there; a strip down the
+side measured almost nothing; the brightest pixels outside the panel inverted it
+again, because the HUD returns on the settings screen and its chrome sits exactly
+there. That last one was diagnosed by finally opening the failure screenshot,
+which should have been the first move rather than the fourth.
+
+The room is a few dim floaters on a dark ground. There is no longer enough light
+in it to measure a scrim through, so the test now reads the scrim's own alpha. It
+is weaker in one way — it cannot catch the wash being defeated by something drawn
+over it — and much stronger in another: it is exact, it cannot go intermittent,
+and it caught the bug above on its first run.
+
+### Music on mobile: second attempt, still unconfirmed
+
+The element is pointed at the **network URL** rather than an object URL over the
+fetched bytes. WebKit serves media through a loader that expects byte-range
+requests and `blob:` sources are a long-standing weak spot there — a track that
+plays on every desktop browser can silently never start on an iPhone. The preload
+keeps both of its real jobs: it fills the bar honestly and warms the HTTP cache.
+
+And the gate now **says so when there will be no music**, with the reason:
+`MUSIC UNAVAILABLE · FORMAT` when no encoding is playable, `· DOWNLOAD` when the
+fetch failed. Silence is the one failure this keeps producing and it looks
+identical from the outside whatever caused it. A player deserves to know it is the
+game and not their volume — and if that line appears on the phone, it names the
+cause without anyone opening devtools.
+
+**Not fixed if neither is the cause**, and that cannot be settled from here. An
+AAC fallback was attempted: this machine has no ffmpeg, and the Chromium here
+reports `audio/mp4` recordable but cannot decode AAC, which means it would
+likely produce Opus-in-MP4 — a file that looks like a fallback and is not.
+
+### Tested
+
+17 e2e across the title screen and the front door, 374 unit. Two title tests
+rewritten rather than retuned: the attract turn they were built on no longer
+exists, so "turns by itself" became "holds completely still", and the snap-to-face
+guard now drives the renderer off front directly instead of waiting for a title
+animation.
+
+---
+
 ## M20a — Three corrections to M20
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`

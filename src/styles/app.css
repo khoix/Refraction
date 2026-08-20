@@ -927,6 +927,12 @@ input,
   color: var(--text-dim);
 }
 
+/* Not an alarm — a fact the player would otherwise have to guess at. */
+.loading__note--warn {
+  color: var(--text-secondary);
+  font-size: 0.6rem;
+}
+
 /* The way in, once there is something to go in to. */
 .panel--boot.panel--ready .loading__note {
   color: var(--text-secondary);

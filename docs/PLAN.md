@@ -1505,6 +1505,29 @@ screen where nobody is playing, and the menu is vertically centred like the gate
 
 ---
 
+## M21 — The room holds still ✅
+
+The attract turn is gone: it orbited the camera to present a stack that no longer
+exists, and with the room fixed in world space that dragged the whole background
+across the screen on a timer. Group rotations gone with it, and the five drifting
+shafts of light deleted. The floaters bob and turn individually; nothing moves as
+a body.
+
+The field is placed from a measured seed rather than `Math.random`, so it is an
+arrangement someone looked at instead of one rolled per load — and the same one
+the tests and captures see.
+
+Also found: the title screen had never been getting its lighter scrim. The rule
+listed `boot` alone, so the menu still took the blackout meant for panels over a
+paused run.
+
+**Open:** mobile music. Second attempt — the element now uses the network URL
+rather than a blob, which WebKit's media loader handles better. Unconfirmed from
+here. The gate reports `MUSIC UNAVAILABLE` with a reason when there is none, which
+names the cause without devtools.
+
+---
+
 ### M18a — The rest of the music _(next)_
 
 Five more tracks sit in `src/audio/tracks/` unreferenced, and the interesting

@@ -3389,62 +3389,57 @@ test.describe('the title screen', () => {
     );
   }
 
-  test('shows the scene rather than covering it', async ({ page }) => {
+  test('washes the front screens more lightly than it blacks out the rest', async ({ page }) => {
     /*
-     * The whole point of the redesign, restated for a title that no longer
-     * composes a stack.
+     * The decision, asserted directly instead of through the picture.
      *
-     * It used to be measured on hue in the well: the board held an arrangement
-     * and the scrim had to be light enough to let its colour through. There is
-     * no arrangement now — the room carries the picture — so the surviving claim
-     * is about the scrim itself, which is the part that was ever a decision. The
-     * title lets the scene through; every other screen keeps the heavy blackout,
-     * because there the scene is context rather than the subject.
+     * This was a pixel test for four milestones and it has earned its retirement.
+     * The original claim was that the title's scrim had to be light enough to let
+     * a composed stack's colour through, and it was measured in the well, where
+     * the stack was. There is no stack now, and every attempt to re-aim the
+     * camera at the surviving claim failed for a different reason worth
+     * recording:
+     *
+     * - Over the well **inverted** the result: a panel's own text lands there and
+     *   the settings panel is full of it.
+     * - A strip down the side measured almost nothing. With the shafts of light
+     *   gone the room's edges are near black, and the two screens came out 7.5
+     *   against 6.1 — a claim surviving only by a threshold nobody could defend.
+     * - The brightest pixels outside the panel inverted it again, because the HUD
+     *   comes back on the settings screen and its chrome sits exactly there.
+     *
+     * The room is a few dim floaters on a dark ground; there is no longer enough
+     * light in it to measure a scrim through. So this reads the scrim itself. It
+     * is a weaker test in one sense — it cannot catch the wash being defeated by
+     * something drawn over it — and a much stronger one in another: it is exact,
+     * it cannot go intermittent, and it says precisely what the design decided.
      */
+    const alphaOf = async (): Promise<number> =>
+      page.evaluate(() => {
+        const screens = document.querySelector('.screens');
+        if (!screens) return 1;
+        const colour = getComputedStyle(screens).backgroundColor;
+        const parts = colour.match(/[\d.]+/g) ?? [];
+        // `rgb(...)` with no fourth component is fully opaque.
+        return parts.length >= 4 ? Number(parts[3]) : 1;
+      });
+
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    const gate = await alphaOf();
     await enter(page);
-    await page.waitForTimeout(400);
-
-    /*
-     * Measured at the edge of the window, not over the well.
-     *
-     * The well was the right place to look when a stack sat in it. It is the
-     * wrong place now, and measuring there does not merely lose signal — it
-     * inverts the result, because a panel's own text lands in that rectangle and
-     * the settings panel is full of it. The first version of this rewrite read
-     * the settings screen as *brighter* than the title for exactly that reason.
-     *
-     * Panels are centred and bounded, so a strip down the side carries the room
-     * and nothing else on every screen.
-     */
-    const box = await page.evaluate(() => ({
-      x: 0,
-      y: Math.round(window.innerHeight * 0.55),
-      width: Math.round(window.innerWidth * 0.12),
-      height: Math.round(window.innerHeight * 0.4),
-    }));
-    const title = await patch(page, box);
+    const title = await alphaOf();
 
     await page.getByRole('button', { name: 'SETTINGS' }).click();
     await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
-    const settings = await patch(page, box);
-    /*
-     * A looser ratio than this test used to demand, and the reason is worth
-     * writing down rather than quietly retuning.
-     *
-     * The old threshold was 0.55, and it was easy to meet because a lit stack sat
-     * in the measured rectangle: the title read around forty and the scrim had
-     * plenty to take away. The room alone reads under ten, and the scrim's own
-     * colour has a luminance near six — so no opacity can push the result far
-     * below that floor, and the achievable gap is much smaller than it was.
-     *
-     * Still discriminating: giving the title the heavy scrim collapses the two to
-     * the same value, which fails this comfortably. Sabotage-verified.
-     */
-    expect(settings.luminance).toBeLessThan(title.luminance * 0.8);
-  });
+    const settings = await alphaOf();
 
+    // The front door and the menu share one light wash; everything that sits
+    // over a run keeps the blackout.
+    expect(title).toBe(gate);
+    expect(title).toBeLessThan(settings);
+    expect(settings).toBeGreaterThan(0.8);
+  });
   test('the masthead carries no hue', async ({ page }) => {
     // §2.2 partitions the palette absolutely: the only hue on screen belongs to
     // a cube. A wordmark running red to violet is the exact false inference the
@@ -3513,30 +3508,25 @@ test.describe('the title screen', () => {
     expect(onTitle.peak).toBeLessThan(inPlay.peak * 0.6);
   });
 
-  test('turns by itself, and holds still under reduced motion', async ({ page }) => {
-    // The front door is a demonstration of the central mechanic, using the
-    // game's own turn rather than a rotation written for the title.
-    await page.goto('/?debug=1');
-    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    await expect
-      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
-      .toBe(true);
-
-    // An unattended, unstoppable animation is exactly what reduced motion is
-    // for, and a still board is a perfectly good backdrop.
-    await page.goto('/');
-    await page.evaluate(() => {
-      localStorage.setItem(
-        'refraction.save.v1',
-        JSON.stringify({ stats: {}, records: {}, settings: { reducedMotion: true } })
-      );
-    });
+  test('holds completely still', async ({ page }) => {
+    /*
+     * The front door used to turn, presenting each of the board's four faces.
+     * That was a demonstration of the central mechanic while there was a
+     * composed stack to demonstrate it on. With the stack gone the turn
+     * presented nothing and did real harm: the room is fixed in world space, so
+     * orbiting the camera dragged the entire background across the screen every
+     * few seconds.
+     *
+     * Not conditional on reduced motion any more, because it is not an
+     * accessibility concession — the camera simply has no reason to move on a
+     * screen with no board on it.
+     */
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     const before = await page.evaluate(() => window.__refraction?.renderer.yaw);
     await page.waitForTimeout(4000);
-    const after = await page.evaluate(() => window.__refraction?.renderer.yaw);
-    expect(after).toBe(before);
+    expect(await page.evaluate(() => window.__refraction?.renderer.yaw)).toBe(before);
+    expect(await page.evaluate(() => window.__refraction?.renderer.isTurning)).toBe(false);
   });
 
   test('a run starts on the face the engine is playing', async ({ page }) => {
@@ -3548,10 +3538,19 @@ test.describe('the title screen', () => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
-    // Let at least one attract turn land, so the camera is genuinely off front.
-    await expect
-      .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
-      .toBe(true);
+
+    /*
+     * The camera is driven off front directly, because the attract turn that
+     * used to do it is gone.
+     *
+     * The invariant it guarded has not gone anywhere: the renderer's yaw is its
+     * own state and outlives any one run, so a player who turns the board, quits
+     * to the menu and starts again would otherwise come up on a board wearing
+     * the palette of a face nobody is playing, with every control pointing the
+     * wrong way. Turning the renderer by hand reaches that state in one step
+     * instead of waiting on a title animation that no longer exists.
+     */
+    await page.evaluate(() => window.__refraction?.renderer.startTurn('right'));
     await expect
       .poll(() => page.evaluate(() => window.__refraction?.renderer.isTurning), { timeout: 12_000 })
       .toBe(false);

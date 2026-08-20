@@ -284,6 +284,8 @@ export class Screens {
   private readonly loadingBar = element('div', 'loading__bar');
   private readonly loadingFill = element('div', 'loading__fill');
   private readonly loadingNote = element('p', 'loading__note', 'LOADING');
+  /** Says why there will be no music, when there will be none. */
+  private readonly musicNote = element('p', 'loading__note loading__note--warn', '');
   private readonly enterButton = button('TAP TO PLAY', 'button button--primary', () =>
     this.handlers.onEnter()
   );
@@ -344,8 +346,9 @@ export class Screens {
     this.loadingBar.setAttribute('aria-valuemax', '100');
     this.loadingBar.setAttribute('aria-label', 'Loading');
 
+    this.musicNote.hidden = true;
     const loading = element('div', 'loading');
-    loading.append(this.loadingBar, this.loadingNote);
+    loading.append(this.loadingBar, this.loadingNote, this.musicNote);
 
     const actions = element('div', 'panel__actions');
     actions.append(this.enterButton);
@@ -370,6 +373,18 @@ export class Screens {
     this.loadingFill.style.width = `${percent}%`;
     this.loadingBar.setAttribute('aria-valuenow', String(percent));
     this.loadingBar.dataset['value'] = String(percent);
+  }
+
+  /**
+   * Report that the music will not play, and why.
+   *
+   * On the gate rather than in a log, because the player is the one who notices
+   * the silence and has no other way to tell it apart from their own volume being
+   * down. Null clears it.
+   */
+  setMusicNote(note: string | null): void {
+    this.musicNote.textContent = note ?? '';
+    this.musicNote.hidden = note === null;
   }
 
   /** Reveal the way in. Idempotent, so it can be driven from state. */
