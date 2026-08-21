@@ -650,8 +650,8 @@ export class GameRenderer {
    *
    * The gate shows no board at all now -- there is no composed arrangement in it,
    * and an empty box drawn in outline behind the wordmark is worse than nothing.
-   * So the frame and the corner posts fade out and the room carries the picture
-   * on its own.
+   * So the frame, the corner posts, and the dark play-column panel fade out and
+   * the room carries the picture on its own.
    *
    * This used to zoom the camera as well, back when there *was* a stack to push
    * past the edges of the frame. With the stack gone the zoom was magnifying an
@@ -924,11 +924,19 @@ export class GameRenderer {
     // different on each of the four faces.
     setGelYaw(yaw);
     setLightingFlatness(this.lights, flatness);
-    setWellFlatness(this.well, flatness, easeInOutCubic(this.backdrop));
+    // Same ease as bloom: well and column leave together when the front door opens.
+    const backdropEase = easeInOutCubic(this.backdrop);
+    setWellFlatness(this.well, flatness, backdropEase);
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.
-    orientColumnPanel(this.columnPanel, yaw, 0.62 * (1 - whiteout * 0.7));
+    // It also leaves with the well — an empty dark band is scenery the menus
+    // never asked for.
+    orientColumnPanel(
+      this.columnPanel,
+      yaw,
+      0.62 * (1 - whiteout * 0.7) * (1 - backdropEase)
+    );
 
     const bands = partitionBoard(game);
     this.lockedXray.update(bands.xray, yaw, separation, whiteout);
