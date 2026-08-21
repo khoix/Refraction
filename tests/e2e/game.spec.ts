@@ -184,7 +184,7 @@ test.describe('boot', () => {
   test('renders the playfield and the HUD', async ({ page }) => {
     await boot(page);
     await expect(page.locator('.hud')).toBeVisible();
-    await expect(page.getByText('SCORE')).toBeVisible();
+    await expect(page.getByText('SCORE', { exact: true })).toBeVisible();
     await expect(page.getByText('LINES')).toBeVisible();
     await expect(page.getByText('STAGE', { exact: true })).toBeVisible();
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
@@ -3773,7 +3773,8 @@ test.describe('the title screen', () => {
 
     await page.evaluate(() => window.__refraction?.play('flatland'));
     await expect.poll(() => page.evaluate(() => window.__refraction?.screen())).toBe('playing');
-    expect(Number(await opacity())).toBe(1);
+    // setHidden runs on the next animation frame, after screen flips.
+    await expect.poll(async () => Number(await opacity())).toBe(1);
   });
   test('a run starts on the face the engine is playing', async ({ page }) => {
     // The bug the attract turn introduced, and the reason a title that moves the
