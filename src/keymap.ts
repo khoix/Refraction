@@ -228,7 +228,7 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
     gesture: 'Drag down',
     label: 'Soft drop',
     group: 'Move',
-    note: 'In the bottom strip',
+    note: 'Locks the lane until you ease up',
     stripNote: true,
   },
   {

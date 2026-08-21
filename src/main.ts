@@ -167,7 +167,7 @@ function boot(root: HTMLElement): void {
   let game = newGame(startingSeed, mode);
 
   /**
-   * Nothing hovering over the front door.
+   * Nothing of a run left on a boardless screen.
    *
    * A new `Game` spawns a piece immediately, and on a screen nobody is playing
    * that piece is a cube hanging in mid-air with a ghost, a landing mark and a
@@ -175,11 +175,13 @@ function boot(root: HTMLElement): void {
    * nobody is making. The composed arrangement used to clear it as a side effect;
    * with that gone this has to say so itself.
    *
-   * Only the piece in hand. Settled cells are left alone, so a player who quits
-   * part-way through still finds their own board behind the menu.
+   * Settled cells go too. The title, mode grid and challenge screens no longer
+   * show a board -- the room carries them -- so a finished or abandoned stack
+   * would sit in the middle of the picture until the next run replaced the game.
    */
   const stillTheTitle = (): void => {
     game.active = null;
+    game.board.clearAll();
   };
   stillTheTitle();
   const renderer = new GameRenderer(canvas, {
@@ -316,6 +318,14 @@ function boot(root: HTMLElement): void {
     onSettings: (patch) => commit(withSettings(save, patch)),
     onOpen: (screen) => {
       if (screen === 'settings') settingsReturn = screens.screen;
+      // Game over → mode grid (and any other boardless destination) must drop
+      // the finished stack the same way MAIN MENU does via `onQuit`.
+      if (
+        screens.screen === 'over' &&
+        (screen === 'modes' || screen === 'title' || screen === 'challenge')
+      ) {
+        stillTheTitle();
+      }
       screens.show(screen);
     },
   });

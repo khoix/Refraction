@@ -42,6 +42,8 @@
  * sample-exact, so there is a small seam at the wrap.
  */
 
+import { touchPrimary } from '../touch/primary';
+
 /** Music sits under the effects; a lock or a clear has to cut through it. */
 const MUSIC_LEVEL = 0.5;
 /** Long enough to read as the room coming up, not as a track being switched on. */
@@ -202,10 +204,29 @@ export class Music {
     const element = this.element;
     if (!element) return;
 
-    if (this.fadeTimer !== undefined) clearInterval(this.fadeTimer);
+    if (this.fadeTimer !== undefined) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = undefined;
+    }
+    const target = this.wanted ? 1 : 0;
+
+    /*
+     * Touch-primary: snap, do not fade.
+     *
+     * Mobile Chrome can freeze `volume` for the life of an element after a
+     * fade that parks near silence and then calls `play()` — the LCD hold path
+     * already avoids that for pause, and bed changes have the same trap. A
+     * phone also does not need the room-coming-up fade; an instant cut is the
+     * honest control.
+     */
+    if (touchPrimary()) {
+      this.fade = target;
+      this.applyVolume();
+      return;
+    }
+
     const span = this.wanted ? FADE_IN_MS : FADE_OUT_MS;
     const step = FADE_STEP_MS / span;
-    const target = this.wanted ? 1 : 0;
 
     this.fadeTimer = setInterval(() => {
       this.fade =

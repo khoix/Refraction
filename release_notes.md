@@ -51,9 +51,9 @@ settings still reach the element without routing it through Web Audio.
 A thin deck sits centred over the well during a run: scrolling artist · title,
 with pause and next. Same achromatic chrome as the rest of the HUD — hue over a
 live board would claim depth. Pause is a hold the frame loop cannot undo; next
-draws another gameplay track. On mobile, pause/resume holds at full level rather
-than fading through silence — a fade-out then `play()` from near-zero volume can
-freeze the element quiet until a new track is loaded.
+draws another gameplay track. On mobile, music never fades — bed changes snap,
+and pause/resume holds at full level. Fading through near-zero volume then
+calling `play()` can freeze the element quiet until a new track is loaded.
 
 ### Tested
 

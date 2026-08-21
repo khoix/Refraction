@@ -28,6 +28,16 @@ describe('occupancy', () => {
     expect(board.isFilled({ x: 2, y: 3, z: 4 })).toBe(false);
   });
 
+  it('clears the whole volume at once', () => {
+    const board = new Board();
+    board.fill({ x: 0, y: 0, z: 0 });
+    board.fill({ x: 7, y: BOARD_HEIGHT - 1, z: 7 });
+    expect(board.countFilled()).toBe(2);
+    board.clearAll();
+    expect(board.countFilled()).toBe(0);
+    expect(board.highestFilledY()).toBe(-1);
+  });
+
   it('ignores writes outside the volume rather than corrupting neighbours', () => {
     const board = new Board();
     board.fill({ x: -1, y: 0, z: 0 });

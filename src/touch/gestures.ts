@@ -63,6 +63,13 @@
  * and put it down: nothing happens until you drag, and then the piece moves from
  * where it already was.
  *
+ * **Soft drop locks the lane.** Once a drag has started stepping the piece down,
+ * sideways travel is ignored until the finger eases back up. A thumb that curves
+ * while swiping straight down must not walk the piece across the board on the way;
+ * the lock is the gesture saying "this is a drop, not a diagonal." Easing up
+ * clears it and re-anchors the sideways origin, so a later slide starts from
+ * where the finger is rather than dumping the drift that built up while locked.
+ *
  * The recogniser emits a **delta** rather than a target column, which is what
  * keeps it pure. A target would have to be computed from the piece's current
  * column, and a piece that locks mid-drag would leave that stale; a delta is
@@ -161,8 +168,11 @@ type Zone = 'strip' | 'field';
 interface Active {
   readonly start: Sample;
   readonly zone: Zone;
-  /** Where sideways travel is measured from: this touch's own landing point. */
-  readonly originX: number;
+  /**
+   * Where sideways travel is measured from: this touch's own landing point, or
+   * the point where a soft-drop lane lock last cleared.
+   */
+  originX: number;
   /**
    * Columns already reported from `originX`, so each sample emits the *change*
    * rather than the running total.
@@ -175,6 +185,12 @@ interface Active {
   reported: number;
   /** Furthest down the pointer has been, for soft-drop stepping. */
   softDropAnchor: number;
+  /**
+   * Once soft drop has started on this gesture, sideways steps are suppressed
+   * until the finger moves up again. Holds through pauses between soft-drop
+   * steps so a slow downward drag cannot leak column changes between them.
+   */
+  laneLocked: boolean;
   /** Set once a gesture has travelled far enough to stop being a tap. */
   moved: boolean;
 }
@@ -193,6 +209,7 @@ export class GestureRecogniser {
       originX: sample.x,
       reported: 0,
       softDropAnchor: sample.y,
+      laneLocked: false,
       moved: false,
     };
     // Deliberately silent. A press is not yet a verb: touching the strip must
@@ -211,21 +228,39 @@ export class GestureRecogniser {
     if (active.zone !== 'strip' || !active.moved) return [];
 
     const intents: TouchIntent[] = [];
-    // Round rather than truncate, so the piece changes column as the finger
-    // passes the halfway point rather than a full cell late.
-    const travelled = Math.round((sample.x - active.originX) / Math.max(1, layout.pxPerColumn));
-    if (travelled !== active.reported) {
-      intents.push({ kind: 'columnStep', steps: travelled - active.reported });
-      active.reported = travelled;
-    }
 
     // Soft drop steps as the pointer travels down, and only downward: dragging
     // back up must not undo them, because gravity is not reversible.
     while (sample.y - active.softDropAnchor >= SOFT_DROP_STEP_PX) {
       active.softDropAnchor += SOFT_DROP_STEP_PX;
       intents.push({ kind: 'softDrop' });
+      active.laneLocked = true;
     }
-    if (sample.y < active.softDropAnchor) active.softDropAnchor = sample.y;
+    if (sample.y < active.softDropAnchor) {
+      active.softDropAnchor = sample.y;
+      if (active.laneLocked) {
+        // Soft drop has stopped. Clear the lane lock and take a fresh sideways
+        // origin here, so drift that happened while locked does not fire as a
+        // burst of column steps on the next sample.
+        active.laneLocked = false;
+        active.originX = sample.x;
+        active.reported = 0;
+      }
+    }
+
+    if (active.laneLocked) {
+      // Absorb sideways drift while locked so unlock (or lift) never owes it.
+      active.originX = sample.x;
+      active.reported = 0;
+    } else {
+      // Round rather than truncate, so the piece changes column as the finger
+      // passes the halfway point rather than a full cell late.
+      const travelled = Math.round((sample.x - active.originX) / Math.max(1, layout.pxPerColumn));
+      if (travelled !== active.reported) {
+        intents.push({ kind: 'columnStep', steps: travelled - active.reported });
+        active.reported = travelled;
+      }
+    }
 
     return intents;
   }

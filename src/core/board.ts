@@ -49,6 +49,11 @@ export class Board {
     this.cells[Board.index(cell.x, cell.y, cell.z)] = 0;
   }
 
+  /** Empty the whole volume. Used when a run leaves for a boardless screen. */
+  clearAll(): void {
+    this.cells.fill(0);
+  }
+
   /**
    * Whether a piece cube may not occupy this cell.
    *

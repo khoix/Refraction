@@ -1153,6 +1153,47 @@ test.describe('persistence', () => {
     await expect(page.locator('.panel--title')).toBeVisible();
   });
 
+  test('leaves no board on the title after game over', async ({ page }) => {
+    /*
+     * The menus carry the room, not a stack. Leaving a finished run used to keep
+     * every settled cell in place, so the board sat in the middle of the title
+     * (and the mode grid) until PLAY started a new game and replaced it.
+     */
+    await page.goto('/?debug=1&mode=flatland&seed=leftover');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
+      game.status = 'gameOver';
+    });
+    await expect(page.locator('.panel--over')).toBeVisible();
+    expect(
+      await page.evaluate(() => window.__refraction?.game.board.filledCells().length ?? -1)
+    ).toBeGreaterThan(0);
+
+    await page.getByRole('button', { name: 'MAIN MENU' }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
+    expect(await page.evaluate(() => window.__refraction?.game.board.filledCells().length)).toBe(0);
+    expect(await page.evaluate(() => window.__refraction?.game.active)).toBeNull();
+  });
+
+  test('leaves no board on the mode grid after game over', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=leftover-modes');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 1, z: 2 });
+      game.status = 'gameOver';
+    });
+    await expect(page.locator('.panel--over')).toBeVisible();
+
+    await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
+    await expect(page.locator('.panel--modes')).toBeVisible();
+    expect(await page.evaluate(() => window.__refraction?.game.board.filledCells().length)).toBe(0);
+  });
+
   test('recovers from a corrupt save rather than refusing to boot', async ({ page }) => {
     const problems: string[] = [];
     page.on('pageerror', (error) => problems.push(error.message));

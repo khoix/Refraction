@@ -175,6 +175,60 @@ describe('the movement strip', () => {
     expect(intents.filter((i) => i.kind === 'softDrop')).toHaveLength(2);
   });
 
+  it('locks the lane once soft drop starts, so a curved thumb cannot walk sideways', () => {
+    // The whole point of the lock: a downward drag that drifts a column or two
+    // must keep dropping in place, not chase the finger across the board.
+    const intents = play([
+      [300, 620, 0],
+      [300, 620 + SOFT_DROP_STEP_PX + 1, 100],
+      [300 - 100, 620 + SOFT_DROP_STEP_PX * 2 + 1, 200],
+      [300 - 150, 620 + SOFT_DROP_STEP_PX * 3 + 1, 300],
+    ]);
+    expect(intents.filter((i) => i.kind === 'softDrop').length).toBeGreaterThan(0);
+    expect(intents.filter((i) => i.kind === 'columnStep')).toHaveLength(0);
+  });
+
+  it('still allows sideways moves before soft drop begins', () => {
+    // Aim first, then drop. The lock must not fire from mere downward travel
+    // that has not yet stepped a soft drop.
+    const intents = play([
+      [300, 620, 0],
+      [200, 620 + TAP_SLOP_PX + 1, 80],
+    ]);
+    expect(intents.some((i) => i.kind === 'softDrop')).toBe(false);
+    expect(
+      intents
+        .filter((i) => i.kind === 'columnStep')
+        .reduce((sum, i) => sum + (i as { steps: number }).steps, 0)
+    ).toBe(-2);
+  });
+
+  it('unlocks the lane when the finger eases up, from where the finger is', () => {
+    // Drift while locked must not dump as a burst of column steps on unlock;
+    // the sideways origin re-anchors at the unlock point.
+    const recogniser = new GestureRecogniser();
+    const out: TouchIntent[] = [];
+    out.push(...recogniser.begin({ x: 300, y: 620, t: 0 }, LAYOUT));
+    out.push(
+      ...recogniser.move({ x: 300, y: 620 + SOFT_DROP_STEP_PX + 1, t: 80 }, LAYOUT)
+    );
+    out.push(
+      ...recogniser.move(
+        { x: 200, y: 620 + SOFT_DROP_STEP_PX * 2 + 1, t: 160 },
+        LAYOUT
+      )
+    );
+    // Ease up: clears the lock and re-anchors at x=200.
+    out.push(
+      ...recogniser.move({ x: 200, y: 620 + SOFT_DROP_STEP_PX, t: 240 }, LAYOUT)
+    );
+    // Slide one column right from the re-anchored origin.
+    out.push(...recogniser.move({ x: 250, y: 620 + SOFT_DROP_STEP_PX, t: 320 }, LAYOUT));
+    expect(out.filter((i) => i.kind === 'columnStep')).toEqual([
+      { kind: 'columnStep', steps: 1 },
+    ]);
+  });
+
   it('drops the piece on a flick', () => {
     const intents = play([
       [300, 620, 0],
