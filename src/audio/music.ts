@@ -52,6 +52,13 @@ const FADE_STEP_MS = 40;
 /** Below this the element is paused rather than played very quietly. */
 const SILENT = 0.001;
 
+export interface LoadOptions {
+  /** Theme loops; a run advances to the next pick when a track ends. */
+  readonly loop?: boolean;
+  /** Fired once when a non-looping track reaches its end. */
+  readonly onEnded?: () => void;
+}
+
 export class Music {
   private element: HTMLAudioElement | null = null;
   /** Whether the player should be hearing music right now. */
@@ -63,6 +70,8 @@ export class Music {
   private fadeTimer: ReturnType<typeof setInterval> | undefined;
   /** Set when the element reports it cannot play the source at all. */
   private failure: string | null = null;
+  private endedHandler: (() => void) | null = null;
+  private currentUrl: string | null = null;
 
   /**
    * Point the element at the track.
@@ -81,11 +90,11 @@ export class Music {
    * the network. Losing that race costs a re-fetch; losing the blob race costs
    * all the music.
    */
-  load(url: string): void {
+  load(url: string, options: LoadOptions = {}): void {
     this.release();
     const element = new window.Audio();
     element.src = url;
-    element.loop = true;
+    element.loop = options.loop ?? true;
     element.preload = 'auto';
     // A source the platform cannot decode fails here rather than silently
     // playing nothing, which is the difference between a bug we can see and one
@@ -94,13 +103,23 @@ export class Music {
       const code = element.error?.code;
       this.failure = `media error ${code ?? 'unknown'}`;
     });
+    if (options.onEnded) {
+      this.endedHandler = options.onEnded;
+      element.addEventListener('ended', options.onEnded);
+    }
     this.element = element;
+    this.currentUrl = url;
     this.apply();
   }
 
   /** True once there is a track loaded. */
   get ready(): boolean {
     return this.element !== null;
+  }
+
+  /** The URL currently pointed at the element, if any. */
+  get url(): string | null {
+    return this.currentUrl;
   }
 
   /**
@@ -136,6 +155,36 @@ export class Music {
    */
   stop(): void {
     this.want(false);
+  }
+
+  /**
+   * LCD transport pause — freeze in place at full level.
+   *
+   * Must not go through the fade. On mobile Chrome, a fade-out that parks the
+   * element at near-zero volume and a fade-in that calls `play()` from there
+   * can freeze `volume` at that quiet value for the life of the element; Next
+   * appeared to "fix" it only because it built a new element. Holding at
+   * `fade === 1` and pausing outright avoids the trap.
+   */
+  hold(): void {
+    this.wanted = false;
+    if (this.fadeTimer !== undefined) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = undefined;
+    }
+    this.fade = 1;
+    this.element?.pause();
+  }
+
+  /** Undo a transport hold. Restarts at full level on the same element. */
+  unhold(): void {
+    this.wanted = true;
+    if (this.fadeTimer !== undefined) {
+      clearInterval(this.fadeTimer);
+      this.fadeTimer = undefined;
+    }
+    this.fade = 1;
+    this.applyVolume();
   }
 
   /**
@@ -204,10 +253,15 @@ export class Music {
       clearInterval(this.fadeTimer);
       this.fadeTimer = undefined;
     }
+    if (this.element && this.endedHandler) {
+      this.element.removeEventListener('ended', this.endedHandler);
+    }
+    this.endedHandler = null;
     this.fade = 0;
     this.failure = null;
     this.element?.pause();
     this.element = null;
+    this.currentUrl = null;
   }
 
   dispose(): void {

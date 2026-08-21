@@ -8,7 +8,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { THEME, playableSource } from '../../src/audio/tracks';
+import { GAMEPLAY, THEME, TRACKS, playableSource } from '../../src/audio/tracks';
 import type { Track } from '../../src/audio/tracks';
 
 const WEBM = 'audio/webm; codecs="opus"';
@@ -17,6 +17,7 @@ const MP4 = 'audio/mp4; codecs="mp4a.40.2"';
 const track: Track = {
   id: 'test',
   title: 'Test',
+  artist: 'Refraction',
   sources: [
     { url: '/a.webm', mime: WEBM },
     { url: '/a.m4a', mime: MP4 },
@@ -62,13 +63,28 @@ describe('playableSource', () => {
     expect(source?.mime).toBe(WEBM);
   });
 
-  it('ships a theme whose every source declares its codec', () => {
+  it('ships tracks whose every source declares its codec', () => {
     // `canPlayType` on a bare container answers 'maybe' for almost anything, so
     // a mime without a codec parameter silently disables the whole mechanism.
-    expect(THEME.sources.length).toBeGreaterThan(0);
-    for (const source of THEME.sources) {
-      expect(source.mime).toMatch(/codecs=/);
-      expect(source.url).toBeTruthy();
+    expect(TRACKS.length).toBe(GAMEPLAY.length + 1);
+    expect(TRACKS[0]).toBe(THEME);
+    for (const entry of TRACKS) {
+      expect(entry.sources.length).toBeGreaterThan(0);
+      for (const source of entry.sources) {
+        expect(source.mime).toMatch(/codecs=/);
+        expect(source.url).toBeTruthy();
+      }
+    }
+  });
+
+  it('keeps the theme out of the gameplay pool', () => {
+    expect(GAMEPLAY.some((entry) => entry.id === THEME.id)).toBe(false);
+  });
+
+  it('credits every catalogue track', () => {
+    for (const entry of TRACKS) {
+      expect(entry.artist.length).toBeGreaterThan(0);
+      expect(entry.title.length).toBeGreaterThan(0);
     }
   });
 });

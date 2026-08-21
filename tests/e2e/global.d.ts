@@ -18,6 +18,7 @@ declare global {
         playing: boolean;
         error: string | null;
         source: string | null;
+        track: string | null;
       };
       bindings: { action: string; label: string; keys: string[] }[];
     };

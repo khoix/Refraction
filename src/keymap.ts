@@ -279,6 +279,12 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
     note: 'When it is full',
     needs: 'spectralCollapse',
   },
+  {
+    gesture: 'Pause button',
+    label: 'Pause',
+    group: 'Game',
+    note: 'Bottom right',
+  },
 ];
 
 /**

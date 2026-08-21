@@ -11,6 +11,14 @@ import type { ToneSpec } from './tones';
 import { clearTones, gameOverTone, lockTone, prismChord, turnSweep } from './tones';
 import { Music } from './music';
 
+/** A playable catalogue entry handed over after preload. */
+export interface MusicTrack {
+  readonly id: string;
+  readonly url: string;
+}
+
+type MusicBed = 'theme' | 'gameplay';
+
 export class Audio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
@@ -24,12 +32,27 @@ export class Audio {
    * pushing the level at it from `applyGain` instead.
    */
   private readonly music = new Music();
+  private theme: MusicTrack | null = null;
+  private gameplay: MusicTrack[] = [];
+  private bed: MusicBed | null = null;
+  private currentId: string | null = null;
+  /**
+   * Player held the bed via the LCD. The frame loop still asks for gameplay
+   * every tick; without this flag that ask would un-pause immediately.
+   */
+  private held = false;
   private enabled = true;
   /**
    * Kept separately from `enabled` so muting never destroys the level the
    * player set. Unmuting returns to exactly where they left it.
    */
   private level = 0.7;
+  /** Injectable so a suite can pin the shuffle without stubbing Math. */
+  private readonly pick: (count: number) => number;
+
+  constructor(options: { pick?: (count: number) => number } = {}) {
+    this.pick = options.pick ?? ((count) => Math.floor(Math.random() * count));
+  }
 
   /**
    * Create the context. Must be called from inside a user gesture, or browsers
@@ -68,18 +91,108 @@ export class Audio {
 
   // -------------------------------------------------------------------- music
 
-  /** Hand over the track's URL. Starts playing if music was already asked for. */
-  loadMusic(url: string): void {
-    this.music.load(url);
+  /**
+   * Hand over whatever the preloader managed to fetch.
+   *
+   * Theme is prepared immediately so the front door has something to start on
+   * the first gesture. Gameplay URLs stay as a pool until a run asks for one.
+   */
+  setMusicCatalog(theme: MusicTrack | null, gameplay: readonly MusicTrack[]): void {
+    this.theme = theme;
+    this.gameplay = [...gameplay];
+    this.bed = null;
+    this.currentId = null;
+    this.held = false;
+    if (theme) {
+      this.music.load(theme.url, { loop: true });
+      this.bed = 'theme';
+      this.currentId = theme.id;
+    }
   }
 
-  /** Idempotent, so callers may drive it from state rather than from an event. */
-  playMusic(): void {
+  /**
+   * Loop the menu theme.
+   *
+   * Idempotent: the frame loop calls this every tick while a theme screen is up,
+   * so a second call must not restart the track.
+   */
+  playTheme(): void {
+    if (!this.theme) return;
+    this.held = false;
+    if (this.bed === 'theme' && this.music.ready) {
+      this.music.play();
+      return;
+    }
+    this.bed = 'theme';
+    this.currentId = this.theme.id;
+    this.music.load(this.theme.url, { loop: true });
     this.music.play();
   }
 
+  /**
+   * Play a random non-theme track, then another when it ends, and so on.
+   *
+   * Stays on the current pick across frames; only a bed change or an `ended`
+   * event advances the pool. A player hold from the LCD is honoured here so the
+   * frame loop cannot un-pause behind their back.
+   */
+  playGameplay(): void {
+    if (this.gameplay.length === 0) return;
+    if (this.held) return;
+    if (this.bed === 'gameplay' && this.music.ready) {
+      this.music.play();
+      return;
+    }
+    this.bed = 'gameplay';
+    this.startGameplayTrack();
+  }
+
+  /** Fade out. The title uses this; a later screen will pick a bed again. */
   stopMusic(): void {
+    this.held = false;
+    this.bed = null;
     this.music.stop();
+  }
+
+  /** LCD pause — keeps the bed so resume continues the same track. */
+  pauseMusic(): void {
+    this.held = true;
+    this.music.hold();
+  }
+
+  /** Undo an LCD pause. */
+  resumeMusic(): void {
+    if (!this.held) return;
+    this.held = false;
+    if (this.bed === 'gameplay' || this.bed === 'theme') this.music.unhold();
+  }
+
+  /** Toggle an LCD pause. Returns whether the bed should read as playing. */
+  toggleMusicPause(): boolean {
+    if (this.held || !this.music.playing) {
+      this.resumeMusic();
+      return true;
+    }
+    this.pauseMusic();
+    return false;
+  }
+
+  /** Skip to another gameplay track. Starts playing even if the bed was held. */
+  nextGameplayTrack(): void {
+    if (this.gameplay.length === 0) return;
+    this.held = false;
+    this.bed = 'gameplay';
+    this.startGameplayTrack();
+  }
+
+  /** Which catalogue entry is loaded, if any. */
+  get musicTrackId(): string | null {
+    return this.currentId;
+  }
+
+  /** True while the LCD (or equivalent) is holding the bed paused. */
+  get musicHeld(): boolean {
+    return this.held;
   }
 
   get musicReady(): boolean {
@@ -93,6 +206,28 @@ export class Audio {
   /** What the platform said when it refused the track, if it did. */
   get musicError(): string | null {
     return this.music.error;
+  }
+
+  private startGameplayTrack(): void {
+    const next = this.chooseGameplay();
+    if (!next) return;
+    this.currentId = next.id;
+    this.music.load(next.url, {
+      loop: false,
+      onEnded: () => {
+        if (this.bed === 'gameplay') this.startGameplayTrack();
+      },
+    });
+    this.music.play();
+  }
+
+  private chooseGameplay(): MusicTrack | null {
+    if (this.gameplay.length === 0) return null;
+    const pool =
+      this.gameplay.length > 1 && this.currentId
+        ? this.gameplay.filter((track) => track.id !== this.currentId)
+        : this.gameplay;
+    return pool[this.pick(pool.length)] ?? null;
   }
 
   get muted(): boolean {

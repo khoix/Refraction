@@ -312,8 +312,13 @@ export class Screens {
   private readonly controls = element('div', 'keymap__pair');
   private mode: ModeConfig = modeById(DEFAULT_MODE_ID);
   private readonly overBest = element('p', 'panel__best', '');
-  private readonly statsLine = element('p', 'panel__stats', '');
-  private readonly sessionLog = element('ol', 'session');
+  private readonly statsLine = element('p', 'scores__stats', '');
+  private readonly sessionLog = element('ol', 'scores__log');
+  /** Title-screen ledger: collapsed until the player asks to see it. */
+  private readonly scores = element('div', 'scores');
+  private readonly scoresToggle = element('button', 'scores__toggle');
+  private readonly scoresPanel = element('div', 'scores__panel');
+  private scoresOpen = false;
   private readonly challengeInput = element('input');
   private readonly challengeError = element('p', 'panel__hint', '');
   private readonly dailyLine = element('p', 'panel__detail', '');
@@ -446,14 +451,51 @@ export class Screens {
       button('SETTINGS', 'button', () => this.handlers.onOpen('settings'))
     );
 
-    return this.panel(
-      'title',
-      title,
-      actions,
-      this.sessionLog,
-      this.statsLine,
-      this.storageWarning
-    );
+    return this.panel('title', title, actions, this.buildScores(), this.storageWarning);
+  }
+
+  /**
+   * Recent runs and lifetime totals, behind a fold.
+   *
+   * The title already has three destinations. Leaving the ledger open would push
+   * the wordmark and the play row up with a list nobody asked to read yet. The
+   * fold keeps the first look as mark + actions; a click opens the sitting.
+   *
+   * The body is taken out of flow when it opens, so the centred title block does
+   * not re-balance upward -- the ledger only ever grows down from the toggle.
+   */
+  private buildScores(): HTMLElement {
+    this.scoresToggle.type = 'button';
+    this.scoresToggle.setAttribute('aria-expanded', 'false');
+    this.scoresToggle.setAttribute('aria-controls', 'scores-panel');
+    const caret = element('span', 'scores__caret', '▾');
+    caret.setAttribute('aria-hidden', 'true');
+    const lead = element('span', 'scores__rule', '');
+    lead.setAttribute('aria-hidden', 'true');
+    const trail = element('span', 'scores__rule', '');
+    trail.setAttribute('aria-hidden', 'true');
+    this.scoresToggle.append(lead, element('span', 'scores__label', 'SCORES'), caret, trail);
+    this.scoresToggle.addEventListener('click', () => this.setScoresOpen(!this.scoresOpen));
+
+    this.scoresPanel.id = 'scores-panel';
+    this.scoresPanel.setAttribute('aria-hidden', 'true');
+    this.scoresPanel.setAttribute('inert', '');
+    const clip = element('div', 'scores__clip');
+    clip.append(this.statsLine, this.sessionLog);
+    this.scoresPanel.append(clip);
+
+    this.scores.append(this.scoresToggle, this.scoresPanel);
+    this.scores.hidden = true;
+    return this.scores;
+  }
+
+  private setScoresOpen(open: boolean): void {
+    this.scoresOpen = open;
+    this.scores.classList.toggle('scores--open', open);
+    this.scoresToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    this.scoresPanel.setAttribute('aria-hidden', open ? 'false' : 'true');
+    if (open) this.scoresPanel.removeAttribute('inert');
+    else this.scoresPanel.setAttribute('inert', '');
   }
 
   private buildModes(): HTMLElement {
@@ -486,13 +528,14 @@ export class Screens {
     actions.append(
       button('RESUME', 'button button--primary', () => this.handlers.onResume()),
       button('SETTINGS', 'button', () => this.handlers.onOpen('settings')),
-      button('QUIT', 'button', () => this.handlers.onQuit())
+      button('MAIN MENU', 'button', () => this.handlers.onQuit())
     );
     return this.panel(
       'paused',
       element('h2', 'panel__title', 'PAUSED'),
       actions,
-      element('p', 'panel__hint', 'Esc to resume')
+      element('p', 'panel__hint panel__hint--keys', 'Esc to resume'),
+      element('p', 'panel__hint panel__hint--touch', 'Tap Resume to continue')
     );
   }
 
@@ -500,7 +543,8 @@ export class Screens {
     const actions = element('div', 'panel__actions');
     actions.append(
       button('PLAY AGAIN', 'button button--primary', () => this.handlers.onRestart()),
-      button('CHOOSE MODE', 'button', () => this.handlers.onOpen('modes'))
+      button('CHOOSE MODE', 'button', () => this.handlers.onOpen('modes')),
+      button('MAIN MENU', 'button', () => this.handlers.onQuit())
     );
     return this.panel(
       'over',
@@ -877,11 +921,13 @@ export class Screens {
       ...this.save.session.slice(0, 5).map((run) => {
         const name = MODES.find((mode) => mode.id === run.mode)?.name ?? run.mode;
         const label = run.challenge ? `${name} · ${run.challenge}` : name;
-        return element(
-          'li',
-          'session__row',
-          `${label} — ${run.score.toLocaleString('en-US')} · ${run.lines} lines`
+        const row = element('li', 'scores__row');
+        row.append(
+          element('span', 'scores__mode', label),
+          element('span', 'scores__score', run.score.toLocaleString('en-US')),
+          element('span', 'scores__meta', `${run.lines} lines · stage ${run.stage}`)
         );
+        return row;
       })
     );
     this.sessionLog.hidden = this.save.session.length === 0;
@@ -893,6 +939,13 @@ export class Screens {
       stats.runs > 0
         ? `${stats.runs} runs · ${stats.lines.toLocaleString('en-US')} lines · ${stats.turns.toLocaleString('en-US')} turns`
         : '';
+    this.statsLine.hidden = stats.runs === 0;
+
+    // No ledger until there is something to open. Closing when emptied keeps a
+    // stale open panel from lingering after a cleared save.
+    const hasScores = stats.runs > 0 || this.save.session.length > 0;
+    this.scores.hidden = !hasScores;
+    if (!hasScores) this.setScoresOpen(false);
   }
 
   private modeNote(mode: ModeConfig, unlocked: boolean): string {

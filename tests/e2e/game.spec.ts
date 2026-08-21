@@ -850,21 +850,48 @@ test.describe('the front door', () => {
     await expect(page.locator('.loading__bar')).toHaveAttribute('aria-valuenow', '100');
   });
 
-  test('starts the theme on the menu and stops it for a run', async ({ page }) => {
+  test('keeps the boot gate silent, then themes the menu and a run', async ({ page }) => {
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    await enter(page);
+    // Boot is up before any gesture; nothing should be trying to sound yet.
+    await expect(page.locator('.panel--boot')).toBeVisible();
+    expect(await page.evaluate(() => window.__refraction?.music().playing)).toBe(false);
 
-    // The tap is the gesture the browser requires before any of this can sound.
+    await enter(page);
+    // Main menu (`title`) starts the theme on the same gesture that opens it.
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(true);
+    expect(await page.evaluate(() => window.__refraction?.music().track)).toBe('theme');
+    await expect(page.locator('.lcd')).toBeHidden();
+
+    await page.evaluate(() => window.__refraction?.play('ascent'));
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(true);
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().track), { timeout: 5000 })
+      .not.toBe('theme');
+    await expect(page.locator('.lcd')).toBeVisible();
+    await expect(page.locator('.lcd__text').first()).toContainText(/refraction/i);
+
+    await page.getByRole('button', { name: 'Pause music' }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
+      .toBe(false);
+
+    await page.getByRole('button', { name: 'Next track' }).click();
     await expect
       .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
       .toBe(true);
 
-    await page.evaluate(() => window.__refraction?.play('ascent'));
-    // Stopping is a fade, so this is not immediate by design.
+    await page.keyboard.press('Escape');
+    await page.getByRole('button', { name: 'MAIN MENU' }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
     await expect
-      .poll(() => page.evaluate(() => window.__refraction?.music().playing), { timeout: 5000 })
-      .toBe(false);
+      .poll(() => page.evaluate(() => window.__refraction?.music().track), { timeout: 5000 })
+      .toBe('theme');
+    await expect(page.locator('.lcd')).toBeHidden();
   });
 
   test('a deep link goes round the door rather than through it', async ({ page }) => {
@@ -1113,7 +1140,17 @@ test.describe('persistence', () => {
     await endRun(page);
     await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
     await page.getByRole('button', { name: 'BACK' }).click();
-    await expect(page.locator('.session__row').first()).toContainText('Flatland');
+    await page.getByRole('button', { name: 'SCORES' }).click();
+    await expect(page.locator('.scores__row').first()).toContainText('Flatland');
+  });
+
+  test('game over can return to the title', async ({ page }) => {
+    await page.goto('/?debug=1&mode=flatland&seed=home');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await endRun(page);
+    await page.getByRole('button', { name: 'MAIN MENU' }).click();
+    await expect(page.locator('.panel--over')).toBeHidden();
+    await expect(page.locator('.panel--title')).toBeVisible();
   });
 
   test('recovers from a corrupt save rather than refusing to boot', async ({ page }) => {
@@ -2840,6 +2877,72 @@ test.describe('touch controls', () => {
     const before = await column(page);
     await gesture(page, [at.strip(4), at.strip(0)]);
     expect(await column(page)).toBe(before);
+  });
+});
+
+/**
+ * Pause on a phone.
+ *
+ * Esc is no use without a keyboard, so a bottom-right control opens the same
+ * panel. Resume and Main Menu are the ways back out; the button itself must not
+ * also rotate the piece.
+ */
+test.describe('touch-primary pause', () => {
+  async function phonePage(browser: Browser): Promise<{
+    context: BrowserContext;
+    page: Page;
+  }> {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+      ],
+    });
+    return { context, page };
+  }
+
+  test('opens resume and main menu from the bottom-right control', async ({ browser }) => {
+    const { context, page } = await phonePage(browser);
+    await page.goto('/?debug=1&mode=ascent&seed=touchpause');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+
+    // Exact: the LCD's "Pause music" also contains "Pause".
+    const pause = page.getByRole('button', { name: 'Pause', exact: true });
+    await expect(pause).toBeVisible();
+
+    const shape = (): Promise<string> =>
+      page.evaluate(() => JSON.stringify(window.__refraction?.game.active?.offsets ?? []));
+    const before = await shape();
+    await pause.click();
+    await expect(page.locator('.panel--paused')).toBeVisible();
+    expect(await page.evaluate(() => window.__refraction?.game.status)).toBe('paused');
+    // A tap on the control must not also count as a field rotate.
+    expect(await shape()).toBe(before);
+
+    await page.getByRole('button', { name: 'RESUME' }).click();
+    await expect(page.locator('.panel--paused')).toBeHidden();
+    expect(await page.evaluate(() => window.__refraction?.game.status)).not.toBe('paused');
+    await expect(pause).toBeVisible();
+
+    await pause.click();
+    await page.getByRole('button', { name: 'MAIN MENU' }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await expect(pause).toBeHidden();
+
+    await context.close();
+  });
+
+  test('stays off a keyboard device', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=deskpause');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await expect(page.getByRole('button', { name: 'Pause', exact: true })).toBeHidden();
   });
 });
 

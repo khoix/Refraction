@@ -50,13 +50,18 @@ src/
     game-renderer.ts    per-frame update, the turn camera, the column panel,
                         selective bloom
   ui/hud.ts             HUD chrome, Shift bar parked under the well
+  ui/screens.ts         boot / title / modes / pause / over panels
   input.ts              keyboard, DAS/ARR
+  assets/
+    preload.ts          streaming fetch with weighted progress (no DOM)
   audio/
     tones.ts            what to play, as pure data -- tested
-    audio.ts            WebAudio plumbing, deliberately thin
+    tracks.ts           music catalogue; playable encoding chosen per device
+    music.ts            streamed <audio> bed (not through Web Audio)
+    audio.ts            WebAudio effects + music bed selection
   main.ts               composition root, fixed-timestep loop
 tests/
-  unit/                 Vitest, against src/core
+  unit/                 Vitest, against src/core (and preload, tracks)
   e2e/                  Playwright, against the built bundle
 docs/
 ```

@@ -14,7 +14,7 @@ import { GameRenderer } from '@render/game-renderer';
 import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
-import { THEME, playableSource } from './audio/tracks';
+import { GAMEPLAY, THEME, TRACKS, playableSource, trackById } from './audio/tracks';
 import { preload } from './assets/preload';
 import { Screens } from '@ui/screens';
 import type { ScreenName } from '@ui/screens';
@@ -41,14 +41,18 @@ function randomSeed(): string {
 }
 
 /**
- * The screens the menu theme belongs to.
+ * Screens that loop the menu theme.
  *
- * Everything a player passes through before a run, and nothing that sits over
- * one. `settings` is deliberately absent and resolved separately, because it is
- * the one panel reachable from both sides -- opened from the title it is still
- * the menu, opened from a pause it is not.
+ * The boot gate is silent — loading and the first tap are not a concert. Once
+ * the player is on the main menu (`title`) or choosing a mode/challenge, the
+ * theme runs. `settings` is resolved separately: opened from a theme screen it
+ * is still the menu; opened from a run it is not.
  */
-const MENU_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>(['title', 'modes', 'challenge']);
+const THEME_SCREENS: ReadonlySet<ScreenName> = new Set<ScreenName>([
+  'title',
+  'modes',
+  'challenge',
+]);
 
 /**
  * `?debug=1` publishes the live game on `window`, and `?seed=` pins the run.
@@ -78,6 +82,8 @@ interface DebugHandle {
     playing: boolean;
     error: string | null;
     source: string | null;
+    /** Catalogue id of the loaded track (`theme`, `block-drift`, …). */
+    track: string | null;
   };
   /**
    * The binding table, flattened for assertions. The end-to-end suite checks the
@@ -285,12 +291,13 @@ function boot(root: HTMLElement): void {
      * theme is started here as well as from the frame loop -- the loop would
      * pick it up a frame later anyway, but by then the gesture has ended, and
      * starting media outside one relies on the browser's stickier "has
-     * interacted" rule rather than on the gesture itself.
+     * interacted" rule rather than on the gesture itself. The boot gate stayed
+     * silent; this tap is what lands on the main menu.
      */
     onEnter: () => {
       audio.resume();
       screens.show('title');
-      audio.playMusic();
+      audio.playTheme();
     },
     onChallenge: (entry) => startRun(entry.mode.id, entry),
     onResume: (): void => {
@@ -324,9 +331,9 @@ function boot(root: HTMLElement): void {
   // A deep link goes round the front door rather than through it. The boot gate
   // is there to fill a wait and collect a gesture; a link that names a run is a
   // player who has already chosen, and holding a shared challenge code behind a
-  // two-megabyte download of music it will not play would be a worse front door
-  // than none. The preload still runs -- see below -- so the theme is there if
-  // they quit back to the menu.
+  // multi-megabyte download of music it will not play would be a worse front door
+  // than none. The preload still runs -- see below -- so the catalogue is there
+  // if they quit back to the menu.
   const linkedChallenge = parseChallenge(params.get('challenge'));
   const requested = MODES.find((entry) => entry.id === params.get('mode'));
   if (linkedChallenge && isUnlocked(linkedChallenge.mode, save.stats.bestStage)) {
@@ -336,7 +343,7 @@ function boot(root: HTMLElement): void {
   }
 
   /*
-   * Pull the theme down while the player is looking at the door.
+   * Pull every track down while the player is looking at the door.
    *
    * Deliberately not awaited and deliberately unable to reject: `preload`
    * resolves a failed asset rather than throwing, so the worst case is a game
@@ -344,21 +351,32 @@ function boot(root: HTMLElement): void {
    * shut by a missing file would be a strictly worse product than no front door
    * at all.
    *
-   * The encoding is chosen before the fetch, not after. Downloading two
-   * megabytes and then discovering the platform cannot decode them is the same
-   * silence as downloading nothing, only slower -- and a device that can play
-   * none of the encodings should spend no bandwidth at all.
+   * The encoding is chosen before the fetch, not after. Downloading megabytes
+   * and then discovering the platform cannot decode them is the same silence as
+   * downloading nothing, only slower -- and a device that can play none of the
+   * encodings should spend no bandwidth at all.
    */
-  const themeSource = playableSource(THEME);
-  const wanted = themeSource ? [{ id: THEME.id, url: themeSource.url, bytes: THEME.bytes }] : [];
+  const wanted = TRACKS.flatMap((track) => {
+    const source = playableSource(track);
+    return source ? [{ id: track.id, url: source.url, bytes: track.bytes }] : [];
+  });
   void preload(wanted, {
     onProgress: (progress) => screens.setLoading(progress.fraction),
   }).then((loaded) => {
-    const theme = loaded.find((asset) => asset.id === THEME.id);
+    const byId = new Map(loaded.map((asset) => [asset.id, asset]));
+    const themeSource = playableSource(THEME);
+    const themeAsset = byId.get(THEME.id);
+    const theme =
+      themeAsset?.blob && themeSource ? { id: THEME.id, url: themeSource.url } : null;
     // The fetched bytes are not handed on: the element is pointed at the same
     // URL, which the fetch has just warmed in the HTTP cache. See `music.ts` for
     // why a blob was the wrong thing to give it.
-    if (theme?.blob && themeSource) audio.loadMusic(themeSource.url);
+    const gameplay = GAMEPLAY.flatMap((track) => {
+      const source = playableSource(track);
+      const asset = byId.get(track.id);
+      return source && asset?.blob ? [{ id: track.id, url: source.url }] : [];
+    });
+    audio.setMusicCatalog(theme, gameplay);
     screens.setLoading(1);
     screens.setReady(true);
     /*
@@ -370,8 +388,8 @@ function boot(root: HTMLElement): void {
      * gets no music deserves to know it is the game and not their volume, and it
      * turns an invisible failure into a reportable one.
      */
-    if (!themeSource) screens.setMusicNote('MUSIC UNAVAILABLE · FORMAT');
-    else if (!theme?.blob) screens.setMusicNote('MUSIC UNAVAILABLE · DOWNLOAD');
+    if (!playableSource(THEME)) screens.setMusicNote('MUSIC UNAVAILABLE · FORMAT');
+    else if (!theme) screens.setMusicNote('MUSIC UNAVAILABLE · DOWNLOAD');
   });
 
   const playing = (): boolean => screens.screen === 'playing';
@@ -412,6 +430,7 @@ function boot(root: HTMLElement): void {
         // Which encoding this browser said it could play, so a device that is
         // silent can be asked *why* rather than guessed at.
         source: playableSource(THEME)?.mime ?? null,
+        track: audio.musicTrackId,
       }),
       bindings: BINDINGS.map((binding) => ({
         action: binding.action,
@@ -478,6 +497,23 @@ function boot(root: HTMLElement): void {
   hud.onCollapseTap(() => {
     audio.resume();
     game.triggerCollapse();
+  });
+
+  hud.onMusicDeck({
+    onToggle: () => {
+      audio.toggleMusicPause();
+    },
+    onNext: () => {
+      audio.nextGameplayTrack();
+    },
+  });
+
+  // Touch-primary pause. Same open path as Esc; the panel owns resume / main menu.
+  hud.onPause(() => {
+    if (screens.screen !== 'playing') return;
+    game.pause();
+    screens.show('paused');
+    touch.cancel();
   });
 
   window.addEventListener('resize', () => {
@@ -571,19 +607,19 @@ function boot(root: HTMLElement): void {
     }
 
     /*
-     * The theme follows the screen, not the transition into it.
+     * The bed follows the screen, not the transition into it.
      *
      * Driven from state here rather than from the handlers that change screens,
      * for the reason the game-over panel above is: there are eight ways to reach
      * the mode grid and one of them will eventually forget to make the call. A
-     * screen the player is *on* cannot be missed. `Music` is idempotent at the
-     * graph level precisely so this can run every frame.
+     * screen the player is *on* cannot be missed. Theme and gameplay beds are
+     * both idempotent at the graph level precisely so this can run every frame.
      */
     const screen = screens.screen;
-    const menu =
-      screen === 'settings' ? MENU_SCREENS.has(settingsReturn) : MENU_SCREENS.has(screen);
-    if (menu) audio.playMusic();
-    else audio.stopMusic();
+    const bedFor = screen === 'settings' ? settingsReturn : screen;
+    if (THEME_SCREENS.has(bedFor)) audio.playTheme();
+    else if (bedFor === 'boot') audio.stopMusic();
+    else audio.playGameplay();
 
     /*
      * The title no longer turns.
@@ -615,13 +651,28 @@ function boot(root: HTMLElement): void {
     // feel like one screen settling instead of two screens swapping.
     // The well goes with the board: on every screen where nobody is playing,
     // the frame and posts are an empty box drawn around nothing.
-    renderer.setBackdrop(menu || screen === 'boot');
+    const menu =
+      bedFor === 'title' || bedFor === 'modes' || bedFor === 'challenge' || bedFor === 'boot';
+    renderer.setBackdrop(menu);
     // The room shows the ramp while nobody is reading a board, and goes neutral
     // for a run. §2.2, and the reason `setAmbientChroma` exists at all.
-    renderer.setAmbientChroma(menu || screen === 'boot');
+    renderer.setAmbientChroma(menu);
 
     // The title screen is the board, not the HUD. Nor is the gate in front of it.
     hud.setHidden(screen === 'title' || screen === 'boot');
+    // Pause lives on the phone; Esc covers everything else.
+    hud.setPauseVisible(touchPrimary() && screen === 'playing');
+    hud.setStripReserve(touchPrimary() && !game.rollOnly);
+    const nowPlaying = trackById(audio.musicTrackId ?? '');
+    hud.setMusicDeck(
+      screen === 'playing' && nowPlaying
+        ? {
+            artist: nowPlaying.artist,
+            title: nowPlaying.title,
+            playing: !audio.musicHeld && audio.musicPlaying,
+          }
+        : null
+    );
     hud.setHeat(game.spectralAllowed ? game.heat : null, game.spectralReady);
     hud.update(game, elapsed);
     hud.layoutWell(

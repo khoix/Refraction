@@ -1543,21 +1543,26 @@ names the cause without devtools.
 
 ---
 
-### M18a — The rest of the music _(next)_
+### M18a — The rest of the music ✅
 
-Five more tracks sit in `src/audio/tracks/` unreferenced, and the interesting
-question is not how to play one but when. The room already carries a tension
-signal that drives the lattice glow; music that ignores it would be the one part
-of the presentation not answering to the board. Candidates, in order of
-appetite:
+Five more tracks sat in `src/audio/tracks/` unreferenced. They now form a
+**gameplay bed**: shuffled at random when a run is on screen, advancing when a
+track ends. Theme loops on the main menu (and mode / challenge); the boot gate
+stays silent. The front door preloads the whole catalogue; theme is prepared
+immediately, gameplay waits as a pool.
 
-- A track per mode, chosen from the mode table like every other mode property.
-- Layered stems crossfaded against stack height, which is what the tension
-  signal already computes.
-- One track, shuffled per run, and nothing clever.
+Of the three candidates — per-mode, tension-layered stems, or a shuffled pool —
+this ships the third. Tension still drives the lattice alone; coupling a bed to
+it is a later design claim, not a precondition for having music under a run.
 
-Whichever it is, it wants the same preload treatment, and the bar already
-supports several assets — that is what the weighting is for.
+---
+
+### M22f — A way home, and scores behind a fold ✅ _(play note)_
+
+Game over gains **Main Menu** (same quit path as pause). The title's session
+log and lifetime totals move behind a collapsed **Scores** fold — out of flow
+when open, so the wordmark does not jump — and stay hidden until there is
+something to show.
 
 ---
 

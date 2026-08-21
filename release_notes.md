@@ -7,6 +7,107 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M18a — The rest of the music
+
+**Branch:** `main`
+
+Five tracks sat in `src/audio/tracks/` unreferenced. They play now.
+
+### What was chosen, and what was not
+
+`docs/PLAN.md` listed three appetites: a track per mode, stems crossfaded
+against stack height, or a shuffled pool. This ships the third. The room's
+tension signal still drives the lattice alone; tying a bed to it is a design
+claim that has not been written, and shipping silence under a run was the worse
+interim.
+
+### Two beds
+
+- **Theme** — Blockfall Skyline, looping on the main menu, mode grid, and
+  challenge panel. The boot gate stays silent until the first tap.
+- **Gameplay** — the other five, drawn at random when a run is on screen. A
+  track does not loop; when it ends the next pick starts, with the current id
+  excluded from the pool so a two-track shuffle cannot stutter on itself.
+
+The frame loop still drives the bed from screen state rather than from the
+handlers that change screens — silence on the gate, theme on the menu set,
+gameplay everywhere else — so a path that forgets to call play cannot leave the
+wrong music up. `playTheme`, `playGameplay`, and `stopMusic` are idempotent
+across frames.
+
+### Preload is the catalogue
+
+The front door's progress bar already weighted multiple assets; it now fetches
+every playable source in `TRACKS`. Theme is prepared as soon as the download
+lands so the first gesture can start it; gameplay URLs wait as a pool until a
+run asks. A track the platform cannot decode is still skipped before the fetch,
+so a device with no WebM and no alternate spends no bytes on a silence.
+
+`Music.load` takes loop and an `ended` hook. Mute and volume are unchanged:
+settings still reach the element without routing it through Web Audio.
+
+### In-run LCD
+
+A thin deck sits centred over the well during a run: scrolling artist · title,
+with pause and next. Same achromatic chrome as the rest of the HUD — hue over a
+live board would claim depth. Pause is a hold the frame loop cannot undo; next
+draws another gameplay track. On mobile, pause/resume holds at full level rather
+than fading through silence — a fade-out then `play()` from near-zero volume can
+freeze the element quiet until a new track is loaded.
+
+### Tested
+
+Unit: every catalogue entry declares a codec on each source, credits an artist,
+and the theme is kept out of the gameplay pool. E2e: the boot gate stays silent,
+the main menu starts the theme, a run shows the LCD and plays a non-theme track,
+pause/next work from the deck, and quitting home restores the theme.
+
+### Worth watching in play
+
+Shuffle without tension coupling is deliberately simple. Listen for whether a
+bed that ignores the board reads as atmosphere or as wallpaper, and whether
+advancing on `ended` (rather than on stage or mode) is the right grain.
+
+---
+
+## M22f — A way home, and scores behind a fold
+
+**Branch:** `main`
+
+Two title-adjacent play notes.
+
+### Game over can leave
+
+The over panel offered **Play Again** and **Choose Mode**, and nowhere that
+returned to the wordmark. Pause already had Quit; game over now has **Main
+Menu**, wired through the same `onQuit` path so the active piece is cleared and
+the title is what the player lands on.
+
+### The session log is no longer part of the first look
+
+Lifetime runs and lifetime totals sat under the play row on the title screen —
+useful once, and always competing with the wordmark for the first glance. They
+now live behind a **Scores** fold: beam hairlines, Oxanium, collapsed until
+asked for, and hidden entirely when there is nothing to open.
+
+Opening must not move the mark. The title panel is centred in the viewport; a
+ledger that stayed in flow would grow the panel and the grid would slide
+everything up to keep the block centred. The open body is therefore out of flow
+— absolutely under the toggle — and unfolds downward with a `0fr → 1fr` height
+transition and a delayed fade. Closing fades first so the collapse does not
+squash readable type. Reduced motion drops the transitions.
+
+Rows are mode · score · lines/stage rather than a single mono line. The caret
+beside the label is sized to read as a control, not a footnote.
+
+### Tested
+
+E2e: game over **Main Menu** returns to the title panel. The persistence test
+that asserts a finished Flatland run on the title now opens Scores before
+reading the row. The fold is presentation over the same save data.
+
+---
+
 ## M22d — The wordmark's own face
 
 **Branch:** `claude/webapp-game-plan-vtrxqx`
@@ -781,10 +882,8 @@ can actually be looked at.
 
 ### Next
 
-**M18a — the rest of the music.** Five tracks sit unreferenced. The question is
-not how to play one but when: the room already carries a tension signal driving
-the lattice glow, and music that ignores it would be the one part of the
-presentation not answering to the board. See `docs/PLAN.md`.
+**M18a — the rest of the music.** ✅ Shipped: shuffled gameplay pool under a
+run, theme kept for menus. See the M18a entry above.
 
 ---
 

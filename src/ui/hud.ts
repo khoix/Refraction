@@ -122,6 +122,22 @@ export class Hud {
   private readonly prompt = element('div', 'prompt');
   private readonly promptLeft = element('span', 'prompt__face', 'LEFT');
   private readonly promptRight = element('span', 'prompt__face', 'RIGHT');
+  /**
+   * In-run music deck: a thin LCD with a scrolling credit and transport keys.
+   * Live only while a run is on screen; the menus have no business showing it.
+   */
+  private readonly lcd = element('div', 'lcd');
+  private readonly lcdText = element('span', 'lcd__text', '');
+  private readonly lcdPlay = element('button', 'lcd__btn lcd__btn--play');
+  private readonly lcdNext = element('button', 'lcd__btn lcd__btn--next');
+  private musicToggle: (() => void) | null = null;
+  private musicNext: (() => void) | null = null;
+  /**
+   * Touch-primary pause. Esc is no use on a phone, and pause is not a gesture —
+   * it wants a place to live. Bottom-right, clear of the movement strip.
+   */
+  private readonly pauseBtn = element('button', 'hud__pause');
+  private pauseHandler: (() => void) | null = null;
 
   readonly root = element('div', 'hud');
 
@@ -180,11 +196,50 @@ export class Hud {
     this.prompt.hidden = true;
     this.banner.hidden = true;
 
+    this.lcdPlay.type = 'button';
+    this.lcdPlay.setAttribute('aria-label', 'Pause music');
+    this.lcdPlay.textContent = '❚❚';
+    this.lcdPlay.addEventListener('click', (event) => {
+      event.preventDefault();
+      this.musicToggle?.();
+    });
+    this.lcdNext.type = 'button';
+    this.lcdNext.setAttribute('aria-label', 'Next track');
+    this.lcdNext.textContent = '▶▶';
+    this.lcdNext.addEventListener('click', (event) => {
+      event.preventDefault();
+      this.musicNext?.();
+    });
+    const screen = element('div', 'lcd__screen');
+    const marquee = element('div', 'lcd__marquee');
+    // Two copies so the CSS loop can scroll without a gap at the wrap.
+    marquee.append(this.lcdText, this.lcdText.cloneNode(true));
+    screen.append(marquee);
+    this.lcd.append(this.lcdPlay, screen, this.lcdNext);
+    this.lcd.hidden = true;
+
+    this.pauseBtn.type = 'button';
+    this.pauseBtn.setAttribute('aria-label', 'Pause');
+    this.pauseBtn.textContent = '❚❚';
+    this.pauseBtn.hidden = true;
+    // Stop the root touch controller claiming this tap as a rotate / drop.
+    this.pauseBtn.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    this.pauseBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.pauseHandler?.();
+    });
+
     this.root.append(
+      this.lcd,
       left,
       right,
       this.gauge,
       this.shift,
+      this.pauseBtn,
       this.chain,
       this.popups,
       this.mute,
@@ -350,6 +405,61 @@ export class Hud {
   /** What a tap on a ready gauge should do. */
   onCollapseTap(handler: () => void): void {
     this.collapseHandler = handler;
+  }
+
+  /** LCD transport: pause/resume the bed, and skip to the next gameplay track. */
+  onMusicDeck(handlers: { onToggle: () => void; onNext: () => void }): void {
+    this.musicToggle = handlers.onToggle;
+    this.musicNext = handlers.onNext;
+  }
+
+  /** Touch-primary pause button. Opens the pause panel; Esc still toggles on keyboard. */
+  onPause(handler: () => void): void {
+    this.pauseHandler = handler;
+  }
+
+  /**
+   * Show the pause control only while a run is on screen.
+   *
+   * CSS still gates it to touch-primary devices — a laptop with a keyboard has
+   * Esc, and showing a second pause control there would be noise.
+   */
+  setPauseVisible(visible: boolean): void {
+    this.pauseBtn.hidden = !visible;
+  }
+
+  /**
+   * Lift the pause button clear of the movement strip when the mode has one.
+   *
+   * The strip is a region of the window, not an element, so the button has to be
+   * told — the same reason the Shift meter takes `stripTop`.
+   */
+  setStripReserve(hasStrip: boolean): void {
+    this.root.classList.toggle('hud--strip', hasStrip);
+  }
+
+  /**
+   * Drive the in-run LCD.
+   *
+   * Pass `null` off the playing screen. The credit is artist · title; the play
+   * glyph flips with `playing` so a held bed reads as paused even during fade.
+   */
+  setMusicDeck(
+    now: { readonly artist: string; readonly title: string; readonly playing: boolean } | null
+  ): void {
+    if (!now) {
+      this.lcd.hidden = true;
+      return;
+    }
+    this.lcd.hidden = false;
+    const credit = `${now.artist}  ·  ${now.title}`;
+    const texts = this.lcd.querySelectorAll('.lcd__text');
+    texts.forEach((node) => {
+      node.textContent = `${credit}    ✦    `;
+    });
+    this.lcdPlay.textContent = now.playing ? '❚❚' : '▶';
+    this.lcdPlay.setAttribute('aria-label', now.playing ? 'Pause music' : 'Play music');
+    this.lcd.classList.toggle('lcd--paused', !now.playing);
   }
 
   setHeat(heat: number | null, ready: boolean): void {

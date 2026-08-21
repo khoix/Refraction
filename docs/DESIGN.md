@@ -1039,13 +1039,12 @@ collects a gesture, and a player arriving on a shared code has already chosen.
 
 ### 10.3 Music
 
-**Menu music, at first.** One track on the front door and the menus, faded out
-when a run begins. In a run the audio is reactive and pitched by depth, and a
-bed under it is a claim that has not been designed yet.
-
-Music routes through the same master gain as the effects, so mute and volume
-reach it without knowing it exists. Anything reaching the destination by another
-route is a channel the player's settings do not control.
+**Two beds.** The boot gate is silent. Theme loops on the main menu (and the
+mode / challenge panels). A run draws from a separate gameplay pool — five
+tracks, shuffled, advancing when one ends — rather than falling silent. Beds
+are driven from screen state every frame, so the music follows where the player
+is rather than which handler last ran. During a run a thin LCD over the well
+credits the current track and offers pause / next.
 
 **Streamed, not decoded.** Decoded audio is float32 at the context's rate — a
 two-minute track is tens of megabytes resident for a file that is under two on
@@ -1055,16 +1054,17 @@ sample-exact, and that trade is right for a bed and wrong for an effect.
 **Played as media, not as Web Audio.** The element is _not_ routed through
 `createMediaElementSource`. Doing so moves its output onto the Web Audio path,
 which iOS classifies as ambient audio and silences with the hardware switch,
-while a plain media element plays like a video. The mute and volume settings
-still govern music — `Audio` pushes its level at it — but **mute is a pause**,
-not a zero level, because iOS ignores `volume` on a media element and a slider
-that cannot attenuate is a control that lies.
+while a plain media element plays like a video. Mute and volume still reach it —
+`Audio` pushes its level at the element — but **mute is a pause**, not a zero
+level, because iOS ignores `volume` on a media element and a slider that cannot
+attenuate is a control that lies.
 
 **More than one encoding.** A track is a list, and the browser is asked which it
 can play before anything is fetched. WebM/Opus is preferred and is not universal;
 mobile WebKit is the case that fails, and it fails silently, since an element
 that cannot decode its source never says so. When nothing is playable the answer
-is "none" and no bytes are spent.
+is "none" and no bytes are spent. The front door preloads every playable entry
+in the catalogue; a device that can decode none spends no bandwidth at all.
 
 **Opus in WebM**, because a loop is the point: MP3 and AAC pad the stream to fill
 the final block and that padding decodes as silence at the seam. Opus stores the
@@ -1176,7 +1176,10 @@ menus, which is the point of it.
 ## 13. Persistence **[GAP]**
 
 One versioned record in `localStorage` under `refraction.save.v1`: settings,
-per-mode bests, lifetime stats, a session log, and the mode last played.
+per-mode bests, lifetime stats, a session log, and the mode last played. On the
+title screen the session log and lifetime totals sit behind a **Scores** fold —
+collapsed by default, out of flow when open, so the wordmark does not jump — and
+are hidden entirely until there is something to show.
 
 Parsing lives in `src/core/save.ts` and knows nothing about browsers; the
 `localStorage` access is isolated in `src/ui/storage.ts`. The game runs

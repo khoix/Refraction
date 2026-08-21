@@ -6,13 +6,6 @@
  * bundler: a track that is renamed or removed breaks the build instead of
  * 404-ing in front of a player, and a cached copy is never a stale one.
  *
- * ## Only what plays today
- *
- * Six tracks sit in `tracks/`; one is imported. An `import.meta.glob` would pick
- * all six up in a line, and would also emit all six into `dist` -- nine and a
- * half megabytes of assets for the one that is currently reachable. Imports are
- * added here as the music that uses them lands.
- *
  * ## More than one encoding of the same music
  *
  * WebM/Opus is the right primary: it is the format whose loop metadata is exact
@@ -49,6 +42,11 @@
  */
 
 import themeWebm from './tracks/Blockfall Skyline (Theme).webm?url';
+import blockDriftWebm from './tracks/Block Drift.webm?url';
+import blockfallReduxWebm from './tracks/Blockfall Redux.webm?url';
+import colorfulShoresWebm from './tracks/Colorful Shores.webm?url';
+import stackUpWebm from './tracks/Stack Up.webm?url';
+import turnItOutWebm from './tracks/Turn It Out.webm?url';
 
 /** One encoding of one track. */
 export interface Source {
@@ -61,6 +59,8 @@ export interface Track {
   readonly id: string;
   /** Shown to the player. The file name is an implementation detail. */
   readonly title: string;
+  /** Credited on the in-run LCD. */
+  readonly artist: string;
   /** Encodings in preference order, best first. */
   readonly sources: readonly Source[];
   /** Approximate size, for progress before `Content-Length` is known. */
@@ -88,14 +88,56 @@ function alternate(name: string): Source[] {
   return url ? [{ url, mime: MP4_AAC }] : [];
 }
 
-/** The menu theme. Plays on the front door and stops when a run begins. */
-export const THEME: Track = {
-  id: 'theme',
-  title: 'Blockfall Skyline',
-  sources: [{ url: themeWebm, mime: WEBM_OPUS }, ...alternate('Blockfall Skyline (Theme)')],
-  bytes: 1_922_887,
-  seconds: 137.2,
-};
+function track(
+  id: string,
+  title: string,
+  file: string,
+  url: string,
+  bytes: number,
+  seconds: number,
+  artist = 'Refraction'
+): Track {
+  return {
+    id,
+    title,
+    artist,
+    sources: [{ url, mime: WEBM_OPUS }, ...alternate(file)],
+    bytes,
+    seconds,
+  };
+}
+
+/** The menu theme. Loops on the main menu; the boot gate stays silent. */
+export const THEME: Track = track(
+  'theme',
+  'Blockfall Skyline',
+  'Blockfall Skyline (Theme)',
+  themeWebm,
+  1_922_887,
+  137.2
+);
+
+/**
+ * Everything that is not the theme.
+ *
+ * A run draws from this pool at random, one track after another, until the
+ * player is back on a menu screen.
+ */
+export const GAMEPLAY: readonly Track[] = [
+  track('block-drift', 'Block Drift', 'Block Drift', blockDriftWebm, 1_856_389, 139.9),
+  track('blockfall-redux', 'Blockfall Redux', 'Blockfall Redux', blockfallReduxWebm, 1_599_926, 114.0),
+  track('colorful-shores', 'Colorful Shores', 'Colorful Shores', colorfulShoresWebm, 1_778_825, 128.0),
+  track('stack-up', 'Stack Up', 'Stack Up', stackUpWebm, 1_364_633, 108.4),
+  track('turn-it-out', 'Turn It Out', 'Turn It Out', turnItOutWebm, 1_396_870, 109.8),
+];
+
+/** Every track the front door pulls down. */
+export const TRACKS: readonly Track[] = [THEME, ...GAMEPLAY];
+
+/** Look up a catalogue entry by id. */
+export function trackById(id: string): Track | undefined {
+  return TRACKS.find((entry) => entry.id === id);
+}
 
 /** What a browser says about a MIME type: `''`, `'maybe'` or `'probably'`. */
 export type CanPlay = (mime: string) => string;
