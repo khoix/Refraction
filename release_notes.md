@@ -7,6 +7,38 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22g — Mode grid by difficulty
+
+**Branch:** `fix/e2e-score-hud-assertions`
+
+Play note on the mode select screen.
+
+### What changed
+
+The mode table is ordered **easiest → hardest**, with **Flatland first** and
+Blind Spectrum last: Flatland, Zen, Ascent, Endless, Prism, Blind Spectrum. That
+order is what the menu iterates, so the card grid matches the difficulty arc a
+new player is meant to climb.
+
+Each card carries:
+
+- a **pip rating** in the top right (`difficulty` 1..6, with an accessible label)
+- a **cool→warm accent** (teal through rose) on the border, fill, and name
+
+`difficulty` is presentation only — the engine never reads it. The accents are
+deliberately **not** spectrum stops: hue on the board still means depth, and the
+menu has no well to misread.
+
+### Tested
+
+Unit: the table lists modes in that order with ascending ratings, and
+`difficulty` is excluded from the “no two modes share rules” check. E2e: the
+mode grid opens with Flatland first and Blind Spectrum last, each card shows
+the matching pip rating, and Flatland remains the Enter default for a new
+player.
+
+---
+
 ## M18a — The rest of the music
 
 **Branch:** `main`

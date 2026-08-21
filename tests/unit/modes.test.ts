@@ -13,6 +13,7 @@ import {
   AUTHORED_MODE_ID,
   CONTINUOUS_GRAVITY_STEP,
   DEFAULT_MODE_ID,
+  MODE_DIFFICULTY_MAX,
   MODES,
   isUnlocked,
   modeById,
@@ -27,21 +28,29 @@ const stageOf = (mode: (typeof MODES)[number], lines: number) =>
   modeStage(mode, lines, stageForLines, LINES_PER_STAGE);
 
 describe('the mode table', () => {
-  it('offers the six modes the design calls for', () => {
+  it('lists the six modes in difficulty order, Flatland first', () => {
+    // The menu walks this table, so this order is what the player sees.
     expect(MODES.map((mode) => mode.id)).toEqual([
+      'flatland',
+      'zen',
       'ascent',
       'endless',
       'prism',
-      'flatland',
       'blindSpectrum',
-      'zen',
     ]);
+  });
+
+  it('rates every mode once, ascending with the table', () => {
+    expect(MODES.map((mode) => mode.difficulty)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(MODE_DIFFICULTY_MAX).toBe(MODES.length);
   });
 
   it('gives every mode a name and a blurb the menu can show', () => {
     for (const mode of MODES) {
       expect(mode.name.length).toBeGreaterThan(0);
       expect(mode.blurb.length).toBeGreaterThan(0);
+      expect(mode.difficulty).toBeGreaterThanOrEqual(1);
+      expect(mode.difficulty).toBeLessThanOrEqual(MODE_DIFFICULTY_MAX);
       expect(mode.startStage).toBeGreaterThanOrEqual(1);
       expect(mode.startStage).toBeLessThanOrEqual(STAGES.length);
     }
@@ -52,9 +61,11 @@ describe('the mode table', () => {
     // names, and the menu would be lying about the choice.
     const seen = new Map<string, string>();
     for (const mode of MODES) {
-      const { id, name, blurb, ...rules } = mode;
+      // Difficulty is presentation on the card, not an engine rule.
+      const { id, name, blurb, difficulty, ...rules } = mode;
       void name;
       void blurb;
+      void difficulty;
       const key = JSON.stringify(rules);
       expect(seen.has(key), `${id} duplicates ${seen.get(key) ?? ''}`).toBe(false);
       seen.set(key, id);

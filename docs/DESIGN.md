@@ -1077,14 +1077,21 @@ A mode is **pure configuration** over the stage table, not a code path. The
 engine keeps one implementation and modes select from it, so a mode cannot
 introduce a rule by accident. The table lives in `src/core/modes.ts`.
 
-| Mode               | Start | Score | Rules                                                          |
-| ------------------ | ----- | ----- | -------------------------------------------------------------- |
-| **Ascent**         | 1     | ×1    | The authored arc, unmodified. Content reveals on schedule.     |
-| **Endless**        | 6\*   | ×1    | Everything unlocked, stage pinned, gravity compounds per line. |
-| **Prism**          | 3     | ×1    | Meter of 2, Depth Nudge on, refraction clears score double.    |
-| **Flatland**       | 2     | ×1    | Tier 1 only — planar pieces, forever. The board still turns.   |
-| **Blind Spectrum** | 4     | ×1.5  | No depth colour at all. Unlocked by reaching stage 5.          |
-| **Zen**            | 2     | ×0.25 | Stage pinned, no failure state, Depth Nudge on.                |
+The mode select grid walks that table in **difficulty order**, Flatland first
+and Blind Spectrum last. Each card carries a pip rating (`difficulty`, 1..6) in
+the top right and a cool→warm accent keyed off the mode id. Those accents are a
+menu-only UI language — deliberately **not** spectrum stops — so they do not
+borrow the depth channel §2.2 reserves for cubes. The engine never reads
+`difficulty`; it is presentation on the card.
+
+| Mode               | Diff | Start | Score | Rules                                                          |
+| ------------------ | ---- | ----- | ----- | -------------------------------------------------------------- |
+| **Flatland**       | 1    | 2     | ×1    | Tier 1 only — planar pieces, forever. The board still turns.   |
+| **Zen**            | 2    | 2     | ×0.25 | Stage pinned, no failure state, Depth Nudge on.                |
+| **Ascent**         | 3    | 1     | ×1    | The authored arc, unmodified. Content reveals on schedule.     |
+| **Endless**        | 4    | 6\*   | ×1    | Everything unlocked, stage pinned, gravity compounds per line. |
+| **Prism**          | 5    | 3     | ×1    | Meter of 2, Depth Nudge on, refraction clears score double.    |
+| **Blind Spectrum** | 6    | 4     | ×1.5  | No depth colour at all. Unlocked by reaching stage 5.          |
 
 \* Endless pins stage 6 for its **content** and scales gravity to ×0.54 for its
 **speed**, opening at roughly stage 4's pace. See §11.2.

@@ -9,7 +9,7 @@
  * These read state and emit intents. They never touch the game.
  */
 
-import { DEFAULT_MODE_ID, MODES, isUnlocked, modeById } from '@core/modes';
+import { DEFAULT_MODE_ID, MODE_DIFFICULTY_MAX, MODES, isUnlocked, modeById } from '@core/modes';
 import type { ModeConfig, ModeId } from '@core/modes';
 import { dailyChallenge, parseChallenge } from '@core/challenge';
 import type { Challenge } from '@core/challenge';
@@ -67,6 +67,12 @@ function button(label: string, className: string, onClick: () => void): HTMLButt
   node.type = 'button';
   node.addEventListener('click', onClick);
   return node;
+}
+
+/** Filled and empty pips for the mode card's difficulty rating. */
+function difficultyPips(rating: number): string {
+  const filled = Math.max(0, Math.min(MODE_DIFFICULTY_MAX, Math.round(rating)));
+  return `${'●'.repeat(filled)}${'○'.repeat(MODE_DIFFICULTY_MAX - filled)}`;
 }
 
 /** A labelled on/off row for the settings panel. */
@@ -504,11 +510,14 @@ export class Screens {
       const card = element('button', 'mode');
       card.type = 'button';
       card.dataset['mode'] = mode.id;
-      card.append(
-        element('span', 'mode__name', mode.name),
-        element('span', 'mode__blurb', mode.blurb),
-        element('span', 'mode__best', '')
+      const head = element('span', 'mode__head');
+      const rating = element('span', 'mode__difficulty', difficultyPips(mode.difficulty));
+      rating.setAttribute(
+        'aria-label',
+        `Difficulty ${mode.difficulty} of ${MODE_DIFFICULTY_MAX}`
       );
+      head.append(element('span', 'mode__name', mode.name), rating);
+      card.append(head, element('span', 'mode__blurb', mode.blurb), element('span', 'mode__best', ''));
       card.addEventListener('click', () => {
         if (card.disabled) return;
         this.handlers.onStart(mode.id);
