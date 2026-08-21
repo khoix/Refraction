@@ -1295,9 +1295,13 @@ the other drain, which teaches the distinction without a word.
   compacts and then calls `beginResolve`, so the clears glow, cascade and score
   exactly as any other clear does. Reusing that is what keeps a collapse _a lot
   of clears_ rather than a special case with its own rules.
-- ✅ **Off in Flatland**, through a mode-table field. Both controls panels drop
-  the row there through the same `appliesToMode` predicate the rotation gates
-  use, and the gauge is absent entirely.
+- ✅ **On in every shipped mode, including Flatland.** The mode-table field remains
+  so a mode can still withhold the gauge and bindings; Flatland no longer does.
+  (Was off at first ship — see M17b.)
+- ✅ **Ready cue is not the spend.** Crossing full fires `spectralReady` once:
+  sampled klaxon, banner **SPECTRAL COLLAPSE IMMINENT** / **PRESS V TO TRIGGER**.
+  Spending plays `collapse.webm`, a short white bloom, room react, and shake —
+  without announcing the collapse as if it had already happened.
 - ✅ **The piece in hand comes down with everything else.** It is a group of
   voxels in the air when the floor gives way; leaving it hovering would be both
   odd to look at and a second state to reason about. `lock` was split so the

@@ -689,6 +689,30 @@ describe('the hot bar', () => {
     expect(game.spectralReady).toBe(true);
   });
 
+  it('fires spectralReady once when the bar crosses full', () => {
+    const game = hot();
+    game.heat = 1 - HEAT_PER_LINE / 2;
+    game.drainEvents();
+    fillLine(game, 0, 0);
+    game.hardDrop();
+    game.tick(1000);
+
+    const ready = game.drainEvents().filter((event) => event.type === 'spectralReady');
+    expect(ready).toHaveLength(1);
+    expect(game.heat).toBe(1);
+    expect(game.spectralReady).toBe(true);
+  });
+
+  it('does not re-fire while the bar is already full', () => {
+    const game = hot();
+    game.heat = 1;
+    game.drainEvents();
+    fillLine(game, 0, 0);
+    game.hardDrop();
+    game.tick(1000);
+    expect(game.drainEvents().some((event) => event.type === 'spectralReady')).toBe(false);
+  });
+
   it('is absent entirely in a mode without it', () => {
     // No shipped mode withholds the mechanic today; the gate still has to hold
     // for any mode that sets the field off.

@@ -331,14 +331,26 @@ export class Hud {
     this.stageBannerTimer = 2000;
   }
 
-  showBanner(text: string): void {
-    this.banner.textContent = text;
+  /**
+   * Flash a playfield message. Optional `hint` is a second, quieter line for
+   * a control prompt (e.g. how to spend a charge) without shouting it at the
+   * same weight as the event name.
+   */
+  showBanner(text: string, hint?: string): void {
+    this.banner.replaceChildren();
+    const main = element('span', 'banner__text', text);
+    this.banner.append(main);
+    if (hint) {
+      this.banner.append(element('span', 'banner__hint', hint));
+    }
     this.banner.hidden = false;
+    this.banner.classList.toggle('banner--hinted', Boolean(hint));
     this.banner.classList.remove('banner--pulse');
     // Restart the animation on a repeat of the same label.
     void this.banner.offsetWidth;
     this.banner.classList.add('banner--pulse');
-    this.bannerTimer = 1400;
+    // A hinted line needs a beat longer to read than a single word.
+    this.bannerTimer = hint ? 2200 : 1400;
   }
 
   /**

@@ -4310,4 +4310,40 @@ test.describe('Spectral Collapse', () => {
       ).toBeVisible();
     }
   });
+
+  test('announces readiness when the bar fills, with the spend hint beneath', async ({
+    page,
+  }) => {
+    // setHeat bypasses the crossing event; a real clear is what earns the cue.
+    await play(page, 'ascent');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('no hook');
+      game.heat = 0.95;
+      for (let x = 0; x < 8; x += 1) game.board.fill({ x, y: 0, z: 3 });
+    });
+    await page.keyboard.press('Space');
+    await expect(page.locator('.banner__text')).toHaveText('SPECTRAL COLLAPSE IMMINENT', {
+      timeout: 3000,
+    });
+    await expect(page.locator('.banner__hint')).toHaveText('PRESS V TO TRIGGER');
+  });
+
+  test('does not claim the collapse has happened when the charge is spent', async ({
+    page,
+  }) => {
+    await play(page, 'ascent');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('no hook');
+      game.heat = 1;
+      game.active = null;
+      game.board.fill({ x: 2, y: 9, z: 3 });
+    });
+    await page.keyboard.press('KeyV');
+    await page.waitForTimeout(120);
+    // The spend is shake + bloom + sample. The old "SPECTRAL COLLAPSE" banner was
+    // a lie at the fill; it must not return at the spend either.
+    await expect(page.locator('.banner__text')).not.toHaveText('SPECTRAL COLLAPSE');
+  });
 });

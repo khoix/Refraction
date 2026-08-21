@@ -971,6 +971,11 @@ follow and both are rules rather than tuning:
   they count, they feed the Shift meter — but feeding them back into the bar
   would let a large enough stack buy the next collapse outright.
 
+**Ready and spend are different beats.** Filling the bar is a warning
+(imminent banner + klaxon sample); spending it is the fall (collapse sample,
+short white bloom, room flash, shake). Announcing “Spectral Collapse” on the
+fill would claim an event that has not happened yet.
+
 The clears resolve through the ordinary cycle, so they glow, cascade and score
 like any others. That is what keeps a collapse _a lot of clears_ rather than a
 second set of rules.
@@ -1016,10 +1021,13 @@ the spectrum, and for anyone whose colour vision makes the ramp harder.
 | Clear         | one note per line, rising; brighter with each cascade step         |
 | Turn          | a filtered sweep, falling when choosing left and rising when right |
 | Full Spectrum | every band at once — the audible form of white light               |
+| Bar full      | sampled klaxon (`sfx/spectral_collapse_imminent.webm`)             |
+| Collapse      | sampled fall (`sfx/collapse.webm`)                                 |
 | Game over     | a single low fall                                                  |
 
-Decisions live in `src/audio/tones.ts` as pure data and are unit-tested;
-`audio.ts` only turns them into sound. `M` mutes.
+Synthesised decisions live in `src/audio/tones.ts` as pure data (and as
+fallbacks when a sample is missing); sampled clips live in `src/audio/sfx.ts`.
+`audio.ts` turns either into sound. `M` mutes.
 
 ### 10.2 Starting the sound
 

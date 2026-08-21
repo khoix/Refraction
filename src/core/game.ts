@@ -96,7 +96,17 @@ export interface ActivePiece {
 }
 
 export interface GameEvent {
-  readonly type: 'lock' | 'clear' | 'turn' | 'stage' | 'gameOver' | 'hold' | 'rescue' | 'collapse';
+  readonly type:
+    | 'lock'
+    | 'clear'
+    | 'turn'
+    | 'stage'
+    | 'gameOver'
+    | 'hold'
+    | 'rescue'
+    | 'collapse'
+    /** The hot bar just crossed full — collapse is available, not yet spent. */
+    | 'spectralReady';
   readonly lines?: number;
   readonly label?: string;
   readonly score?: number;
@@ -800,8 +810,13 @@ export class Game {
     this.shiftMeter += complete.length;
     this.linesThisResolve += complete.length;
     // A collapse's own clears do not pay for the next one -- see `collapsing`.
+    let crossedReady = false;
     if (this.spectralAllowed && !this.collapsing) {
+      const before = this.heat;
       this.heat = Math.min(1, this.heat + complete.length * HEAT_PER_LINE);
+      // The ready cue belongs to *earning* the charge, not to spending it. Fire
+      // once on the crossing, not while the bar sits full.
+      crossedReady = before < 1 && this.heat >= 1;
     }
 
     let prism = false;
@@ -842,6 +857,9 @@ export class Game {
       ...(prism ? { prism: true } : {}),
       ...(label ? { label } : {}),
     });
+    // After the clear event so a labeled clear cannot overwrite the ready banner
+    // in the same drain.
+    if (crossedReady) this.events.push({ type: 'spectralReady' });
 
     this.cascadeIndex += 1;
     this.dealer.setTier(this.stage.maxTier);

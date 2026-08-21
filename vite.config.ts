@@ -18,6 +18,10 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: true,
     rollupOptions: {
+      input: {
+        main: resolvePath('./index.html'),
+        effects: resolvePath('./effects.html'),
+      },
       output: {
         // Keep the renderer library in its own long-lived chunk so gameplay
         // iterations do not invalidate it for returning players.

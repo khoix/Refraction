@@ -7,6 +7,55 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M17b — Spectral Collapse presentation
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Play notes on earning and spending the hot bar, plus Flatland.
+
+### Flatland gets the mechanic
+
+Spectral Collapse is no longer withheld in Flatland. The mode-table field stays,
+but Flatland inherits the shared default — gauge, `V`, and the settings row all
+follow. The earlier “off in Flatland” rule was teaching-first; play preferred the
+mechanic everywhere once the ready cue made the charge legible.
+
+### Ready is not spent
+
+Crossing full fires a `spectralReady` event once. The banner reads
+**SPECTRAL COLLAPSE IMMINENT** with **PRESS V TO TRIGGER** in small print beneath —
+not “SPECTRAL COLLAPSE”, which would claim the stack had already given way.
+Spending the charge shakes, blooms, and sounds without that false announce.
+
+### Sampled cues
+
+| Beat | Sample |
+| ---- | ------ |
+| Bar fills | `sfx/spectral_collapse_imminent.webm` (klaxon) |
+| Stack collapses | `sfx/collapse.webm` |
+
+Both decode into `AudioBuffer`s on the Web Audio bus so mute and volume reach
+them like the synthesised tones. Synth fallbacks remain if a sample is missing
+or the platform refuses the encoding. Clips preload with the music catalogue.
+
+On spend, `renderer.startCollapse()` adds a short white bloom (softer than Full
+Spectrum), a full room react/ripple, and a hard camera knock.
+
+### Effects lab
+
+`/effects.html` is a passworded playground (`42`) for firing ready, collapse,
+Prism, clear debris, and related beats without playing into them. Not linked
+from the game; `noindex`.
+
+### Tested
+
+Unit: `spectralReady` fires once on the crossing and not while full; Flatland
+allows the mechanic; SFX catalogue lists both clips; ready/collapse tone
+fallbacks keep their shapes. E2e: gauge and controls row in Flatland; imminent
+banner copy when the bar fills.
+
+---
+
 ## M22g — Mode grid by difficulty
 
 **Branch:** `fix/e2e-score-hud-assertions`

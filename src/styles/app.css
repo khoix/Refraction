@@ -708,6 +708,10 @@ input,
   position: absolute;
   inset-inline: 0;
   top: 16vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45em;
   font-size: clamp(1.5rem, 5vw, 3rem);
   font-weight: 200;
   letter-spacing: 0.2em;
@@ -718,6 +722,26 @@ input,
      the board does when a Prism chain closes. */
   color: var(--accent-ui);
   text-shadow: 0 0 26px rgb(var(--accent-ui-glow) / 0.4);
+  pointer-events: none;
+}
+
+.banner__text {
+  display: block;
+  line-height: 1.05;
+}
+
+/* Small print under the event name — absolute size, not a fraction of the
+   hero line, so it stays caption-scale even when the title is at its clamp max. */
+.banner__hint {
+  display: block;
+  margin-top: 0.15em;
+  font-size: clamp(0.55rem, 1.5vw, 0.72rem);
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.72;
+  text-shadow: 0 0 12px rgb(var(--accent-ui-glow) / 0.28);
 }
 
 @keyframes banner-pulse {
@@ -739,6 +763,11 @@ input,
 
 .banner--pulse {
   animation: banner-pulse 1400ms var(--ease-snap) forwards;
+}
+
+/* Hinted banners stay up longer — see `showBanner` — so the fade matches. */
+.banner--hinted.banner--pulse {
+  animation-duration: 2200ms;
 }
 
 /* Play is frozen while the player picks a face, so this reads as a deliberate

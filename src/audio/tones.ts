@@ -145,3 +145,47 @@ export function clickTone(): ToneSpec {
     cutoff: 3600,
   };
 }
+
+/**
+ * Onset spacing for the ready klaxon, in seconds. Each blast is shorter than
+ * this so the gaps read as an alarm rather than a continuous tone.
+ */
+export const SPECTRAL_READY_PULSE = 0.2;
+
+/**
+ * The hot bar just filled. Synthesised fallback for when the sampled klaxon in
+ * `sfx/spectral_collapse_imminent.webm` is unavailable — alternating high/low
+ * square blasts so "charged and waiting" still reads as a warning.
+ */
+export function spectralReadyTones(): ToneSpec[] {
+  // A fifth apart: close enough to lock as one alarm, wide enough to warble.
+  const high = semitone(17);
+  const low = semitone(10);
+  const blast = (frequency: number): ToneSpec => ({
+    frequency,
+    duration: 0.12,
+    gain: 0.13,
+    type: 'square',
+    cutoff: 3800,
+  });
+  return [blast(high), blast(low), blast(high), blast(low), blast(high)];
+}
+
+/**
+ * Spectral Collapse spent. Synthesised fallback for when the sampled effect in
+ * `sfx/collapse.webm` is unavailable — the spectrum falls to the floor and lands
+ * on a low held note.
+ */
+export function spectralCollapseTones(): ToneSpec[] {
+  const fall = [DEPTH_LANES - 1, 4, 2, 0] as const;
+  return fall.map((lane, index) => {
+    const last = index === fall.length - 1;
+    return {
+      frequency: laneFrequency(lane),
+      duration: last ? 0.7 : 0.14 + index * 0.035,
+      gain: last ? 0.15 : 0.1,
+      type: (last ? 'triangle' : 'sine') as OscillatorType,
+      cutoff: last ? 1400 : 5600 - index * 700,
+    };
+  });
+}
