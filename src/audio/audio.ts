@@ -8,7 +8,15 @@
  */
 
 import type { ToneSpec } from './tones';
-import { clearTones, gameOverTone, lockTone, prismChord, turnSweep } from './tones';
+import {
+  clearTones,
+  clickTone,
+  gameOverTone,
+  hoverTone,
+  lockTone,
+  prismChord,
+  turnSweep,
+} from './tones';
 import { Music } from './music';
 
 /** A playable catalogue entry handed over after preload. */
@@ -332,6 +340,16 @@ export class Audio {
 
   gameOver(): void {
     this.play(gameOverTone());
+  }
+
+  /** Menu / HUD: cursor entered a live control. */
+  hover(): void {
+    this.play(hoverTone());
+  }
+
+  /** Menu / HUD: a button was pressed. */
+  click(): void {
+    this.play(clickTone());
   }
 
   dispose(): void {

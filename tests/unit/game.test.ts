@@ -690,20 +690,33 @@ describe('the hot bar', () => {
   });
 
   it('is absent entirely in a mode without it', () => {
-    const flat = new Game({ seed: 'heat', mode: modeById('flatland') });
-    expect(flat.spectralAllowed).toBe(false);
-    flat.heat = 1;
-    expect(flat.spectralReady).toBe(false);
-    expect(flat.triggerCollapse()).toBe(false);
+    // No shipped mode withholds the mechanic today; the gate still has to hold
+    // for any mode that sets the field off.
+    const cold = new Game({
+      seed: 'heat',
+      mode: { ...modeById('ascent'), spectralCollapse: false },
+    });
+    expect(cold.spectralAllowed).toBe(false);
+    cold.heat = 1;
+    expect(cold.spectralReady).toBe(false);
+    expect(cold.triggerCollapse()).toBe(false);
 
     // And it never gains any, so the gauge has nothing to draw. Reset first --
     // the line above forced it high to prove `spectralReady` ignores it, and
     // nothing in a mode without the mechanic will bring it back down.
-    flat.heat = 0;
-    fillLine(flat, 0, 0);
-    flat.hardDrop();
-    flat.tick(1000);
-    expect(flat.heat).toBe(0);
+    cold.heat = 0;
+    fillLine(cold, 0, 0);
+    cold.hardDrop();
+    cold.tick(1000);
+    expect(cold.heat).toBe(0);
+  });
+
+  it('is available in Flatland', () => {
+    const flat = new Game({ seed: 'heat', mode: modeById('flatland') });
+    expect(flat.spectralAllowed).toBe(true);
+    flat.heat = 1;
+    expect(flat.spectralReady).toBe(true);
+    expect(flat.triggerCollapse()).toBe(true);
   });
 });
 

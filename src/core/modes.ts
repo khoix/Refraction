@@ -116,10 +116,9 @@ export interface ModeConfig {
   /**
    * Whether the mode offers Spectral Collapse.
    *
-   * Off in Flatland, which is the mode a new player starts in and already
-   * carries the game's one strange idea on its own. A second meter fed by the
-   * same action as the Shift meter is a lot to hand someone still working out
-   * what colour means.
+   * On everywhere today, including Flatland. Kept as a mode-table field so a
+   * mode can still withhold the gauge, the key row and the gesture without a
+   * special case in the UI.
    */
   readonly spectralCollapse: boolean;
   /** Whether the run can end. False only for Zen. */
@@ -184,9 +183,6 @@ export const MODES: readonly ModeConfig[] = [
     // cannot offer either.
     rotation: 'roll',
     depthNudge: 'never',
-    // No hot bar either. The mode's job is to teach that colour is depth, and a
-    // second gauge on the same input as the Shift meter is noise against that.
-    spectralCollapse: false,
   },
   {
     ...base,

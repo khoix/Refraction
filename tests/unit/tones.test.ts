@@ -3,7 +3,9 @@ import { DEPTH_LANES } from '@core/constants';
 import {
   BASE_FREQUENCY,
   clearTones,
+  clickTone,
   gameOverTone,
+  hoverTone,
   laneFrequency,
   lockTone,
   prismChord,
@@ -97,7 +99,15 @@ describe('Full Spectrum', () => {
 });
 
 describe('every tone', () => {
-  const all = [lockTone(0), lockTone(7), ...clearTones(4, 2, 3), ...prismChord(), gameOverTone()];
+  const all = [
+    lockTone(0),
+    lockTone(7),
+    ...clearTones(4, 2, 3),
+    ...prismChord(),
+    gameOverTone(),
+    hoverTone(),
+    clickTone(),
+  ];
 
   it('is audible, finite and bounded', () => {
     for (const tone of all) {
@@ -114,5 +124,12 @@ describe('every tone', () => {
     // It fires on every single piece, so it must never dominate.
     expect(lockTone(0).duration).toBeLessThan(0.2);
     expect(lockTone(0).gain).toBeLessThan(clearTones(1, 0, 0)[0]!.gain + 0.05);
+  });
+
+  it('keeps chrome ticks softer than board events', () => {
+    expect(hoverTone().duration).toBeLessThan(clickTone().duration);
+    expect(hoverTone().gain).toBeLessThan(clickTone().gain);
+    expect(clickTone().gain).toBeLessThan(lockTone(0).gain);
+    expect(clickTone().duration).toBeLessThan(lockTone(0).duration);
   });
 });

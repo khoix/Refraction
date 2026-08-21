@@ -4146,9 +4146,8 @@ test.describe('on a phone', () => {
  *
  * A hot bar bought with cleared lines, spent on one board-wide compaction. The
  * engine's half is unit-tested without a browser; what needs a canvas is the
- * gauge — that it is there in a mode that has the mechanic and absent in one
- * that does not, that it reads the level, that a tap on it works, and above all
- * that it carries no hue.
+ * gauge — that it shows in the modes that have it (including Flatland), that it
+ * reads the level, that a tap on it works, and above all that it carries no hue.
  */
 test.describe('Spectral Collapse', () => {
   async function play(page: Page, mode: string): Promise<void> {
@@ -4165,17 +4164,16 @@ test.describe('Spectral Collapse', () => {
       if (game) game.heat = value;
     }, heat);
 
-  test('the gauge is there in a mode that has it, and gone in one that does not', async ({
-    page,
-  }) => {
+  test('the gauge is there in Ascent and in Flatland', async ({ page }) => {
     await play(page, 'ascent');
     await setHeat(page, 0.5);
     await page.waitForTimeout(150);
     await expect(page.locator('.gauge')).toBeVisible();
 
     await play(page, 'flatland');
+    await setHeat(page, 0.5);
     await page.waitForTimeout(150);
-    await expect(page.locator('.gauge')).toBeHidden();
+    await expect(page.locator('.gauge')).toBeVisible();
   });
 
   test('stands against the well rather than over the board', async ({ page }) => {
@@ -4302,19 +4300,14 @@ test.describe('Spectral Collapse', () => {
     ).toBe(false);
   });
 
-  test('the controls panel lists it only where the mode has it', async ({ page }) => {
-    await play(page, 'ascent');
-    await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'SETTINGS' }).click();
-    await expect(
-      page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
-    ).toBeVisible();
-
-    await play(page, 'flatland');
-    await page.keyboard.press('Escape');
-    await page.getByRole('button', { name: 'SETTINGS' }).click();
-    await expect(
-      page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
-    ).toHaveCount(0);
+  test('the controls panel lists it in Ascent and in Flatland', async ({ page }) => {
+    for (const mode of ['ascent', 'flatland'] as const) {
+      await play(page, mode);
+      await page.keyboard.press('Escape');
+      await page.getByRole('button', { name: 'SETTINGS' }).click();
+      await expect(
+        page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
+      ).toBeVisible();
+    }
   });
 });

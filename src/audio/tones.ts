@@ -120,3 +120,28 @@ export function gameOverTone(): ToneSpec {
     cutoff: 900,
   };
 }
+
+/**
+ * Cursor entering a control. Quieter and shorter than a click so sweeping a
+ * menu does not shout over the theme.
+ */
+export function hoverTone(): ToneSpec {
+  return {
+    frequency: semitone(10),
+    duration: 0.045,
+    gain: 0.045,
+    type: 'sine',
+    cutoff: 4800,
+  };
+}
+
+/** Confirming a press. A soft tick, not a board event. */
+export function clickTone(): ToneSpec {
+  return {
+    frequency: semitone(5),
+    duration: 0.07,
+    gain: 0.09,
+    type: 'triangle',
+    cutoff: 3600,
+  };
+}

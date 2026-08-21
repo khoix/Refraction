@@ -109,6 +109,37 @@ function nearestLane(game: Game): number {
   return Number.isFinite(nearest) ? nearest : 0;
 }
 
+/**
+ * Live button under a pointer event, if any.
+ *
+ * Hover and click chrome only answer to real buttons — toggles and ranges are
+ * not the same gesture, and firing a tick on every label click would muddy the
+ * settings panel.
+ */
+function liveButton(event: Event): HTMLButtonElement | null {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+  const button = target.closest('button');
+  if (!(button instanceof HTMLButtonElement) || button.disabled || button.hidden) return null;
+  return button;
+}
+
+/** Soft hover and click ticks for menu / HUD chrome. */
+function bindButtonSounds(root: HTMLElement, audio: Audio): void {
+  root.addEventListener('pointerover', (event) => {
+    // Touch has no hover; a finger landing would otherwise chirp on every tap.
+    if (event.pointerType !== 'mouse') return;
+    const button = liveButton(event);
+    if (!button) return;
+    if (event.relatedTarget instanceof Node && button.contains(event.relatedTarget)) return;
+    audio.hover();
+  });
+  root.addEventListener('click', (event) => {
+    if (!liveButton(event)) return;
+    audio.click();
+  });
+}
+
 function boot(root: HTMLElement): void {
   const canvas = document.createElement('canvas');
   canvas.className = 'stage';
@@ -329,6 +360,9 @@ function boot(root: HTMLElement): void {
       screens.show(screen);
     },
   });
+
+  bindButtonSounds(screens.root, audio);
+  bindButtonSounds(hud.root, audio);
 
   root.replaceChildren(canvas, hud.root, screens.root);
   if (!storageAvailable()) screens.warnUnwritableStorage();

@@ -1846,15 +1846,38 @@ input,
 }
 
 .scores__clip {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0.7rem;
   min-height: 0;
   overflow: hidden;
+  padding: 0.55rem 0.85rem 0.75rem;
   opacity: 0;
   /* Close fades first so the collapse does not squash readable type. */
   transition: opacity 160ms var(--ease-snap);
+}
+
+/*
+ * Soft wash under the ledger so type holds against the room. Masked on every
+ * edge so it dissolves into the scene rather than reading as a plate.
+ */
+.scores__clip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: rgb(5 6 10 / 0.72);
+  mask-image:
+    linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%),
+    linear-gradient(180deg, transparent 0%, #000 14%, #000 82%, transparent 100%);
+  mask-composite: intersect;
+  -webkit-mask-image:
+    linear-gradient(90deg, transparent 0%, #000 12%, #000 88%, transparent 100%),
+    linear-gradient(180deg, transparent 0%, #000 14%, #000 82%, transparent 100%);
+  -webkit-mask-composite: source-in;
 }
 
 .scores--open .scores__clip {
