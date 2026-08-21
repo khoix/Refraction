@@ -66,11 +66,21 @@ export interface UnlockRule {
   readonly description: string;
 }
 
+/** How many pips the mode card shows for difficulty. Matches the table length. */
+export const MODE_DIFFICULTY_MAX = 6;
+
 export interface ModeConfig {
   readonly id: ModeId;
   readonly name: string;
   /** One line, shown on the mode card. */
   readonly blurb: string;
+  /**
+   * How demanding the mode is, 1..`MODE_DIFFICULTY_MAX`.
+   *
+   * Presentation only — the engine never reads it. Shown as a pip rating on the
+   * mode card, and kept in lockstep with `MODES` display order.
+   */
+  readonly difficulty: number;
   /** Stage the run begins at. */
   readonly startStage: number;
   /**
@@ -149,18 +159,61 @@ const base = {
   unlock: null,
 } as const;
 
+/**
+ * Display order is difficulty ascending: Flatland first, Blind Spectrum last.
+ *
+ * The menu iterates this table, so the order here is the order on the card grid.
+ * Colour accents for that ramp live in `app.css` keyed off each card's
+ * `data-mode` — deliberately not the spectrum stops, which still mean depth.
+ */
 export const MODES: readonly ModeConfig[] = [
+  {
+    ...base,
+    id: 'flatland',
+    name: 'Flatland',
+    blurb: 'Flat pieces only. The board still turns.',
+    difficulty: 1,
+    // Nothing but planar pieces, so every cube of a piece shares one lane and
+    // depth is purely a property of where you put it. Pure projection reading.
+    maxTier: 1,
+    startStage: 2,
+    // Roll alone, and no depth nudge ever. Both follow from the mode's own
+    // promise: the piece never leaves the screen plane, so its lane changes only
+    // when the board turns. Yaw and the nudge are the two ways a player could
+    // move a piece through depth directly, and a mode about reading projection
+    // cannot offer either.
+    rotation: 'roll',
+    depthNudge: 'never',
+    // No hot bar either. The mode's job is to teach that colour is depth, and a
+    // second gauge on the same input as the Shift meter is noise against that.
+    spectralCollapse: false,
+  },
+  {
+    ...base,
+    id: 'zen',
+    name: 'Zen',
+    blurb: 'No failure. Build and turn for as long as you like.',
+    difficulty: 2,
+    startStage: 2,
+    pinStage: true,
+    depthNudge: 'always',
+    canFail: false,
+    // Nothing is at stake, so a Zen score cannot stand beside a real one.
+    scoreScale: 0.25,
+  },
   {
     ...base,
     id: 'ascent',
     name: 'Ascent',
     blurb: 'The full arc. Starts flat and teaches itself.',
+    difficulty: 3,
   },
   {
     ...base,
     id: 'endless',
     name: 'Endless',
     blurb: 'Everything unlocked, accelerating without end.',
+    difficulty: 4,
     /*
      * Endless pins **stage 6's content** -- the first stage where every piece
      * tier is available and depth control is in the player's hands -- and then
@@ -183,6 +236,7 @@ export const MODES: readonly ModeConfig[] = [
     id: 'prism',
     name: 'Prism',
     blurb: 'The board turns constantly. Chains are everything.',
+    difficulty: 5,
     startStage: 3,
     linesPerTurn: 2,
     depthNudge: 'always',
@@ -190,29 +244,10 @@ export const MODES: readonly ModeConfig[] = [
   },
   {
     ...base,
-    id: 'flatland',
-    name: 'Flatland',
-    blurb: 'Flat pieces only. The board still turns.',
-    // Nothing but planar pieces, so every cube of a piece shares one lane and
-    // depth is purely a property of where you put it. Pure projection reading.
-    maxTier: 1,
-    startStage: 2,
-    // Roll alone, and no depth nudge ever. Both follow from the mode's own
-    // promise: the piece never leaves the screen plane, so its lane changes only
-    // when the board turns. Yaw and the nudge are the two ways a player could
-    // move a piece through depth directly, and a mode about reading projection
-    // cannot offer either.
-    rotation: 'roll',
-    depthNudge: 'never',
-    // No hot bar either. The mode's job is to teach that colour is depth, and a
-    // second gauge on the same input as the Shift meter is noise against that.
-    spectralCollapse: false,
-  },
-  {
-    ...base,
     id: 'blindSpectrum',
     name: 'Blind Spectrum',
     blurb: 'No depth colour. Read the structure from memory.',
+    difficulty: 6,
     startStage: 4,
     depthNudge: 'always',
     depthColour: false,
@@ -223,18 +258,6 @@ export const MODES: readonly ModeConfig[] = [
       bestStage: 5,
       description: 'Reach stage 5 in any mode',
     },
-  },
-  {
-    ...base,
-    id: 'zen',
-    name: 'Zen',
-    blurb: 'No failure. Build and turn for as long as you like.',
-    startStage: 2,
-    pinStage: true,
-    depthNudge: 'always',
-    canFail: false,
-    // Nothing is at stake, so a Zen score cannot stand beside a real one.
-    scoreScale: 0.25,
   },
 ] as const;
 

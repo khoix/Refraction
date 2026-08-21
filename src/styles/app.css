@@ -1432,14 +1432,16 @@ input,
 }
 
 .mode {
+  --mode-accent: 142 150 176;
   appearance: none;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
   padding: 1.1rem 1rem;
-  border: 1px solid var(--surface-line);
+  border: 1px solid rgb(var(--mode-accent) / 0.35);
+  border-left: 3px solid rgb(var(--mode-accent) / 0.85);
   border-radius: 0.7rem;
-  background: rgb(18 21 34 / 0.7);
+  background: color-mix(in srgb, rgb(var(--mode-accent)) 9%, rgb(18 21 34 / 0.72));
   text-align: left;
   cursor: pointer;
   transition:
@@ -1447,10 +1449,37 @@ input,
     background 160ms var(--ease-snap);
 }
 
+/*
+ * Difficulty accents on the mode grid only.
+ *
+ * Cool → warm as the cards get harder. These are not spectrum stops: hue on the
+ * board still means depth, and the menu has no well to misread. The ramp is a
+ * separate UI language for "how demanding is this mode".
+ */
+.mode[data-mode='flatland'] {
+  --mode-accent: 94 196 186;
+}
+.mode[data-mode='zen'] {
+  --mode-accent: 110 168 214;
+}
+.mode[data-mode='ascent'] {
+  --mode-accent: 148 158 214;
+}
+.mode[data-mode='endless'] {
+  --mode-accent: 214 178 96;
+}
+.mode[data-mode='prism'] {
+  --mode-accent: 220 140 96;
+}
+.mode[data-mode='blindSpectrum'] {
+  --mode-accent: 214 110 128;
+}
+
 .mode:hover:not(:disabled),
 .mode:focus-visible {
-  border-color: var(--text-dim);
-  background: var(--surface-raised);
+  border-color: rgb(var(--mode-accent) / 0.7);
+  border-left-color: rgb(var(--mode-accent));
+  background: color-mix(in srgb, rgb(var(--mode-accent)) 16%, var(--surface-raised));
 }
 
 .mode--locked {
@@ -1458,10 +1487,26 @@ input,
   opacity: 0.45;
 }
 
+.mode__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.55rem;
+}
+
 .mode__name {
   font-size: 1rem;
   letter-spacing: 0.14em;
-  color: var(--text-primary);
+  color: color-mix(in srgb, rgb(var(--mode-accent)) 42%, var(--text-primary));
+}
+
+.mode__difficulty {
+  flex-shrink: 0;
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  line-height: 1;
+  color: rgb(var(--mode-accent) / 0.95);
 }
 
 .mode__blurb {

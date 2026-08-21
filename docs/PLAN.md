@@ -264,7 +264,8 @@ fills with the meter; the HUD reads as panels, not captions; `verify:full` green
 **Goal:** everything around the core loop. Consumes the finalized gameplay
 rather than developing against systems still in motion.
 
-- All six modes: Ascent, Endless, Prism, Flatland, Blind Spectrum, Zen.
+- All six modes: Flatland, Zen, Ascent, Endless, Prism, Blind Spectrum
+  (difficulty order on the mode grid; Flatland first).
 - Title screen, mode select, pause, game-over, restart.
 - Versioned `localStorage` persistence with migration: settings, high scores per
   mode, unlocks, lifetime stats, session records.
@@ -1563,6 +1564,14 @@ Game over gains **Main Menu** (same quit path as pause). The title's session
 log and lifetime totals move behind a collapsed **Scores** fold — out of flow
 when open, so the wordmark does not jump — and stay hidden until there is
 something to show.
+
+---
+
+### M22g — Mode grid by difficulty ✅ _(play note)_
+
+The mode table is listed easiest → hardest: Flatland, Zen, Ascent, Endless,
+Prism, Blind Spectrum. Cards carry a pip rating and a cool→warm accent (not
+spectrum stops). `difficulty` is presentation only; the engine ignores it.
 
 ---
 

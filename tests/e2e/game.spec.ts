@@ -762,6 +762,32 @@ test.describe('screens', () => {
     await expect(page.locator('.mode[data-mode="ascent"]')).toBeEnabled();
   });
 
+  test('lists modes easiest to hardest, with a pip rating on each card', async ({ page }) => {
+    // The menu walks the mode table, so this order is what the player sees —
+    // Flatland first, Blind Spectrum last — and each card names its difficulty.
+    await page.goto('/');
+    await enter(page);
+    await page.getByRole('button', { name: 'PLAY' }).click();
+
+    const order = await page.locator('.mode').evaluateAll((cards) =>
+      cards.map((card) => (card as HTMLElement).dataset['mode'] ?? '')
+    );
+    expect(order).toEqual([
+      'flatland',
+      'zen',
+      'ascent',
+      'endless',
+      'prism',
+      'blindSpectrum',
+    ]);
+
+    for (let i = 0; i < order.length; i += 1) {
+      const rating = page.locator(`.mode[data-mode="${order[i]}"] .mode__difficulty`);
+      await expect(rating).toHaveAttribute('aria-label', `Difficulty ${i + 1} of 6`);
+      await expect(rating).toHaveText(`${'●'.repeat(i + 1)}${'○'.repeat(5 - i)}`);
+    }
+  });
+
   test('pauses and resumes on Escape without advancing the board', async ({ page }) => {
     await page.goto('/?debug=1&mode=ascent&seed=pause');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');

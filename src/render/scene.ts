@@ -118,7 +118,9 @@ export function orientColumnPanel(mesh: THREE.Mesh, yawDegrees: number, opacity:
   mesh.rotation.y = yaw;
   const depth = projectedFootprintDepth(yawDegrees) / 2 + 0.8;
   mesh.position.set(-Math.sin(yaw) * depth, 0, -Math.cos(yaw) * depth);
-  (mesh.material as THREE.MeshBasicMaterial).opacity = THREE.MathUtils.clamp(opacity, 0, 1);
+  const shown = THREE.MathUtils.clamp(opacity, 0, 1);
+  (mesh.material as THREE.MeshBasicMaterial).opacity = shown;
+  mesh.visible = shown > 0.01;
 }
 
 export interface Well {
