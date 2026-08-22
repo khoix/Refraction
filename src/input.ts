@@ -12,6 +12,7 @@
 
 import type { Game } from '@core/game';
 import { ACTION_BY_CODE } from './keymap';
+import type { Action } from './keymap';
 
 /** Delayed auto shift: hold before a move starts repeating. */
 export const DAS_MS = 150;
@@ -29,6 +30,11 @@ export interface InputHandlers {
    * in, so a key held down across a pause does not come back stuck.
    */
   readonly accepts: () => boolean;
+  /**
+   * Optional per-action gate (tutorial allowlists). Absent means all actions
+   * that pass `accepts` are allowed.
+   */
+  readonly allowsAction?: (action: Action) => boolean;
   readonly onTurn: (direction: 'left' | 'right') => void;
   /** Any key at all. Browsers refuse to start audio outside a user gesture. */
   readonly onInteract: () => void;
@@ -98,9 +104,11 @@ export class InputController {
     // The turn prompt takes over the movement keys while it is up.
     if (game.status === 'awaitingTurn') {
       if (action === 'moveLeft') {
+        if (this.handlers.allowsAction && !this.handlers.allowsAction('moveLeft')) return;
         this.handlers.onTurn('left');
         event.preventDefault();
       } else if (action === 'moveRight') {
+        if (this.handlers.allowsAction && !this.handlers.allowsAction('moveRight')) return;
         this.handlers.onTurn('right');
         event.preventDefault();
       }
@@ -108,6 +116,10 @@ export class InputController {
     }
 
     if (action === undefined) return;
+    if (this.handlers.allowsAction && !this.handlers.allowsAction(action)) {
+      event.preventDefault();
+      return;
+    }
 
     switch (action) {
       case 'moveLeft':
@@ -224,10 +236,15 @@ export class InputController {
     const game = this.game();
     if (game.status !== 'falling' || !this.handlers.accepts()) return;
 
-    this.repeat(this.left, deltaMs, () => game.moveHorizontal(-1));
-    this.repeat(this.right, deltaMs, () => game.moveHorizontal(1));
+    const allows = this.handlers.allowsAction;
+    if (!allows || allows('moveLeft')) {
+      this.repeat(this.left, deltaMs, () => game.moveHorizontal(-1));
+    }
+    if (!allows || allows('moveRight')) {
+      this.repeat(this.right, deltaMs, () => game.moveHorizontal(1));
+    }
 
-    if (this.softDropHeld) {
+    if (this.softDropHeld && (!allows || allows('softDrop'))) {
       this.softDropElapsed += deltaMs;
       const interval = game.softDropIntervalMs();
       while (this.softDropElapsed >= interval) {

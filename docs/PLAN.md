@@ -925,7 +925,7 @@ and still has a keyboard, and the layout branches on that.
 
 ---
 
-## M13 — Teaching
+## M13 — Teaching ✅ _shipped_
 
 **Goal:** a player understands the core idea without being told it in prose.
 
@@ -936,27 +936,18 @@ playthrough** that pauses to highlight the key parts as they happen. Worth
 recording as a change of direction rather than a refinement — teaching by pure
 design is a lovely goal and this game has one idea too strange to leave to it.
 
-- **On rails.** The tutorial deals a fixed sequence of pieces into a fixed
-  board, so every beat lands where the script expects. The engine already
-  supports this exactly: a run is determined by `(seed, input log)`, and the
-  seeded challenge machinery from M9 is the same mechanism. A scripted board is
-  a fixture, not a new code path.
-- **Hands-on.** The player makes the moves. A tutorial that plays itself teaches
-  the player to watch.
-- **Pausing to highlight.** `paused` is already a real `GameStatus` that
-  preserves determinism, so the tutorial can stop the clock on a beat, point at
-  something, and resume without the run drifting.
-- **The beats**, in the order the game reveals them: position is absolute and
-  colour is relative; a line is eight cells sharing a row _and a lane_; the
-  Shift meter fills and the board turns; a face you could not see becomes the
-  face you are playing; a line you did not know you had built clears on arrival.
-  The turn is the moment the game exists for, so the tutorial's job is to get a
-  player to their first one having understood what happened.
-- **Skippable, and offered once.** It runs on first launch and lives in the
-  title screen afterwards.
-
-**Sequencing note:** this wants the title screen (M14) to have somewhere to
-offer it from, but does not depend on it.
+- ✅ **Hybrid coach marks.** Circular spotlight + dim scrim; cinematic camera
+  orbits; short gated hands-on beats. Three acts: unique well (depth, colour,
+  x-ray, lane clears, Shift, Refraction) → 3D pieces → Spectral Collapse and
+  modes coda. Never names Flatland or other falling-block games; does not coach
+  genre basics.
+- ✅ **On rails.** Fixed seeds, board fixtures, `Game.armPiece` for staged
+  shapes. Act mid-run rebuilds swap planar rules for multi-lane / Collapse.
+- ✅ **Pausing to highlight.** Uses real `paused` status between beats.
+- ✅ **Title entry only.** `TUTORIAL` on the title screen; no first-launch
+  auto-offer (differs from the original "offered once" line below).
+- ✅ **Skippable.** Skip / Esc on desktop; on phones the pause control is ×
+  (leave). Tutorial runs are never saved.
 
 **Exit criteria:** a player who has never seen the game completes the tutorial
 and can then say, unprompted, what the colours mean and what turning does.

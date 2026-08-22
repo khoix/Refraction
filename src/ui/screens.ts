@@ -44,6 +44,8 @@ export interface ScreenHandlers {
   readonly onEnter: () => void;
   /** Start a run pinned to a challenge code. */
   readonly onChallenge: (challenge: Challenge) => void;
+  /** Start the hybrid tutorial from the title screen. */
+  readonly onTutorial: () => void;
   readonly onResume: () => void;
   readonly onQuit: () => void;
   readonly onRestart: () => void;
@@ -456,6 +458,7 @@ export class Screens {
     const actions = element('div', 'panel__actions');
     actions.append(
       button('PLAY', 'button button--primary', () => this.handlers.onOpen('modes')),
+      button('TUTORIAL', 'button', () => this.handlers.onTutorial()),
       button('CHALLENGE', 'button', () => this.handlers.onOpen('challenge')),
       button('SETTINGS', 'button', () => this.handlers.onOpen('settings'))
     );

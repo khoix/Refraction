@@ -129,6 +129,8 @@ export interface Well {
   readonly frame: THREE.LineSegments;
   /** The box's corner posts, which only mean anything once the board turns. */
   readonly posts: THREE.LineSegments;
+  /** Full cell grid on the floor and inner walls. */
+  readonly grid: THREE.LineSegments;
 }
 
 export interface SceneLights {
@@ -144,6 +146,10 @@ export interface SceneBundle {
   readonly well: Well;
   readonly lights: SceneLights;
 }
+
+const WELL_GRID_DESKTOP = { color: 0x1e263c, opacity: 0.35, faceFloor: 0.28 } as const;
+/** Phones crush thin additive lines; a brighter lattice still reads as structure. */
+const WELL_GRID_MOBILE = { color: 0x6a7eb0, opacity: 0.78, faceFloor: 0.62 } as const;
 
 /** Light positions at yaw 0, rotated with the camera by `orientLights`. */
 const KEY_LIGHT_BASE: readonly [number, number, number] = [7, 14, 16];
@@ -164,6 +170,10 @@ function buildWell(): Well {
   const halfD = BOARD_DEPTH / 2;
   const floorY = toSceneY(0) - 0.5;
   const topY = toSceneY(BOARD_HEIGHT - 1) + 0.5;
+  const x0 = -halfW;
+  const x1 = halfW;
+  const z0 = -halfD;
+  const z1 = halfD;
 
   // The frame is the playfield's flat silhouette: two uprights and a floor line.
   // It is built along one edge and rotated to face the camera, so head-on it is
@@ -189,8 +199,44 @@ function buildWell(): Well {
   }
   const posts = lineSegments(postPoints, 0x2a3350, 0.5);
 
-  group.add(frame, posts);
-  return { group, frame, posts };
+  // Full cell grid on the floor and all four walls — the column's volume.
+  const gridPoints: number[] = [];
+  const push = (ax: number, ay: number, az: number, bx: number, by: number, bz: number): void => {
+    gridPoints.push(ax, ay, az, bx, by, bz);
+  };
+  for (let i = 0; i <= BOARD_WIDTH; i += 1) {
+    const x = x0 + i;
+    push(x, floorY, z0, x, floorY, z1);
+  }
+  for (let j = 0; j <= BOARD_DEPTH; j += 1) {
+    const z = z0 + j;
+    push(x0, floorY, z, x1, floorY, z);
+  }
+  // Vertical walls: uprights at each cell, horizontals at each row.
+  for (const z of [z0, z1]) {
+    for (let i = 0; i <= BOARD_WIDTH; i += 1) {
+      const x = x0 + i;
+      push(x, floorY, z, x, topY, z);
+    }
+    for (let row = 0; row <= BOARD_HEIGHT; row += 1) {
+      const y = floorY + row;
+      push(x0, y, z, x1, y, z);
+    }
+  }
+  for (const x of [x0, x1]) {
+    for (let j = 0; j <= BOARD_DEPTH; j += 1) {
+      const z = z0 + j;
+      push(x, floorY, z, x, topY, z);
+    }
+    for (let row = 0; row <= BOARD_HEIGHT; row += 1) {
+      const y = floorY + row;
+      push(x, y, z0, x, y, z1);
+    }
+  }
+  const grid = lineSegments(gridPoints, 0x1e263c, 0.35);
+
+  group.add(frame, posts, grid);
+  return { group, frame, posts, grid };
 }
 
 export function createScene(): SceneBundle {
@@ -413,7 +459,12 @@ export function orientWell(well: Well, yawDegrees: number): void {
  * than as scenery. Zooming past the edges is wasted if two uprights and a floor
  * line are still drawing the box the player is looking into.
  */
-export function setWellFlatness(well: Well, flatness: number, recede = 0): void {
+export function setWellFlatness(
+  well: Well,
+  flatness: number,
+  recede = 0,
+  brightGrid = false
+): void {
   const shown = 1 - THREE.MathUtils.clamp(recede, 0, 1);
   const dimensional = 1 - THREE.MathUtils.clamp(flatness, 0, 1);
 
@@ -421,6 +472,15 @@ export function setWellFlatness(well: Well, flatness: number, recede = 0): void 
   const postBase = (posts.userData.baseOpacity as number | undefined) ?? 1;
   posts.opacity = postBase * dimensional * shown;
   well.posts.visible = dimensional * shown > 0.01;
+
+  // Grid rides with the volume: faint face-on so the far wall still reads as a
+  // cell lattice, full strength once the box opens mid-turn / mid-orbit.
+  const gridLook = brightGrid ? WELL_GRID_MOBILE : WELL_GRID_DESKTOP;
+  const grid = well.grid.material as THREE.LineBasicMaterial;
+  grid.color.setHex(gridLook.color);
+  const gridDim = gridLook.faceFloor + (1 - gridLook.faceFloor) * dimensional;
+  grid.opacity = gridLook.opacity * gridDim * shown;
+  well.grid.visible = shown > 0.01;
 
   const frame = well.frame.material as THREE.LineBasicMaterial;
   const frameBase = (frame.userData.baseOpacity as number | undefined) ?? 1;

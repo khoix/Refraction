@@ -7,6 +7,31 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M13 — Teaching
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Hybrid tutorial from the title screen (`TUTORIAL`). Circular spotlight over a
+dim scrim; cinematic yaw/elevation orbits; pause-to-highlight; gated hands-on
+for a lane clear and Shift choice. Three acts: unique well concepts (3D board,
+colour = depth, drop-channel x-ray, lane-scoped clears, Shift, Refraction) →
+multi-lane pieces → Spectral Collapse + modes coda. No auto-launch.
+
+Desktop leaves via Skip / Esc. On phones the pause control becomes **×** (leave
+tutorial) and Skip is hidden from coach copy; ← / → sit on a row under the card
+text. Place-it maps a downward field swipe to hard drop when pitch is gated.
+Modes closes with “Are you ready…” on its own line. Touch-primary well grid
+lines are brighter so the lattice still reads on a small screen.
+
+### Tested
+
+Unit: fixtures (spectrum, x-ray, lane gap, refraction line), script order /
+allowlists (place-lane drop-only; place-3d swipe-down hint), modes tagline
+paragraph, act mode configs and `armPiece`. E2e: title → Tutorial → Continue;
+desktop Skip and phone × both return to title without incrementing run stats.
+
+---
+
 ## M22j — Mobile Shift: drag the board, tap the arrows
 
 **Branch:** `cursor/refraction-kendega-desktop`

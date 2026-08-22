@@ -577,6 +577,11 @@ input,
   border-color: var(--text-dim);
 }
 
+.hud__pause--exit {
+  font-size: 1.15rem;
+  letter-spacing: 0;
+}
+
 .hud--strip .hud__pause {
   /* STRIP_HEIGHT_PX (84) + gap. See touch/controller.ts. */
   bottom: calc(5.25rem + 0.5rem);
@@ -984,13 +989,18 @@ input,
 }
 
 /* Play is frozen while the player picks a face, so this reads as a deliberate
-   modal beat: the board dims and the choice sits dead centre. */
+   modal beat: the board dims and the choice sits dead centre. During the
+   tutorial the coach card already dims the frame, so drop the extra scrim. */
 .prompt {
   position: absolute;
   inset: 0;
   display: grid;
   place-items: center;
   background: rgb(5 6 10 / 0.78);
+}
+
+.hud:has(+ .tutorial:not([hidden])) .prompt {
+  background: transparent;
 }
 
 .prompt__pill {
@@ -2605,4 +2615,264 @@ input,
 .stage,
 .hud {
   touch-action: none;
+}
+
+/* ---------------------------------------------------------------- tutorial */
+
+/*
+ * Above the HUD, below (or alongside) `.screens`. During a tutorial the screens
+ * root is hidden (`playing`), so this layer owns the coach chrome.
+ */
+.tutorial {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+}
+
+.tutorial[hidden] {
+  display: none;
+}
+
+.tutorial__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgb(5 6 10 / 0.78);
+  pointer-events: none;
+  transition: background 200ms ease;
+}
+
+.tutorial__scrim--soft {
+  background: rgb(5 6 10 / 0.52);
+}
+
+.tutorial__skip-chip {
+  position: absolute;
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+  z-index: 2;
+  pointer-events: auto;
+  margin: 0;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid rgb(255 255 255 / 0.12);
+  background: rgb(8 9 14 / 0.88);
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+
+.tutorial__skip-chip:hover,
+.tutorial__skip-chip:focus-visible {
+  color: var(--text-primary);
+  border-color: rgb(255 255 255 / 0.28);
+}
+
+.tutorial__card {
+  position: absolute;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.85rem 1rem 0.9rem;
+  background: rgb(8 9 14 / 0.92);
+  border: 1px solid rgb(255 255 255 / 0.08);
+  pointer-events: auto;
+  text-align: left;
+  width: min(18rem, 34vw);
+  /* Sized to content — never scroll the coach copy. */
+  max-height: none;
+  overflow: visible;
+}
+
+.tutorial__card--left {
+  left: max(0.75rem, env(safe-area-inset-left, 0px));
+  right: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.tutorial__card--right {
+  right: max(0.75rem, env(safe-area-inset-right, 0px));
+  left: auto;
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+}
+
+.tutorial__card--top {
+  left: 50%;
+  right: auto;
+  top: max(0.75rem, env(safe-area-inset-top, 0px));
+  bottom: auto;
+  transform: translateX(-50%);
+  width: min(22rem, calc(100% - 1.5rem));
+}
+
+.tutorial__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.tutorial__skip-link {
+  display: none;
+  margin: 0;
+  padding: 0;
+  border: none;
+  background: none;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tutorial__skip-link:hover,
+.tutorial__skip-link:focus-visible {
+  color: var(--text-primary);
+}
+
+.tutorial__title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.tutorial__body {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  line-height: 1.45;
+  letter-spacing: 0.02em;
+  color: var(--text-dim);
+  overflow: visible;
+}
+
+.tutorial__para {
+  margin: 0;
+}
+
+.tutorial__para + .tutorial__para {
+  margin-top: 0.55rem;
+}
+
+.tutorial__body strong {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.tutorial__hint {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: var(--text-primary);
+}
+
+.tutorial__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.25rem;
+}
+
+.tutorial__actions .button {
+  flex: 1 1 auto;
+  min-width: 6.5rem;
+}
+
+.tutorial--compact .tutorial__card {
+  width: min(12.5rem, 38vw);
+  padding: 0.5rem 0.6rem 0.55rem;
+  gap: 0.28rem;
+}
+
+.tutorial--compact .tutorial__card--top {
+  width: min(20rem, calc(100% - 1.25rem));
+}
+
+.tutorial--compact .tutorial__title {
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+}
+
+.tutorial--compact .tutorial__body {
+  font-size: 0.68rem;
+  line-height: 1.32;
+}
+
+.tutorial--compact .tutorial__para + .tutorial__para {
+  margin-top: 0.28rem;
+}
+
+.tutorial--compact .tutorial__hint {
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+}
+
+.tutorial--arrows .tutorial__actions {
+  flex-wrap: nowrap;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.4rem;
+  width: 100%;
+  margin-top: 0.35rem;
+}
+
+.tutorial--arrows .tutorial__nav {
+  flex: 0 0 auto;
+  min-width: 2.4rem;
+  width: 2.4rem;
+  padding: 0.28rem 0;
+  font-size: 1.05rem;
+  letter-spacing: 0;
+}
+
+.tutorial--arrows .tutorial__nav.button--primary {
+  margin-left: auto;
+}
+
+.tutorial--arrows .tutorial__nav:not([hidden]) + .tutorial__nav[hidden],
+.tutorial--compact .button--primary.tutorial__nav:not([hidden]) {
+  min-width: unset;
+}
+
+.tutorial--compact .tutorial__nav.button--primary:not([hidden]) {
+  width: auto;
+  min-width: 2.4rem;
+  padding-inline: 0.55rem;
+}
+
+.hud:has(+ .tutorial--compact) .prompt__pill {
+  gap: 0.75rem;
+  padding: 0.55rem 0.9rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.18em;
+}
+
+.hud:has(+ .tutorial--compact) .prompt__arrow {
+  font-size: 1.05rem;
+}
+
+/* Compact / mobile sheet: Skip lives on the pause control as ×. */
+.tutorial--compact .tutorial__skip-chip,
+.tutorial--compact .tutorial__skip-link {
+  display: none;
+}
+
+@media (max-width: 40rem), (max-height: 40rem) {
+  .tutorial__skip-chip {
+    display: none;
+  }
 }
