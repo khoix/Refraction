@@ -230,6 +230,8 @@ export class Game {
   private lockResets = 0;
   private grounded = false;
   private turnPromptTimer = 0;
+  /** When true, awaitingTurn never auto-picks a face (tutorial Shift choice). */
+  private turnPromptHeld = false;
   private turnTimer = 0;
   /**
    * Set while a collapse's own clears are resolving.
@@ -407,7 +409,7 @@ export class Game {
    * move, rotation and fall for free, and is empty the moment the piece locks.
    */
   firstContactCells(): Cell[] {
-    if (this.status !== 'falling' || !this.active) return [];
+    if (!this.active || (this.status !== 'falling' && this.status !== 'paused')) return [];
 
     // The lowest cube of the piece in each occupied (x, z) column.
     const lowest = new Map<string, Cell>();
@@ -526,6 +528,28 @@ export class Game {
     return true;
   }
 
+  /**
+   * Put a specific piece in play without consuming the bag.
+   *
+   * Used by the tutorial (and debug tooling) to stage a beat. Resets lock /
+   * gravity timers the same way a normal spawn does.
+   */
+  armPiece(id: PieceId, lane: number, u?: number): boolean {
+    const def = PIECES_BY_ID.get(id);
+    if (!def) return false;
+    this.place(id, normalize([...def.cells]), lane);
+    if (!this.active) return false;
+    if (u !== undefined) {
+      const candidate = { ...this.active, u };
+      if (this.fits(candidate)) this.active = candidate;
+      else this.active = { ...this.active, u };
+    }
+    if (this.status === 'gameOver') return false;
+    this.status = 'falling';
+    this.statusBeforePause = null;
+    return true;
+  }
+
   /** Answer the Shift prompt. Ignored unless a turn is pending. */
   chooseTurn(direction: TurnDirection): boolean {
     if (this.status !== 'awaitingTurn') return false;
@@ -579,6 +603,15 @@ export class Game {
     return true;
   }
 
+  /**
+   * Freeze the turn-prompt timer. Used by the tutorial so the player is never
+   * auto-shifted while reading the coach card.
+   */
+  holdTurnPrompt(held: boolean): void {
+    this.turnPromptHeld = held;
+    if (held) this.turnPromptTimer = 0;
+  }
+
   tick(deltaMs: number): void {
     if (this.status === 'gameOver' || this.status === 'paused') return;
 
@@ -591,9 +624,11 @@ export class Game {
     }
 
     if (this.status === 'awaitingTurn') {
-      this.turnPromptTimer += deltaMs;
-      const timeout = this.options.turnPromptTimeoutMs ?? TURN_PROMPT_TIMEOUT_MS;
-      if (this.turnPromptTimer >= timeout) this.beginTurn(this.lastTurnDirection);
+      if (!this.turnPromptHeld) {
+        this.turnPromptTimer += deltaMs;
+        const timeout = this.options.turnPromptTimeoutMs ?? TURN_PROMPT_TIMEOUT_MS;
+        if (timeout > 0 && this.turnPromptTimer >= timeout) this.beginTurn(this.lastTurnDirection);
+      }
       return;
     }
 

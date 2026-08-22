@@ -123,6 +123,7 @@ export class Hud {
   private readonly promptLeft = element('span', 'prompt__face', 'LEFT');
   private readonly promptRight = element('span', 'prompt__face', 'RIGHT');
   private turnHandler: ((direction: 'left' | 'right') => void) | null = null;
+  private turnPromptAllowed = true;
   /**
    * In-run music deck: a thin LCD with a scrolling credit and transport keys.
    * Live only while a run is on screen; the menus have no business showing it.
@@ -337,6 +338,15 @@ export class Hud {
   }
 
   /**
+   * When false, the face-choice overlay stays hidden even in `awaitingTurn`
+   * (tutorial coach beats that are not the Shift choice).
+   */
+  setTurnPromptAllowed(allowed: boolean): void {
+    this.turnPromptAllowed = allowed;
+    if (!allowed) this.prompt.hidden = true;
+  }
+
+  /**
    * Announce a new stage.
    *
    * Deliberately quiet: the arc should be felt through the speed and the
@@ -488,6 +498,16 @@ export class Hud {
   }
 
   /**
+   * During the tutorial the pause control is leave, not pause: phones have no
+   * Esc, and Skip in the coach card stole space from the lesson.
+   */
+  setPauseExits(exits: boolean): void {
+    this.pauseBtn.classList.toggle('hud__pause--exit', exits);
+    this.pauseBtn.textContent = exits ? '×' : '❚❚';
+    this.pauseBtn.setAttribute('aria-label', exits ? 'Leave tutorial' : 'Pause');
+  }
+
+  /**
    * Lift the pause button clear of the movement strip when the mode has one.
    *
    * The strip is a region of the window, not an element, so the button has to be
@@ -569,8 +589,8 @@ export class Hud {
     this.chain.hidden = game.refractionChain < 1;
     this.chain.textContent = `REFRACTION CHAIN ×${game.refractionChain}`;
 
-    this.prompt.hidden = game.status !== 'awaitingTurn';
-    if (game.status === 'awaitingTurn') {
+    this.prompt.hidden = !this.turnPromptAllowed || game.status !== 'awaitingTurn';
+    if (!this.prompt.hidden) {
       this.promptLeft.textContent = FACE_LABEL[facePreview(game.face, 'left')];
       this.promptRight.textContent = FACE_LABEL[facePreview(game.face, 'right')];
     }

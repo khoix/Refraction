@@ -38,6 +38,7 @@ import {
 import { PiecePreview } from './preview';
 import type { PreviewRect } from './preview';
 import { EdgeLayer, VoxelLayer } from './voxels';
+import { touchPrimary } from '../touch/primary';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
 export const TURN_DURATION_MS = 750;
@@ -227,8 +228,13 @@ interface DropChannel {
   readonly back: number;
 }
 
+/** Active piece is in play for channel/ghost — including pause mid-fall (tutorial demos). */
+function pieceInFlight(game: Game): boolean {
+  return !!game.active && (game.status === 'falling' || game.status === 'paused');
+}
+
 function dropChannel(game: Game): Map<number, DropChannel> | null {
-  if (game.status !== 'falling' || !game.active) return null;
+  if (!pieceInFlight(game) || !game.active) return null;
   const ghost = game.ghostCells();
   if (ghost.length === 0) return null;
 
@@ -511,6 +517,38 @@ export class GameRenderer {
   private bottomReservePx = 0;
   private readonly turnDurationMs: number;
 
+  /**
+   * Tutorial camera lane: lerps yaw/elevation independently of turns and Peek.
+   * Null when inactive. Optional return phase eases back to a settled face;
+   * with `loop`, out → home → out repeats for the beat.
+   */
+  private tutorialLook: {
+    yawFrom: number;
+    yawTo: number;
+    elevFrom: number;
+    elevTo: number;
+    elapsed: number;
+    durationMs: number;
+    /** Outbound target (preserved across loop restarts). */
+    outYaw: number;
+    outElev: number;
+    homeYaw: number | null;
+    homeElev: number;
+    returnDurationMs: number;
+    outDurationMs: number;
+    loop: boolean;
+    phase: 'out' | 'back';
+  } | null = null;
+
+  /** Continuous gentle orbit around a settled face for cinematic tutorial beats. */
+  private tutorialLoop: {
+    baseYaw: number;
+    yawAmplitude: number;
+    elevAmplitude: number;
+    periodMs: number;
+    elapsed: number;
+  } | null = null;
+
   constructor(
     private readonly canvas: HTMLCanvasElement,
     options: GameRendererOptions = {}
@@ -602,6 +640,16 @@ export class GameRenderer {
 
   /** Current camera yaw, which mid-turn is between two faces. */
   get yaw(): number {
+    if (this.tutorialLook) {
+      const t = easeInOutCubic(
+        Math.min(1, this.tutorialLook.elapsed / this.tutorialLook.durationMs)
+      );
+      return this.tutorialLook.yawFrom + (this.tutorialLook.yawTo - this.tutorialLook.yawFrom) * t;
+    }
+    if (this.tutorialLoop) {
+      const t = (this.tutorialLoop.elapsed / this.tutorialLoop.periodMs) * Math.PI * 2;
+      return this.tutorialLoop.baseYaw + Math.sin(t) * this.tutorialLoop.yawAmplitude;
+    }
     if (!this.isTurning) return this.yawTo;
     const t = easeInOutCubic(this.turnElapsed / this.turnDurationMs);
     return this.yawFrom + (this.yawTo - this.yawFrom) * t;
@@ -626,6 +674,8 @@ export class GameRenderer {
 
   /** Begin a turn. The camera travels the way the player asked, not the short way. */
   startTurn(direction: TurnDirection): void {
+    this.clearTutorialLook();
+    this.clearTutorialLoop();
     this.yawFrom = this.yaw;
     this.yawTo = this.yawFrom + turnYawDelta(direction);
     this.turnElapsed = 0;
@@ -651,6 +701,101 @@ export class GameRenderer {
   /** Whether the camera is currently away from dead-on because of Peek. */
   get peeking(): boolean {
     return this.peek > 0;
+  }
+
+  /**
+   * Orbit for a tutorial beat. Orthographic only — lerps yaw and elevation
+   * without starting an engine turn. Cleared when the beat ends or a real
+   * turn begins. When `returnHome` is set, eases back to that yaw/elevation
+   * after the outbound orbit so teaching stays face-on. With `loop`, the
+   * out→home cycle repeats until cleared.
+   */
+  startTutorialLook(options: {
+    readonly yawTo: number;
+    readonly elevation: number;
+    readonly durationMs: number;
+    readonly returnHome?: { readonly yaw: number; readonly elevation: number; readonly durationMs: number };
+    readonly loop?: boolean;
+  }): void {
+    this.clearTutorialLoop();
+    const durationMs = Math.max(1, options.durationMs);
+    const homeYaw = options.returnHome?.yaw ?? null;
+    const homeElev = options.returnHome?.elevation ?? 0;
+    const returnDurationMs = Math.max(1, options.returnHome?.durationMs ?? durationMs);
+    this.tutorialLook = {
+      yawFrom: this.yaw,
+      yawTo: options.yawTo,
+      elevFrom: this.tutorialElevation,
+      elevTo: options.elevation,
+      elapsed: 0,
+      durationMs,
+      outYaw: options.yawTo,
+      outElev: options.elevation,
+      homeYaw,
+      homeElev,
+      returnDurationMs,
+      outDurationMs: durationMs,
+      loop: options.loop === true && homeYaw !== null,
+      phase: 'out',
+    };
+  }
+
+  /**
+   * Gentle continuous orbit for cinematic tutorial beats. Orthographic only.
+   * Cleared by one-shot looks, real turns, hands-on, or teardown.
+   */
+  startTutorialLoop(options: {
+    readonly baseYaw: number;
+    readonly yawAmplitude?: number;
+    readonly elevAmplitude?: number;
+    readonly periodMs?: number;
+  }): void {
+    this.clearTutorialLook();
+    this.tutorialLoop = {
+      baseYaw: options.baseYaw,
+      yawAmplitude: options.yawAmplitude ?? 8,
+      elevAmplitude: options.elevAmplitude ?? 3.5,
+      periodMs: Math.max(1, options.periodMs ?? 10000),
+      elapsed: 0,
+    };
+    this.yawFrom = options.baseYaw;
+    this.yawTo = options.baseYaw;
+    this.turnElapsed = this.turnDurationMs;
+  }
+
+  clearTutorialLoop(): void {
+    if (!this.tutorialLoop) return;
+    this.yawFrom = this.tutorialLoop.baseYaw;
+    this.yawTo = this.yawFrom;
+    this.turnElapsed = this.turnDurationMs;
+    this.tutorialLoop = null;
+  }
+
+  /** Snap tutorial look/loop off and return elevation ownership to Peek/turn. */
+  clearTutorialLook(): void {
+    if (this.tutorialLook) {
+      this.yawFrom = this.yaw;
+      this.yawTo = this.yawFrom;
+      this.turnElapsed = this.turnDurationMs;
+    }
+    this.tutorialLook = null;
+    this.clearTutorialLoop();
+  }
+
+  private get tutorialElevation(): number {
+    if (this.tutorialLook) {
+      const t = easeInOutCubic(
+        Math.min(1, this.tutorialLook.elapsed / this.tutorialLook.durationMs)
+      );
+      return (
+        this.tutorialLook.elevFrom + (this.tutorialLook.elevTo - this.tutorialLook.elevFrom) * t
+      );
+    }
+    if (this.tutorialLoop) {
+      const t = (this.tutorialLoop.elapsed / this.tutorialLoop.periodMs) * Math.PI * 2;
+      return Math.sin(t + Math.PI / 2) * this.tutorialLoop.elevAmplitude;
+    }
+    return 0;
   }
 
   /**
@@ -878,6 +1023,45 @@ export class GameRenderer {
     };
   }
 
+  /**
+   * Bounding screen rect for a set of board cells (CSS viewport pixels).
+   * Used to park the tutorial spotlight on the thing being taught.
+   */
+  cellsScreenRect(cells: readonly Cell[]): WellScreenRect | null {
+    if (cells.length === 0) return null;
+    const width = this.canvas.clientWidth || 1;
+    const height = this.canvas.clientHeight || 1;
+    const box = this.canvas.getBoundingClientRect();
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const cell of cells) {
+      // Expand each cell to its eight corners so the hole covers the full cube.
+      for (const dx of [-0.5, 0.5]) {
+        for (const dy of [-0.5, 0.5]) {
+          for (const dz of [-0.5, 0.5]) {
+            this.scratch
+              .set(toSceneX(cell.x) + dx, toSceneY(cell.y) + dy, toSceneZ(cell.z) + dz)
+              .project(this.camera);
+            const sx = (this.scratch.x * 0.5 + 0.5) * width;
+            const sy = (-this.scratch.y * 0.5 + 0.5) * height;
+            minX = Math.min(minX, sx);
+            minY = Math.min(minY, sy);
+            maxX = Math.max(maxX, sx);
+            maxY = Math.max(maxY, sy);
+          }
+        }
+      }
+    }
+    return {
+      left: box.left + minX,
+      top: box.top + minY,
+      width: maxX - minX,
+      height: maxY - minY,
+    };
+  }
+
   resize(): void {
     const width = this.canvas.clientWidth || window.innerWidth;
     const height = this.canvas.clientHeight || window.innerHeight;
@@ -911,11 +1095,63 @@ export class GameRenderer {
    * the rotation, where the parallax is most legible.
    */
   get flatness(): number {
+    if (this.tutorialLook || this.tutorialLoop) {
+      // Open cube gaps while the tutorial orbits, same idea as mid-turn.
+      return 1 - Math.min(1, Math.abs(this.tutorialElevation) / TURN_ELEVATION_DEG);
+    }
     if (!this.isTurning) return 1;
     return 1 - Math.sin(Math.PI * (this.turnElapsed / this.turnDurationMs));
   }
 
   render(game: Game, deltaMs: number): void {
+    if (this.tutorialLoop) {
+      this.tutorialLoop.elapsed += deltaMs;
+    }
+    if (this.tutorialLook) {
+      this.tutorialLook.elapsed = Math.min(
+        this.tutorialLook.durationMs,
+        this.tutorialLook.elapsed + deltaMs
+      );
+      // Outbound orbit finished — chain the return-to-face ease when requested.
+      if (
+        this.tutorialLook.phase === 'out' &&
+        this.tutorialLook.homeYaw !== null &&
+        this.tutorialLook.elapsed >= this.tutorialLook.durationMs
+      ) {
+        const look = this.tutorialLook;
+        const homeYaw = look.homeYaw;
+        if (homeYaw !== null) {
+          this.tutorialLook = {
+            ...look,
+            yawFrom: look.yawTo,
+            yawTo: homeYaw,
+            elevFrom: look.elevTo,
+            elevTo: look.homeElev,
+            elapsed: 0,
+            durationMs: look.returnDurationMs,
+            phase: 'back',
+          };
+        }
+      } else if (
+        this.tutorialLook.phase === 'back' &&
+        this.tutorialLook.loop &&
+        this.tutorialLook.homeYaw !== null &&
+        this.tutorialLook.elapsed >= this.tutorialLook.durationMs
+      ) {
+        // Home again — restart the outbound leg.
+        const look = this.tutorialLook;
+        this.tutorialLook = {
+          ...look,
+          yawFrom: look.homeYaw ?? look.yawTo,
+          yawTo: look.outYaw,
+          elevFrom: look.homeElev,
+          elevTo: look.outElev,
+          elapsed: 0,
+          durationMs: look.outDurationMs,
+          phase: 'out',
+        };
+      }
+    }
     if (this.isTurning) {
       this.turnElapsed = Math.min(this.turnDurationMs, this.turnElapsed + deltaMs);
     }
@@ -943,8 +1179,11 @@ export class GameRenderer {
     // cannot snap the camera through the rotation.
     const peekStep = deltaMs / PEEK_EASE_MS;
     this.peek = THREE.MathUtils.clamp(this.peek + (this.peekHeld ? peekStep : -peekStep), 0, 1);
+    const tutorialElev = this.tutorialLook || this.tutorialLoop ? this.tutorialElevation : 0;
     const elevation =
-      TURN_ELEVATION_DEG * dimensional + PEEK_ELEVATION_DEG * easeInOutCubic(this.peek);
+      TURN_ELEVATION_DEG * dimensional +
+      PEEK_ELEVATION_DEG * easeInOutCubic(this.peek) +
+      tutorialElev;
     positionCamera(this.camera, yaw, elevation, this.shakeOffset);
 
     // The front door takes the well away. Eased on the same principle as Peek,
@@ -964,7 +1203,7 @@ export class GameRenderer {
     setLightingFlatness(this.lights, flatness);
     // Same ease as bloom: well and column leave together when the front door opens.
     const backdropEase = easeInOutCubic(this.backdrop);
-    setWellFlatness(this.well, flatness, backdropEase);
+    setWellFlatness(this.well, flatness, backdropEase, touchPrimary());
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.
@@ -993,7 +1232,7 @@ export class GameRenderer {
     this.glow.setOpacity(0.3 + 0.28 * Math.sin(this.glowElapsed * 0.011) + whiteout * 0.4);
 
     const activeCells = game.activeCells();
-    const ghostCells = this.prefs.showGhost && game.status === 'falling' ? game.ghostCells() : [];
+    const ghostCells = this.prefs.showGhost && pieceInFlight(game) ? game.ghostCells() : [];
     this.active.update(activeCells, yaw, separation, whiteout);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(ghostCells, yaw, 0.78 * separation);
@@ -1003,7 +1242,7 @@ export class GameRenderer {
     this.activeHidden.update(activeCells, yaw, separation, whiteout);
     this.ghostHidden.update(ghostCells, yaw, 0.78 * separation);
 
-    const contacts = game.status === 'falling' ? game.firstContactCells() : [];
+    const contacts = pieceInFlight(game) ? game.firstContactCells() : [];
     this.contact.update(contacts, yaw, separation * 0.72, whiteout);
 
     // The lock flash: a brief full-cell glow where the piece just settled.

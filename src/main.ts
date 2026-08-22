@@ -19,6 +19,8 @@ import { SFX, playableSfxSource } from './audio/sfx';
 import { preload } from './assets/preload';
 import { Screens } from '@ui/screens';
 import type { ScreenName } from '@ui/screens';
+import { Spotlight } from '@ui/tutorial/spotlight';
+import { TutorialRunner } from '@ui/tutorial/runner';
 import { toView } from '@core/projection';
 import { stageLabel } from '@core/stages';
 import { MODES, isUnlocked, modeById } from '@core/modes';
@@ -275,8 +277,8 @@ function boot(root: HTMLElement): void {
     challenge = pinned;
     game = newGame(pinned ? pinned.seed : nextSeed(), mode);
     // The title screen has been turning the board; a new game is on the front
-    // face. Without this the run opens with the camera wherever the attract
-    // cycle left it, colouring the board for a face nobody is playing.
+    // face. Without this the camera opens wherever the attract cycle left it,
+    // colouring the board for a face nobody is playing.
     renderer.snapToFace(game.face);
     // The reserve depends on the mode, so it is re-applied per run rather than
     // once at boot.
@@ -287,6 +289,46 @@ function boot(root: HTMLElement): void {
     if (window.__refraction) window.__refraction.game = game;
     applySettings(save.settings);
     screens.show('playing');
+  };
+
+  const tutorialRef: { current: TutorialRunner | null } = { current: null };
+  const spotlight = new Spotlight({
+    onContinue: () => tutorialRef.current?.continue(),
+    onBack: () => tutorialRef.current?.back(),
+    onSkip: () => tutorialRef.current?.skip(),
+  });
+
+  const tutorial = new TutorialRunner(spotlight, {
+    getGame: () => game,
+    getRenderer: () => renderer,
+    rebuildGame: (config, seed) => {
+      mode = config;
+      challenge = null;
+      game = newGame(seed, config);
+      renderer.snapToFace(game.face);
+      applyStripReserve();
+      screens.setMode(mode);
+      // Tutorial runs are never folded into the save.
+      outcomeRecorded = true;
+      if (window.__refraction) window.__refraction.game = game;
+      applySettings(save.settings);
+      return game;
+    },
+    finish: (to) => {
+      audio.clearGameplayPin();
+      stillTheTitle();
+      screens.show(to);
+    },
+    isTouchPrimary: () => touchPrimary(),
+    reducedMotion: () => save.settings.reducedMotion,
+  });
+  tutorialRef.current = tutorial;
+
+  const startTutorial = (): void => {
+    outcomeRecorded = true;
+    screens.show('playing');
+    audio.playPinnedGameplay('block-drift');
+    tutorial.start();
   };
 
   /** Fold a finished run into the save, exactly once. */
@@ -333,6 +375,7 @@ function boot(root: HTMLElement): void {
       screens.show('title');
       audio.playTheme();
     },
+    onTutorial: () => startTutorial(),
     onChallenge: (entry) => startRun(entry.mode.id, entry),
     onResume: (): void => {
       game.resume();
@@ -364,8 +407,9 @@ function boot(root: HTMLElement): void {
 
   bindButtonSounds(screens.root, audio);
   bindButtonSounds(hud.root, audio);
+  bindButtonSounds(spotlight.root, audio);
 
-  root.replaceChildren(canvas, hud.root, screens.root);
+  root.replaceChildren(canvas, hud.root, spotlight.root, screens.root);
   if (!storageAvailable()) screens.warnUnwritableStorage();
   applySettings(save.settings);
 
@@ -500,7 +544,12 @@ function boot(root: HTMLElement): void {
 
   const input = new InputController(() => game, {
     accepts: playing,
+    allowsAction: (action) => !tutorial.running || tutorial.allows(action),
     onPause: () => {
+      if (tutorial.onEscape()) {
+        touch.cancel();
+        return;
+      }
       // Esc toggles between the board and the pause panel, and backs out of
       // settings to wherever it was opened from.
       if (screens.screen === 'playing') {
@@ -538,6 +587,7 @@ function boot(root: HTMLElement): void {
   // touchscreen should not change behaviour based on which input was used last.
   const touch = new TouchController(root, () => game, {
     accepts: playing,
+    allowsAction: (action) => !tutorial.running || tutorial.allows(action),
     onInteract: () => audio.resume(),
     onTurn: (direction: TurnDirection) => game.chooseTurn(direction),
     wellRect: () => renderer.wellScreenRect(),
@@ -563,6 +613,8 @@ function boot(root: HTMLElement): void {
   hud.onTurnTap((direction) => {
     audio.resume();
     if (!playing()) return;
+    const action = direction === 'left' ? 'moveLeft' : 'moveRight';
+    if (tutorial.running && !tutorial.allows(action)) return;
     game.chooseTurn(direction);
   });
 
@@ -578,6 +630,10 @@ function boot(root: HTMLElement): void {
   // Touch-primary pause. Same open path as Esc; the panel owns resume / main menu.
   hud.onPause(() => {
     if (screens.screen !== 'playing') return;
+    if (tutorial.onEscape()) {
+      touch.cancel();
+      return;
+    }
     game.pause();
     screens.show('paused');
     touch.cancel();
@@ -608,7 +664,9 @@ function boot(root: HTMLElement): void {
       game.tick(STEP_MS);
     }
 
-    for (const event of game.drainEvents()) {
+    const events = game.drainEvents();
+    if (tutorial.running) tutorial.onEvents(events);
+    for (const event of events) {
       switch (event.type) {
         case 'turn':
           if (event.direction) {
@@ -674,11 +732,13 @@ function boot(root: HTMLElement): void {
       }
     }
 
+    if (tutorial.running) tutorial.tick();
+
     // The game-over screen follows the engine's *state*, not its event. An
     // event can be missed -- drained while a panel is up, or reached by a route
     // that never queued one -- and a run that has ended must always be shown as
     // ended.
-    if (playing() && game.status === 'gameOver') {
+    if (playing() && game.status === 'gameOver' && !tutorial.running) {
       recordOutcome();
       screens.show('over');
     }
@@ -739,6 +799,7 @@ function boot(root: HTMLElement): void {
     hud.setHidden(screen === 'title' || screen === 'boot');
     // Pause lives on the phone; Esc covers everything else.
     hud.setPauseVisible(touchPrimary() && screen === 'playing');
+    hud.setPauseExits(tutorial.running);
     hud.setStripReserve(touchPrimary() && !game.rollOnly);
     const nowPlaying = trackById(audio.musicTrackId ?? '');
     hud.setMusicDeck(
@@ -751,6 +812,7 @@ function boot(root: HTMLElement): void {
         : null
     );
     hud.setHeat(game.spectralAllowed ? game.heat : null, game.spectralReady);
+    hud.setTurnPromptAllowed(!tutorial.running || tutorial.showsTurnPrompt());
     hud.update(game, elapsed);
     hud.layoutWell(
       renderer.wellScreenRect(),

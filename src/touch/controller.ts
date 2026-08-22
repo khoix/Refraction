@@ -12,6 +12,7 @@
  */
 
 import type { Game } from '@core/game';
+import type { Action } from '../keymap';
 import { GestureRecogniser } from './gestures';
 import type { Sample, TouchIntent, TouchLayout } from './gestures';
 
@@ -46,6 +47,11 @@ export function stripTopPx(viewportHeight: number): number {
 export interface TouchHandlers {
   /** Whether the engine should see this at all. False while a menu is up. */
   readonly accepts: () => boolean;
+  /**
+   * Optional per-action gate (tutorial allowlists). Absent means all actions
+   * that pass `accepts` are allowed.
+   */
+  readonly allowsAction?: (action: Action) => boolean;
   /** Browsers refuse to start audio outside a user gesture. */
   readonly onInteract: () => void;
   readonly onTurn: (direction: 'left' | 'right') => void;
@@ -167,6 +173,8 @@ export class TouchController {
     if (game.status === 'awaitingTurn') {
       for (const intent of intents) {
         if (intent.kind !== 'columnStep' || intent.steps === 0) continue;
+        const action = intent.steps < 0 ? 'moveRight' : 'moveLeft';
+        if (this.handlers.allowsAction && !this.handlers.allowsAction(action)) return;
         this.handlers.onTurn(intent.steps < 0 ? 'right' : 'left');
         return;
       }
@@ -175,18 +183,48 @@ export class TouchController {
 
     for (const intent of intents) {
       switch (intent.kind) {
-        case 'columnStep':
+        case 'columnStep': {
+          const action = intent.steps < 0 ? 'moveLeft' : 'moveRight';
+          if (this.handlers.allowsAction && !this.handlers.allowsAction(action)) break;
           this.step(intent.steps);
           break;
+        }
         case 'softDrop':
+          if (this.handlers.allowsAction && !this.handlers.allowsAction('softDrop')) break;
           game.softDrop();
           break;
         case 'hardDrop':
+          if (this.handlers.allowsAction && !this.handlers.allowsAction('hardDrop')) break;
           game.hardDrop();
           break;
-        case 'rotate':
+        case 'rotate': {
+          const action =
+            intent.axis === 'roll'
+              ? intent.clockwise
+                ? 'rollClock'
+                : 'rollAnti'
+              : intent.axis === 'yaw'
+                ? intent.clockwise
+                  ? 'yawClock'
+                  : 'yawAnti'
+                : intent.clockwise
+                  ? 'pitchUp'
+                  : 'pitchDown';
+          if (this.handlers.allowsAction && !this.handlers.allowsAction(action)) {
+            // Split modes: a downward field swipe is pitch. Tutorial beats
+            // that teach drop (not pitch) would otherwise swallow it.
+            if (
+              intent.axis === 'pitch' &&
+              !intent.clockwise &&
+              this.handlers.allowsAction('hardDrop')
+            ) {
+              game.hardDrop();
+            }
+            break;
+          }
           game.rotatePiece(intent.axis, intent.clockwise);
           break;
+        }
       }
     }
   }

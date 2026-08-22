@@ -54,6 +54,8 @@ export class Audio {
   private gameplay: MusicTrack[] = [];
   private bed: MusicBed | null = null;
   private currentId: string | null = null;
+  /** When set, gameplay stays on this catalogue id (tutorial: Block Drift). */
+  private pinnedId: string | null = null;
   /** Sampled clips, keyed by catalogue id, once decoded. */
   private readonly buffers = new Map<string, AudioBuffer>();
   /** URLs still waiting on a live context (or a decode in flight). */
@@ -126,6 +128,7 @@ export class Audio {
     this.gameplay = [...gameplay];
     this.bed = null;
     this.currentId = null;
+    this.pinnedId = null;
     this.held = false;
     if (theme) {
       this.music.load(theme.url, { loop: true });
@@ -184,6 +187,7 @@ export class Audio {
    */
   playTheme(): void {
     if (!this.theme) return;
+    this.pinnedId = null;
     this.held = false;
     if (this.bed === 'theme' && this.music.ready) {
       this.music.play();
@@ -205,6 +209,10 @@ export class Audio {
   playGameplay(): void {
     if (this.gameplay.length === 0) return;
     if (this.held) return;
+    if (this.pinnedId) {
+      this.playPinnedGameplay(this.pinnedId);
+      return;
+    }
     if (this.bed === 'gameplay' && this.music.ready) {
       this.music.play();
       return;
@@ -213,9 +221,34 @@ export class Audio {
     this.startGameplayTrack();
   }
 
+  /**
+   * Loop one gameplay track until `clearGameplayPin` / a theme bed.
+   * Used by the tutorial so the lesson stays on Block Drift.
+   */
+  playPinnedGameplay(id: string): void {
+    const track = this.gameplay.find((entry) => entry.id === id);
+    if (!track) return;
+    this.held = false;
+    this.pinnedId = id;
+    if (this.bed === 'gameplay' && this.currentId === id && this.music.ready) {
+      this.music.play();
+      return;
+    }
+    this.bed = 'gameplay';
+    this.currentId = id;
+    this.music.load(track.url, { loop: true });
+    this.music.play();
+  }
+
+  /** Return gameplay to the shuffled pool. */
+  clearGameplayPin(): void {
+    this.pinnedId = null;
+  }
+
   /** Fade out. The title uses this; a later screen will pick a bed again. */
   stopMusic(): void {
     this.held = false;
+    this.pinnedId = null;
     this.bed = null;
     this.music.stop();
   }
@@ -246,6 +279,10 @@ export class Audio {
   /** Skip to another gameplay track. Starts playing even if the bed was held. */
   nextGameplayTrack(): void {
     if (this.gameplay.length === 0) return;
+    if (this.pinnedId) {
+      this.playPinnedGameplay(this.pinnedId);
+      return;
+    }
     this.held = false;
     this.bed = 'gameplay';
     this.startGameplayTrack();

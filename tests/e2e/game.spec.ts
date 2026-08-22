@@ -4440,3 +4440,66 @@ test.describe('Spectral Collapse', () => {
     await expect(page.getByText('SPECTRAL COLLAPSE', { exact: true })).toHaveCount(0);
   });
 });
+
+test.describe('tutorial', () => {
+  test('opens from the title and advances on Continue', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    await page.getByRole('button', { name: 'TUTORIAL' }).click();
+    await expect(page.locator('.tutorial')).toBeVisible();
+    await expect(page.locator('.tutorial__title')).toHaveText('Welcome to Refraction.');
+    await page.getByRole('button', { name: 'CONTINUE' }).click();
+    await expect(page.locator('.tutorial__title')).toHaveText('A cube of space');
+    await expect(page.locator('.tutorial__card--left, .tutorial__card--right')).toHaveCount(1);
+    await expect(page.locator('.tutorial__finale')).toHaveCount(0);
+    await expect(page.locator('.tutorial__modes')).toHaveCount(0);
+  });
+
+  test('Skip returns to the title without recording a run', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    const runsBefore = await page.evaluate(() => window.__refraction?.save().stats.runs ?? 0);
+    await page.getByRole('button', { name: 'TUTORIAL' }).click();
+    await expect(page.locator('.tutorial')).toBeVisible();
+    await page.getByRole('button', { name: 'SKIP' }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await expect(page.locator('.tutorial')).toBeHidden();
+    const runsAfter = await page.evaluate(() => window.__refraction?.save().stats.runs ?? 0);
+    expect(runsAfter).toBe(runsBefore);
+  });
+
+  test('on a phone, × leaves without Skip in the coach card', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+      ],
+    });
+
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    const runsBefore = await page.evaluate(() => window.__refraction?.save().stats.runs ?? 0);
+    await page.getByRole('button', { name: 'TUTORIAL' }).click();
+    await expect(page.locator('.tutorial')).toBeVisible();
+    await expect(page.locator('.tutorial')).toHaveClass(/tutorial--compact/);
+    await expect(page.locator('.tutorial__skip-link')).toBeHidden();
+    await expect(page.getByRole('button', { name: 'SKIP' })).toBeHidden();
+    await page.getByRole('button', { name: 'Leave tutorial', exact: true }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
+    await expect(page.locator('.tutorial')).toBeHidden();
+    const runsAfter = await page.evaluate(() => window.__refraction?.save().stats.runs ?? 0);
+    expect(runsAfter).toBe(runsBefore);
+
+    await context.close();
+  });
+});
