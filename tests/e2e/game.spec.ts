@@ -183,10 +183,12 @@ async function previewPixels(
 test.describe('boot', () => {
   test('renders the playfield and the HUD', async ({ page }) => {
     await boot(page);
-    await expect(page.locator('.hud')).toBeVisible();
-    await expect(page.getByText('SCORE', { exact: true })).toBeVisible();
-    await expect(page.getByText('LINES')).toBeVisible();
-    await expect(page.getByText('STAGE', { exact: true })).toBeVisible();
+    const hud = page.locator('.hud');
+    await expect(hud).toBeVisible();
+    // Game over also labels SCORE / LINES / STAGE; keep these on the HUD.
+    await expect(hud.getByText('SCORE', { exact: true })).toBeVisible();
+    await expect(hud.getByText('LINES')).toBeVisible();
+    await expect(hud.getByText('STAGE', { exact: true })).toBeVisible();
     await expect(page.locator('.hud__face')).toHaveText('FRONT');
   });
 
