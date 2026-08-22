@@ -80,6 +80,14 @@ export const HEAT_PER_LINE = 0.1;
 /** Full to empty in one hundred and thirty seconds of clearing nothing. */
 export const HEAT_DECAY_PER_MS = 1 / 130_000;
 
+/**
+ * Full Spectrum reward: each Prism permanently multiplies gravity by this
+ * factor (a 25% drop). The stage / continuous curve keeps climbing underneath;
+ * the scale just sits on top, so later Full Spectrums buy another permanent
+ * breath without freezing the arc.
+ */
+export const PRISM_GRAVITY_FACTOR = 0.75;
+
 export type GameStatus =
   'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'paused' | 'gameOver';
 
@@ -240,6 +248,8 @@ export class Game {
   /** Status to return to on resume. Null whenever the game is not paused. */
   private statusBeforePause: GameStatus | null = null;
   private revolutionFaces = new Set<Face>();
+  /** Permanent gravity scale from Full Spectrum rewards. Starts at 1. */
+  private prismGravityScale = 1;
   private events: GameEvent[] = [];
 
   constructor(options: GameOptions) {
@@ -259,7 +269,7 @@ export class Game {
 
   /** Cells per second right now, after the mode's own acceleration. */
   get gravity(): number {
-    return modeGravity(this.mode, this.stage, this.lines);
+    return modeGravity(this.mode, this.stage, this.lines) * this.prismGravityScale;
   }
 
   get depthNudgeAllowed(): boolean {
@@ -844,7 +854,10 @@ export class Game {
         (this.resolveRefraction ? this.mode.refractionScale : 1)
     );
     this.score += gained;
-    if (prism) this.prisms += 1;
+    if (prism) {
+      this.prisms += 1;
+      this.prismGravityScale *= PRISM_GRAVITY_FACTOR;
+    }
 
     const label = clearLabel(context);
     this.events.push({

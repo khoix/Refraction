@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Game, HEAT_DECAY_PER_MS, HEAT_PER_LINE, facePreview } from '@core/game';
+import {
+  Game,
+  HEAT_DECAY_PER_MS,
+  HEAT_PER_LINE,
+  PRISM_GRAVITY_FACTOR,
+  facePreview,
+} from '@core/game';
 import { modeById } from '@core/modes';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { fromView, lineCells } from '@core/projection';
@@ -410,6 +416,69 @@ describe('event reporting', () => {
     // Nothing before the revolution closes; the flag lands on the fourth face.
     expect(seenPrism.slice(0, 3).every((flag) => flag === false)).toBe(true);
     expect(seenPrism[3]).toBe(true);
+  });
+});
+
+describe('Full Spectrum gravity reward', () => {
+  /** Close a four-face revolution so the Prism flag fires. */
+  function closeRevolution(game: Game): void {
+    for (let turnIndex = 0; turnIndex < 4; turnIndex += 1) {
+      const destination = facePreview(game.face, 'right');
+      const countsAlongX = destination === 'front' || destination === 'back';
+      for (let i = 0; i < BOARD_DEPTH; i += 1) {
+        game.board.fill(countsAlongX ? { x: i, y: 0, z: 3 } : { x: 3, y: 0, z: i });
+      }
+      game.drainEvents();
+      game.status = 'awaitingTurn';
+      game.chooseTurn('right');
+      settle(game);
+    }
+  }
+
+  it('drops gravity by 25% when Full Spectrum lands', () => {
+    const game = new Game({ seed: 'prism-drop', turnDurationMs: 10, clearFlashMs: 10 });
+    const before = game.gravity;
+
+    closeRevolution(game);
+
+    expect(game.prisms).toBe(1);
+    expect(game.gravity).toBeCloseTo(before * PRISM_GRAVITY_FACTOR, 5);
+  });
+
+  it('keeps the drop permanently', () => {
+    const game = new Game({ seed: 'prism-permanent', turnDurationMs: 10, clearFlashMs: 10 });
+    closeRevolution(game);
+    const afterPrism = game.gravity;
+
+    game.tick(60_000);
+    expect(game.gravity).toBeCloseTo(afterPrism, 5);
+  });
+
+  it('stacks on further Full Spectrums', () => {
+    const game = new Game({ seed: 'prism-stack', turnDurationMs: 10, clearFlashMs: 10 });
+    const baseline = game.gravity;
+
+    closeRevolution(game);
+    expect(game.gravity).toBeCloseTo(baseline * PRISM_GRAVITY_FACTOR, 5);
+
+    closeRevolution(game);
+    expect(game.prisms).toBe(2);
+    expect(game.gravity).toBeCloseTo(baseline * PRISM_GRAVITY_FACTOR ** 2, 5);
+  });
+
+  it('still climbs with the stage curve under the scale', () => {
+    const game = new Game({ seed: 'prism-climb', turnDurationMs: 10, clearFlashMs: 10 });
+    closeRevolution(game);
+    const slowedAtStage = game.gravity;
+    const stageBefore = game.stage.index;
+
+    game.lines += LINES_PER_STAGE;
+    expect(game.stage.index).toBe(stageBefore + 1);
+    expect(game.gravity).toBeGreaterThan(slowedAtStage);
+    // Relative climb matches the unscaled stage table; only the absolute speed is cut.
+    const unscaledBefore = stageForLines(game.lines - LINES_PER_STAGE).gravity;
+    const unscaledAfter = stageForLines(game.lines).gravity;
+    expect(game.gravity / slowedAtStage).toBeCloseTo(unscaledAfter / unscaledBefore, 5);
   });
 });
 

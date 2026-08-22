@@ -584,6 +584,12 @@ Multipliers, applied in this order:
 | Soft drop                                                           | +1 per cell            |
 | Hard drop                                                           | +2 per cell            |
 
+**Full Spectrum also drops gravity by 25%** permanently
+(`PRISM_GRAVITY_FACTOR = 0.75`). Each further Prism multiplies again; the stage
+and continuous-gravity curves keep climbing underneath the scale, so the reward
+is a lasting breath rather than a freeze of the arc. Soft drop follows the
+scaled gravity; lock delay does not change.
+
 A Refraction Chain breaks on any turn that clears nothing.
 
 The escalating on-screen language from the proposal is preserved:
