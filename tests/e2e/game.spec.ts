@@ -432,6 +432,14 @@ test.describe('the turn', () => {
     await expect(page.locator('.hud__face')).toHaveText('LEFT');
   });
 
+  test('tapping the prompt arrows chooses that face', async ({ page }) => {
+    await armTheTurn(page);
+    await expect(page.locator('.prompt')).toBeVisible();
+    await page.getByRole('button', { name: 'Turn left' }).click();
+    await expect(page.locator('.hud__face')).toHaveText('LEFT');
+    await expect(page.locator('.prompt')).toBeHidden();
+  });
+
   test('clears a line that only exists on the face being turned to', async ({ page }) => {
     await armTheTurn(page);
 
@@ -2969,6 +2977,24 @@ test.describe('touch controls', () => {
     const before = await column(page);
     await gesture(page, [at.strip(4), at.strip(0)]);
     expect(await column(page)).toBe(before);
+  });
+
+  test('a strip swipe pulls the board the way the finger moves', async ({ page }) => {
+    // Inverted from the keys: swipe left brings the right face forward, as if
+    // dragging the cube. The prompt arrows still name the destination.
+    await page.goto('/?debug=1&mode=ascent&seed=touchshift');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      game.shiftMeter = game.stage.linesPerTurn;
+      game.status = 'awaitingTurn';
+    });
+    await expect(page.locator('.prompt')).toBeVisible();
+
+    const at = await anchors(page);
+    await gesture(page, [at.strip(6), at.strip(4), at.strip(2)]);
+    await expect(page.locator('.hud__face')).toHaveText('RIGHT');
   });
 });
 

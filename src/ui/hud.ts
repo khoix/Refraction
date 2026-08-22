@@ -122,6 +122,7 @@ export class Hud {
   private readonly prompt = element('div', 'prompt');
   private readonly promptLeft = element('span', 'prompt__face', 'LEFT');
   private readonly promptRight = element('span', 'prompt__face', 'RIGHT');
+  private turnHandler: ((direction: 'left' | 'right') => void) | null = null;
   /**
    * In-run music deck: a thin LCD with a scrolling credit and transport keys.
    * Live only while a run is on screen; the menus have no business showing it.
@@ -187,13 +188,17 @@ export class Hud {
     this.stageBanner.hidden = true;
 
     const pill = element('div', 'prompt__pill');
-    pill.append(
-      element('span', 'prompt__arrow', '←'),
-      this.promptLeft,
-      element('span', 'prompt__text', '·'),
-      this.promptRight,
-      element('span', 'prompt__arrow', '→')
-    );
+    const leftChoice = element('button', 'prompt__choice prompt__choice--left');
+    leftChoice.type = 'button';
+    leftChoice.setAttribute('aria-label', 'Turn left');
+    leftChoice.append(element('span', 'prompt__arrow', '←'), this.promptLeft);
+    const rightChoice = element('button', 'prompt__choice prompt__choice--right');
+    rightChoice.type = 'button';
+    rightChoice.setAttribute('aria-label', 'Turn right');
+    rightChoice.append(this.promptRight, element('span', 'prompt__arrow', '→'));
+    this.bindTurnChoice(leftChoice, 'left');
+    this.bindTurnChoice(rightChoice, 'right');
+    pill.append(leftChoice, element('span', 'prompt__text', '·'), rightChoice);
     this.prompt.append(pill);
     this.prompt.hidden = true;
     this.banner.hidden = true;
@@ -445,6 +450,28 @@ export class Hud {
   /** Touch-primary pause button. Opens the pause panel; Esc still toggles on keyboard. */
   onPause(handler: () => void): void {
     this.pauseHandler = handler;
+  }
+
+  /**
+   * Tap targets on the face-choice prompt (← / →). Keyboard and strip swipes
+   * still choose a face on their own paths; this is the phone answer to the
+   * same prompt.
+   */
+  onTurnTap(handler: (direction: 'left' | 'right') => void): void {
+    this.turnHandler = handler;
+  }
+
+  private bindTurnChoice(button: HTMLButtonElement, direction: 'left' | 'right'): void {
+    // Stop the root touch controller claiming this tap as a roll / drop.
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.turnHandler?.(direction);
+    });
   }
 
   /**

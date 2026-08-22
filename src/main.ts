@@ -557,6 +557,15 @@ function boot(root: HTMLElement): void {
     game.triggerCollapse();
   });
 
+  // Face-choice taps on the prompt arrows. Same destination naming as the
+  // keys: left brings the left face forward. Strip swipes are inverted (drag
+  // the board); these labels are not.
+  hud.onTurnTap((direction) => {
+    audio.resume();
+    if (!playing()) return;
+    game.chooseTurn(direction);
+  });
+
   hud.onMusicDeck({
     onToggle: () => {
       audio.toggleMusicPause();

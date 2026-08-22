@@ -161,16 +161,13 @@ export class TouchController {
 
     // The turn prompt borrows the strip: while the board is waiting to be
     // turned, a sideways drag chooses the face rather than moving a piece that
-    // is not falling. It is the same gesture meaning the same thing it means on
-    // a keyboard, where Left and Right do double duty in exactly this state.
+    // is not falling. Direction is inverted from the keyboard: a swipe pulls
+    // the board the way the finger moves (swipe left → right face comes
+    // forward), which matches how people drag a physical object.
     if (game.status === 'awaitingTurn') {
       for (const intent of intents) {
         if (intent.kind !== 'columnStep' || intent.steps === 0) continue;
-        // The drag's *direction*, not the column it landed on. A column was
-        // meaningful while movement was absolute; with a relative scheme the
-        // number says how far the finger moved, and its sign says which way --
-        // which is the more natural reading of this gesture anyway.
-        this.handlers.onTurn(intent.steps < 0 ? 'left' : 'right');
+        this.handlers.onTurn(intent.steps < 0 ? 'right' : 'left');
         return;
       }
       return;

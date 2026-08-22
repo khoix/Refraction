@@ -1005,6 +1005,31 @@ input,
   font-size: 0.78rem;
   letter-spacing: 0.28em;
   color: var(--text-secondary);
+  /* The pill itself stays inert; only the ← / → choices take taps. */
+  pointer-events: none;
+}
+
+.prompt__choice {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.35rem 0.2rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.prompt__choice:focus-visible {
+  outline: 1px solid var(--accent-ui);
+  outline-offset: 3px;
 }
 
 .prompt__arrow {

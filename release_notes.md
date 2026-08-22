@@ -7,6 +7,22 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22j — Mobile Shift: drag the board, tap the arrows
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+On the face-choice prompt, a strip swipe now pulls the cube the way the finger
+moves (swipe left → right face comes forward). Keyboard Left/Right still name
+the destination face; only the touch drag is inverted. The prompt's ← / →
+(and face labels) are tap targets so a phone player can choose without swiping.
+
+### Tested
+
+E2e: tap Turn left on the prompt; strip swipe left brings RIGHT; existing
+keyboard left/right turn cases unchanged.
+
+---
+
 ## M22i — The title voxel as the page icon
 
 **Branch:** `cursor/refraction-kendega-desktop`

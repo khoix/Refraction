@@ -678,8 +678,9 @@ than pressing an arrow key and a laptop with a touchscreen should not change
 behaviour based on which input was used last.
 
 The turn prompt borrows the strip: while the board waits to be turned, a sideways
-drag chooses the face. Same gesture, same double duty Left and Right already do
-on a keyboard in exactly that state.
+drag chooses the face. Touch inverts the mapping so a swipe pulls the board the
+way the finger moves; the prompt arrows are also tap targets and keep destination
+naming (left still means the left-hand face).
 
 ✅ **Gate the split by mode** _(play notes)_. The field/strip split exists to carry
 three rotation axes. A mode that does not need three does not need the split: the
@@ -828,9 +829,10 @@ the grounds that three rolls get there. And **the strip's height**: tall enough
 for a thumb, which is around 44 px, without eating a well that is already 18 rows
 in portrait.
 
-The **turn prompt** needs a touch answer too. When the Shift meter fills the game
-asks for left or right and falls back after five seconds; on a phone that has to
-be a pair of targets, not a keypress.
+The **turn prompt** on a phone is answered two ways. Strip swipes are inverted
+from the keyboard: a swipe pulls the board the way the finger moves (swipe left
+→ right face comes forward). The prompt's ← / → labels are also tap targets and
+keep destination naming — left still means the left-hand face.
 
 ### Layout — M12b ✅
 
