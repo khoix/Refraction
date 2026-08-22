@@ -21,7 +21,8 @@ Desktop leaves via Skip / Esc. On phones the pause control becomes **×** (leave
 tutorial) and Skip is hidden from coach copy; ← / → sit on a row under the card
 text. Place-it maps a downward field swipe to hard drop when pitch is gated.
 Modes closes with “Are you ready…” on its own line. Touch-primary well grid
-lines are brighter so the lattice still reads on a small screen.
+lines are brighter during the tutorial so the lattice still reads on a small
+screen.
 
 ### Tested
 

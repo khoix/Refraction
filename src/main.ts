@@ -813,6 +813,7 @@ function boot(root: HTMLElement): void {
     );
     hud.setHeat(game.spectralAllowed ? game.heat : null, game.spectralReady);
     hud.setTurnPromptAllowed(!tutorial.running || tutorial.showsTurnPrompt());
+    renderer.setTutorialBrightGrid(tutorial.running && touchPrimary());
     hud.update(game, elapsed);
     hud.layoutWell(
       renderer.wellScreenRect(),
