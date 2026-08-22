@@ -273,17 +273,17 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
   { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6' },
 
   {
-    gesture: 'Tap the gauge',
+    gesture: 'X button',
     label: 'Spectral Collapse',
     group: 'Game',
-    note: 'When it is full',
+    note: '(When bar full) Right panel',
     needs: 'spectralCollapse',
   },
   {
-    gesture: 'Pause button',
+    gesture: 'Pause',
     label: 'Pause',
     group: 'Game',
-    note: 'Bottom right',
+    note: 'Right panel',
   },
 ];
 

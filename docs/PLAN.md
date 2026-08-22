@@ -1308,7 +1308,8 @@ the other drain, which teaches the distinction without a word.
   collapse can settle a piece without starting a resolution.
 - ✅ **Trigger:** `V` on a keyboard — chosen for where it sits, next to `Z`, `X`
   and `C`, rather than for what it spells; `W` was free and left alone for M11c.
-  On touch, a tap on the gauge, which is only interactive while it is ready.
+  On touch, a sliding **X** button above pause while the bar is full — the gauge
+  stays a readout so a thumb over the well always reaches the piece.
 
 ### Decisions that were open
 

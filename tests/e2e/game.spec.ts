@@ -385,7 +385,7 @@ test.describe('controls', () => {
       game.status = 'gameOver';
     });
 
-    const hint = page.locator('.panel--over .panel__hint');
+    const hint = page.locator('.panel--over .panel__hint--keys');
     await expect(hint).toBeVisible();
     // Parse the key out of the hint itself, so the copy and the binding can
     // never advertise different keys again.
@@ -3050,6 +3050,10 @@ test.describe('the controls panel follows the input method', () => {
     // And it describes the scheme the game actually answers to.
     await expect(page.locator('.keymap--touch')).toContainText('Flick down');
     await expect(page.locator('.keymap--touch .keymap__foot')).toContainText('Shift meter');
+    // Spectral Collapse spends through the X button above pause — not the gauge.
+    await expect(page.locator('.keymap--touch')).toContainText('X button');
+    await expect(page.locator('.keymap--touch')).toContainText('(When bar full) Right panel');
+    await expect(page.locator('.keymap--touch')).not.toContainText('gauge');
     await context.close();
   });
 
@@ -4139,6 +4143,52 @@ test.describe('on a phone', () => {
     if (!stats || !well) throw new Error('no geometry');
     expect(stats.x + stats.width).toBeLessThanOrEqual(well.left);
   });
+
+  test('slides out an X trigger above pause when Spectral Collapse is ready', async ({
+    browser,
+  }) => {
+    const page = await phone(browser);
+    await play(page, 'ascent');
+
+    const trigger = page.getByRole('button', { name: 'Spectral Collapse' });
+    const pause = page.getByRole('button', { name: 'Pause', exact: true });
+    await expect(pause).toBeVisible();
+    // Present but parked off-screen until the bar is full.
+    await expect(trigger).toBeAttached();
+    expect(await trigger.evaluate((el) => el.classList.contains('hud__collapse--ready'))).toBe(
+      false
+    );
+
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (game) game.heat = 1;
+    });
+    await page.waitForTimeout(200);
+    await expect(trigger).toHaveClass(/hud__collapse--ready/);
+
+    const triggerBox = await trigger.boundingBox();
+    const pauseBox = await pause.boundingBox();
+    if (!triggerBox || !pauseBox) throw new Error('no geometry');
+    // Above pause, same right edge family.
+    expect(triggerBox.y + triggerBox.height).toBeLessThanOrEqual(pauseBox.y + 2);
+    expect(Math.abs(triggerBox.x - pauseBox.x)).toBeLessThan(8);
+
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('no hook');
+      game.active = null;
+      game.board.fill({ x: 2, y: 9, z: 3 });
+    });
+    await trigger.click();
+    await page.waitForTimeout(400);
+    expect(
+      await page.evaluate(() => window.__refraction?.game.board.isFilled({ x: 2, y: 9, z: 3 }))
+    ).toBe(false);
+    // Spent — the button slides away with the charge.
+    expect(await trigger.evaluate((el) => el.classList.contains('hud__collapse--ready'))).toBe(
+      false
+    );
+  });
 });
 
 /**
@@ -4147,7 +4197,8 @@ test.describe('on a phone', () => {
  * A hot bar bought with cleared lines, spent on one board-wide compaction. The
  * engine's half is unit-tested without a browser; what needs a canvas is the
  * gauge — that it shows in the modes that have it (including Flatland), that it
- * reads the level, that a tap on it works, and above all that it carries no hue.
+ * never steals pointer events from the play column, that it reads the level, and
+ * above all that it carries no hue.
  */
 test.describe('Spectral Collapse', () => {
   async function play(page: Page, mode: string): Promise<void> {
@@ -4271,33 +4322,20 @@ test.describe('Spectral Collapse', () => {
     expect(await page.evaluate(() => window.__refraction?.game.heat)).toBe(0);
   });
 
-  test('a tap on the gauge triggers it, and only while it is ready', async ({ page }) => {
-    // The touch half. The controls panel advertises "tap the gauge", so the
-    // gauge has to answer — and only in the state where a tap means anything.
+  test('the gauge never steals pointer events, even when ready', async ({ page }) => {
+    // Touch spends through the X trigger. A live gauge over the well would steal
+    // the play column from the piece.
     await play(page, 'ascent');
-    await page.evaluate(() => {
-      const game = window.__refraction?.game;
-      if (!game) throw new Error('no hook');
-      game.active = null;
-      game.board.fill({ x: 4, y: 8, z: 2 });
-    });
-
-    await setHeat(page, 0.5);
-    await page.waitForTimeout(200);
-    // Not ready: the element does not take pointer events at all.
-    expect(
-      await page.evaluate(
-        () => getComputedStyle(document.querySelector('.gauge') as Element).pointerEvents
-      )
-    ).toBe('none');
-
-    await setHeat(page, 1);
-    await page.waitForTimeout(200);
-    await page.locator('.gauge').dispatchEvent('pointerdown');
-    await page.waitForTimeout(400);
-    expect(
-      await page.evaluate(() => window.__refraction?.game.board.isFilled({ x: 4, y: 8, z: 2 }))
-    ).toBe(false);
+    for (const heat of [0.5, 1]) {
+      await setHeat(page, heat);
+      await page.waitForTimeout(150);
+      expect(
+        await page.evaluate(
+          () => getComputedStyle(document.querySelector('.gauge') as Element).pointerEvents
+        ),
+        `heat ${heat}`
+      ).toBe('none');
+    }
   });
 
   test('the controls panel lists it in Ascent and in Flatland', async ({ page }) => {
@@ -4342,8 +4380,10 @@ test.describe('Spectral Collapse', () => {
     });
     await page.keyboard.press('KeyV');
     await page.waitForTimeout(120);
-    // The spend is shake + bloom + sample. The old "SPECTRAL COLLAPSE" banner was
-    // a lie at the fill; it must not return at the spend either.
-    await expect(page.locator('.banner__text')).not.toHaveText('SPECTRAL COLLAPSE');
+    // The spend is shake + bloom + sample — silent on the banner. `.banner__text`
+    // is only mounted when a cue is shown, so absence is the pass; `not.toHaveText`
+    // would hang waiting for a node that should never appear.
+    await expect(page.locator('.banner__text')).toHaveCount(0);
+    await expect(page.getByText('SPECTRAL COLLAPSE', { exact: true })).toHaveCount(0);
   });
 });

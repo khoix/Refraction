@@ -187,8 +187,9 @@ input,
  * Same material as the rest of the HUD: neutral ink over the board. Hue on a
  * rules-adjacent surface would claim depth (§2.2); this sits over a live well,
  * so it stays on `--surface-*` / `--text-*` / `--accent-ui` like the panels and
- * the gauge. Transport keys and the touch-primary pause button are the only HUD
- * controls besides the gauge that take pointer events.
+ * the gauge. Transport keys, the touch-primary pause button and the collapse
+ * trigger are the only HUD controls that take pointer events — the gauge itself
+ * does not, so a thumb over the well always reaches the piece.
  */
 .lcd {
   position: absolute;
@@ -479,10 +480,8 @@ input,
 .gauge--ready {
   border-color: var(--accent-ui);
   box-shadow: 0 0 14px rgb(var(--accent-ui-glow) / 0.5);
-  /* The touch trigger, live only while it can do something. The HUD is
-     `pointer-events: none` throughout; this is the one thing that opts back in,
-     and only in the state where a tap means anything. */
-  pointer-events: auto;
+  /* Still pointer-events: none — the gauge is a readout. Touch spends through
+     the X trigger above pause, so a thumb on the well always moves the piece. */
 }
 
 .gauge--ready .gauge__fill {
@@ -561,6 +560,99 @@ input,
 @media (hover: none) and (pointer: coarse) {
   .hud__pause:not([hidden]) {
     display: flex;
+  }
+}
+
+/*
+ * Touch-primary Spectral Collapse trigger.
+ *
+ * Sits just above the pause button and only while the hot bar is full. Slides
+ * in from the right so earning the charge is a visible handoff, not a flicker
+ * on a thin gauge. Achromatic glow — same rule as the gauge: heat is brightness,
+ * never hue.
+ */
+.hud__collapse {
+  display: none;
+  position: absolute;
+  right: 0;
+  /* Pause height (2.75rem) + gap above it. */
+  bottom: calc(0.75rem + 2.75rem + 0.45rem);
+  z-index: 2;
+  box-sizing: border-box;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--accent-ui);
+  border-radius: 5px;
+  background: rgb(10 12 20 / 0.9);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 0 14px rgb(var(--accent-ui-glow) / 0.45),
+    0 8px 28px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(10px);
+  color: var(--accent-ui);
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateX(calc(100% + 0.85rem));
+  opacity: 0;
+  transition:
+    transform 280ms var(--ease-snap),
+    opacity 220ms var(--ease-snap),
+    box-shadow 200ms var(--ease-snap);
+}
+
+.hud__collapse--ready {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+  animation: collapse-trigger-pulse 720ms ease-in-out infinite;
+}
+
+.hud--strip .hud__collapse {
+  /* Same strip lift as pause, then one button height + gap above that. */
+  bottom: calc(5.25rem + 0.5rem + 2.75rem + 0.45rem);
+}
+
+@keyframes collapse-trigger-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 0 12px rgb(var(--accent-ui-glow) / 0.35),
+      0 8px 28px rgb(0 0 0 / 0.35);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      0 0 22px rgb(var(--accent-ui-glow) / 0.7),
+      0 8px 28px rgb(0 0 0 / 0.35);
+    filter: brightness(1.25);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .hud__collapse:not([hidden]) {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud__collapse {
+    transition: none;
+  }
+
+  .hud__collapse--ready {
+    animation: none;
   }
 }
 
@@ -1019,9 +1111,10 @@ input,
 }
 
 /*
- * Pause hints follow the input method. Esc means nothing on a phone; the touch
- * copy means nothing where there is a keyboard. Same query as the controls
- * panels and the in-run pause button — see `touch/primary.ts`.
+ * Pause / game-over hints follow the input method. Esc and Enter mean nothing
+ * on a phone; the touch copy means nothing where there is a keyboard. Same
+ * query as the controls panels and the in-run pause button — see
+ * `touch/primary.ts`.
  */
 .panel__hint--touch {
   display: none;

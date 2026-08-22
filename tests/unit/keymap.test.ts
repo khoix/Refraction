@@ -11,7 +11,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { ACTION_BY_CODE, BINDINGS, BINDING_GROUPS, keyLabel } from '../../src/keymap';
+import { ACTION_BY_CODE, BINDINGS, BINDING_GROUPS, TOUCH_ACTIONS, keyLabel } from '../../src/keymap';
 import type { Action } from '../../src/keymap';
 import { Game, PEEK_LOCKED_FROM_STAGE } from '@core/game';
 import { modeById } from '@core/modes';
@@ -86,6 +86,23 @@ describe('the binding table', () => {
     for (const binding of depth) {
       for (const code of binding.codes) expect(movement.has(code)).toBe(false);
     }
+  });
+});
+
+describe('the touch controls table', () => {
+  it('tells the player to spend Spectral Collapse on the X button, not the gauge', () => {
+    const collapse = TOUCH_ACTIONS.find((row) => row.label === 'Spectral Collapse');
+    expect(collapse).toBeDefined();
+    expect(collapse!.gesture).toBe('X button');
+    expect(collapse!.note).toBe('(When bar full) Right panel');
+    expect(`${collapse!.gesture} ${collapse!.note ?? ''}`.toLowerCase()).not.toContain('gauge');
+  });
+
+  it('places pause on the right panel', () => {
+    const pause = TOUCH_ACTIONS.find((row) => row.label === 'Pause');
+    expect(pause).toBeDefined();
+    expect(pause!.gesture).toBe('Pause');
+    expect(pause!.note).toBe('Right panel');
   });
 });
 

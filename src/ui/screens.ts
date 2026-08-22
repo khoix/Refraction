@@ -562,7 +562,8 @@ export class Screens {
       this.overDetail,
       this.overBest,
       actions,
-      element('p', 'panel__hint', 'Press Enter to play again')
+      element('p', 'panel__hint panel__hint--keys', 'Press Enter to play again'),
+      element('p', 'panel__hint panel__hint--touch', 'Tap Play Again to restart')
     );
   }
 

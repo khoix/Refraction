@@ -138,6 +138,14 @@ export class Hud {
    */
   private readonly pauseBtn = element('button', 'hud__pause');
   private pauseHandler: (() => void) | null = null;
+  /**
+   * Touch-primary Spectral Collapse trigger. Slides in above the pause button
+   * only while the hot bar is full — the gauge alone is a thin target under a
+   * thumb, and "tap X" is a clearer spend than hoping they find the flicker.
+   */
+  private readonly collapseBtn = element('button', 'hud__collapse');
+  private pauseVisible = false;
+  private collapseReady = false;
 
   readonly root = element('div', 'hud');
 
@@ -158,14 +166,8 @@ export class Hud {
 
     this.gauge.append(this.gaugeFill);
     this.gauge.hidden = true;
-    // Tapping the gauge is the touch trigger, and it is only interactive while
-    // it is ready -- see `.gauge--ready` in the stylesheet, which is what turns
-    // pointer events back on. A target that is live but does nothing teaches a
-    // player it is not a target at all.
-    this.gauge.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      this.collapseHandler?.();
-    });
+    // The gauge is read-only under a thumb. Touch spends the charge through the
+    // X trigger above pause — a live gauge over the well steals the play column.
 
     const left = element('div', 'hud__column hud__column--left');
     left.append(stats);
@@ -233,12 +235,27 @@ export class Hud {
       this.pauseHandler?.();
     });
 
+    this.collapseBtn.type = 'button';
+    this.collapseBtn.setAttribute('aria-label', 'Spectral Collapse');
+    this.collapseBtn.textContent = 'X';
+    this.collapseBtn.hidden = true;
+    this.collapseBtn.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    this.collapseBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.collapseHandler?.();
+    });
+
     this.root.append(
       this.lcd,
       left,
       right,
       this.gauge,
       this.shift,
+      this.collapseBtn,
       this.pauseBtn,
       this.chain,
       this.popups,
@@ -414,7 +431,7 @@ export class Hud {
    * flicker: at that point the number has stopped moving and what the gauge has
    * to say is no longer "how full" but "now".
    */
-  /** What a tap on a ready gauge should do. */
+  /** What the touch X trigger (and any other spend control) should do. */
   onCollapseTap(handler: () => void): void {
     this.collapseHandler = handler;
   }
@@ -434,17 +451,21 @@ export class Hud {
    * Show the pause control only while a run is on screen.
    *
    * CSS still gates it to touch-primary devices — a laptop with a keyboard has
-   * Esc, and showing a second pause control there would be noise.
+   * Esc, and showing a second pause control there would be noise. The collapse
+   * trigger rides the same visibility: it only belongs next to pause mid-run.
    */
   setPauseVisible(visible: boolean): void {
+    this.pauseVisible = visible;
     this.pauseBtn.hidden = !visible;
+    this.syncCollapseTrigger();
   }
 
   /**
    * Lift the pause button clear of the movement strip when the mode has one.
    *
    * The strip is a region of the window, not an element, so the button has to be
-   * told — the same reason the Shift meter takes `stripTop`.
+   * told — the same reason the Shift meter takes `stripTop`. The collapse
+   * trigger shares the lift via `.hud--strip`.
    */
   setStripReserve(hasStrip: boolean): void {
     this.root.classList.toggle('hud--strip', hasStrip);
@@ -476,6 +497,8 @@ export class Hud {
 
   setHeat(heat: number | null, ready: boolean): void {
     this.gauge.hidden = heat === null;
+    this.collapseReady = heat !== null && ready;
+    this.syncCollapseTrigger();
     if (heat === null) return;
     const level = Math.min(1, Math.max(0, heat));
     this.gaugeFill.style.height = `${level * 100}%`;
@@ -484,6 +507,21 @@ export class Hud {
     // earned is doing the job the play note asked for.
     this.gauge.style.setProperty('--gauge-agitation', level.toFixed(3));
     this.gauge.classList.toggle('gauge--ready', ready);
+  }
+
+  /**
+   * Slide the touch collapse trigger in while the bar is full and a run is on
+   * screen; slide it out the moment either stops being true.
+   *
+   * Kept in the DOM (not `hidden`) while pause is up so the exit transition can
+   * play — `hidden` would cut the slide short.
+   */
+  private syncCollapseTrigger(): void {
+    this.collapseBtn.hidden = !this.pauseVisible;
+    this.collapseBtn.classList.toggle(
+      'hud__collapse--ready',
+      this.pauseVisible && this.collapseReady
+    );
   }
 
   update(game: Game, deltaMs: number): void {

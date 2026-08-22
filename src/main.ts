@@ -550,7 +550,8 @@ function boot(root: HTMLElement): void {
 
   applyStripReserve();
   screens.setMode(mode);
-  // Touch's half of the collapse trigger. The engine decides whether it happens.
+  // Touch spends through the X trigger above pause. The engine decides whether
+  // the collapse happens.
   hud.onCollapseTap(() => {
     audio.resume();
     game.triggerCollapse();
@@ -638,7 +639,10 @@ function boot(root: HTMLElement): void {
           // has not happened yet when the bar fills, and announcing it then would
           // be a lie. Sound + copy mark the threshold; the flicker marks the wait.
           audio.spectralReady();
-          hud.showBanner('SPECTRAL COLLAPSE IMMINENT', 'PRESS V TO TRIGGER');
+          hud.showBanner(
+            'SPECTRAL COLLAPSE IMMINENT',
+            touchPrimary() ? 'PUSH X TO TRIGGER' : 'PRESS V TO TRIGGER'
+          );
           break;
         case 'collapse':
           // The event fires the moment the stack gives way, before the clears
