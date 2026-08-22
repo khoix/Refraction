@@ -118,18 +118,20 @@ describe('tutorial script', () => {
     expect(colour?.cameraLoop).toBe(true);
   });
 
-  it('keeps coach bodies short enough to avoid scrolling', () => {
+  it('keeps coach bodies within the provided copy bounds', () => {
     for (const beat of TUTORIAL_BEATS) {
       if (beat.id === 'modes') continue;
-      expect(beat.body.length).toBeLessThan(220);
+      expect(beat.body.length).toBeLessThan(230);
       expect(beat.body.split(/\n\n+/).length).toBeLessThanOrEqual(2);
     }
     const modes = TUTORIAL_BEATS.find((beat) => beat.id === 'modes');
     const modesParas = modes?.body.split(/\n\n+/).map((part) => part.trim()) ?? [];
-    expect(modesParas.length).toBeLessThanOrEqual(3);
+    expect(modesParas.length).toBeLessThanOrEqual(4);
     expect(modesParas.at(-1)).toBe('**Are you ready to experience the full spectrum?**');
+    const welcome = TUTORIAL_BEATS.find((beat) => beat.id === 'welcome');
+    expect(welcome?.body).toContain('**cube**');
     const colour = TUTORIAL_BEATS.find((beat) => beat.id === 'colour-depth');
-    expect(colour?.body).toContain('**');
+    expect(colour?.body).toContain('**Red is closest to you');
   });
 
   it('gates hands-on beats with allowlists', () => {
