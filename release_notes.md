@@ -7,6 +7,155 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22j — Mobile Shift: drag the board, tap the arrows
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+On the face-choice prompt, a strip swipe now pulls the cube the way the finger
+moves (swipe left → right face comes forward). Keyboard Left/Right still name
+the destination face; only the touch drag is inverted. The prompt's ← / →
+(and face labels) are tap targets so a phone player can choose without swiping.
+
+### Tested
+
+E2e: tap Turn left on the prompt; strip swipe left brings RIGHT; existing
+keyboard left/right turn cases unchanged.
+
+---
+
+## M22i — The title voxel as the page icon
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+The tab icon was a rounded cube swept through the spectrum. It said colour,
+which this game uses, and not the mark, which this game already has. It is now
+the wordmark's O: the same corner-on voxel (yawed 45°, tilted ~20°), three
+faces lit like the artwork, outline in `--accent-beam` on the HUD's
+near-black. A 180×180 apple-touch-icon.png — square and opaque, so iOS can
+mask its own corners — is the same voxel for a home-screen save.
+
+The SVG source sits beside it as `apple-touch-icon.svg`. Geometry is copied
+from the wordmark in `screens.ts`; a unit test holds the three drawings to the
+same five paths so a later tweak to the cube cannot leave the tab icon
+drawing a different one.
+
+### Tested
+
+Unit: icon SVGs share the wordmark's voxel paths; both wear accent-beam on
+`--surface-deep`; both HTML shells declare favicon + apple-touch; the PNG is
+180×180. E2e: both assets 200, and the served SVG is the cube rather than the
+old gradient square.
+
+---
+
+## M22h — Caption washes, and a game-over ledger
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Play note: floating captions needed ground; game over needed a composition.
+
+### Soft washes
+
+Shared `--wash-*` tokens reuse the title Scores fold's dissolve: dark void,
+masked on every edge so type holds against the room without reading as a card.
+Applied to in-run floaters (score popups, MUTED, stage banner, refraction
+chain, event banners, NEXT label when the preview window is open) and to
+front-door secondary copy (tagline, loading notes — beam-tinted wash there).
+Effects-lab banners match; its transparent buttons take a soft raise instead
+of a fade under a hard border.
+
+Left alone: wordmark (radial + glow), Scores toggle (beam rules), menu panel
+copy already on the `.screens` scrim.
+
+### Game over
+
+A single washed `.over` ledger: hairline masthead, SCORE label + hero number,
+best / NEW BEST pill, LINES and STAGE as a two-column row, challenge code as a
+chip when present. Actions and Enter/tap hints sit below unchanged.
+
+### Tested
+
+E2e: game-over ledger structure (mast, score, stats, best); challenge code
+still lands in `.panel__detail`; existing restart / main-menu / persistence
+paths unchanged.
+
+---
+
+## M4b — Full Spectrum gravity reward
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Play note on the biggest clear in the game.
+
+### What changed
+
+Full Spectrum already paid on the scoreboard. It now also **drops gravity by
+25%** for the rest of the run (`PRISM_GRAVITY_FACTOR = 0.75`). Each further
+Prism multiplies again. The stage table and Endless continuous climb keep
+moving underneath the scale — the reward is a lasting breath, not a freeze of
+the arc. Soft drop follows the scaled gravity; lock delay is unchanged.
+
+### Tested
+
+Unit (`Full Spectrum gravity reward` in `game.test.ts`): drop is 25% on the
+first Prism; it survives a long tick; a second Prism stacks to \(0.75^2\);
+advancing a stage still raises gravity in the same ratio as the unscaled table.
+
+### Spec
+
+`docs/DESIGN.md` §6 records the permanent scale next to the Prism score payout.
+
+---
+
+## M17b — Spectral Collapse presentation
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Play notes on earning and spending the hot bar, plus Flatland.
+
+### Flatland gets the mechanic
+
+Spectral Collapse is no longer withheld in Flatland. The mode-table field stays,
+but Flatland inherits the shared default — gauge, `V`, and the settings row all
+follow. The earlier “off in Flatland” rule was teaching-first; play preferred the
+mechanic everywhere once the ready cue made the charge legible.
+
+### Ready is not spent
+
+Crossing full fires a `spectralReady` event once. The banner reads
+**SPECTRAL COLLAPSE IMMINENT** with **PRESS V TO TRIGGER** in small print beneath —
+not “SPECTRAL COLLAPSE”, which would claim the stack had already given way.
+Spending the charge shakes, blooms, and sounds without that false announce.
+
+### Sampled cues
+
+| Beat | Sample |
+| ---- | ------ |
+| Bar fills | `sfx/spectral_collapse_imminent.webm` (klaxon) |
+| Stack collapses | `sfx/collapse.webm` |
+
+Both decode into `AudioBuffer`s on the Web Audio bus so mute and volume reach
+them like the synthesised tones. Synth fallbacks remain if a sample is missing
+or the platform refuses the encoding. Clips preload with the music catalogue.
+
+On spend, `renderer.startCollapse()` adds a short white bloom (softer than Full
+Spectrum), a full room react/ripple, and a hard camera knock.
+
+### Effects lab
+
+`/effects.html` is a passworded playground (`42`) for firing ready, collapse,
+Prism, clear debris, and related beats without playing into them. Not linked
+from the game; `noindex`.
+
+### Tested
+
+Unit: `spectralReady` fires once on the crossing and not while full; Flatland
+allows the mechanic; SFX catalogue lists both clips; ready/collapse tone
+fallbacks keep their shapes. E2e: gauge and controls row in Flatland; imminent
+banner copy when the bar fills.
+
+---
+
 ## M22g — Mode grid by difficulty
 
 **Branch:** `fix/e2e-score-hud-assertions`

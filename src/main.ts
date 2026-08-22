@@ -15,6 +15,7 @@ import { InputController } from './input';
 import { Hud } from '@ui/hud';
 import { Audio } from './audio/audio';
 import { GAMEPLAY, THEME, TRACKS, playableSource, trackById } from './audio/tracks';
+import { SFX, playableSfxSource } from './audio/sfx';
 import { preload } from './assets/preload';
 import { Screens } from '@ui/screens';
 import type { ScreenName } from '@ui/screens';
@@ -107,6 +108,37 @@ function nearestLane(game: Game): number {
     if (nearest === 0) break;
   }
   return Number.isFinite(nearest) ? nearest : 0;
+}
+
+/**
+ * Live button under a pointer event, if any.
+ *
+ * Hover and click chrome only answer to real buttons — toggles and ranges are
+ * not the same gesture, and firing a tick on every label click would muddy the
+ * settings panel.
+ */
+function liveButton(event: Event): HTMLButtonElement | null {
+  const target = event.target;
+  if (!(target instanceof Element)) return null;
+  const button = target.closest('button');
+  if (!(button instanceof HTMLButtonElement) || button.disabled || button.hidden) return null;
+  return button;
+}
+
+/** Soft hover and click ticks for menu / HUD chrome. */
+function bindButtonSounds(root: HTMLElement, audio: Audio): void {
+  root.addEventListener('pointerover', (event) => {
+    // Touch has no hover; a finger landing would otherwise chirp on every tap.
+    if (event.pointerType !== 'mouse') return;
+    const button = liveButton(event);
+    if (!button) return;
+    if (event.relatedTarget instanceof Node && button.contains(event.relatedTarget)) return;
+    audio.hover();
+  });
+  root.addEventListener('click', (event) => {
+    if (!liveButton(event)) return;
+    audio.click();
+  });
 }
 
 function boot(root: HTMLElement): void {
@@ -330,6 +362,9 @@ function boot(root: HTMLElement): void {
     },
   });
 
+  bindButtonSounds(screens.root, audio);
+  bindButtonSounds(hud.root, audio);
+
   root.replaceChildren(canvas, hud.root, screens.root);
   if (!storageAvailable()) screens.warnUnwritableStorage();
   applySettings(save.settings);
@@ -366,10 +401,16 @@ function boot(root: HTMLElement): void {
    * downloading nothing, only slower -- and a device that can play none of the
    * encodings should spend no bandwidth at all.
    */
-  const wanted = TRACKS.flatMap((track) => {
-    const source = playableSource(track);
-    return source ? [{ id: track.id, url: source.url, bytes: track.bytes }] : [];
-  });
+  const wanted = [
+    ...TRACKS.flatMap((track) => {
+      const source = playableSource(track);
+      return source ? [{ id: track.id, url: source.url, bytes: track.bytes }] : [];
+    }),
+    ...SFX.flatMap((clip) => {
+      const source = playableSfxSource(clip);
+      return source ? [{ id: clip.id, url: source.url, bytes: clip.bytes }] : [];
+    }),
+  ];
   void preload(wanted, {
     onProgress: (progress) => screens.setLoading(progress.fraction),
   }).then((loaded) => {
@@ -387,6 +428,12 @@ function boot(root: HTMLElement): void {
       return source && asset?.blob ? [{ id: track.id, url: source.url }] : [];
     });
     audio.setMusicCatalog(theme, gameplay);
+    const sfx = SFX.flatMap((clip) => {
+      const source = playableSfxSource(clip);
+      const asset = byId.get(clip.id);
+      return source && asset?.blob ? [{ id: clip.id, url: source.url }] : [];
+    });
+    audio.setSfxCatalog(sfx);
     screens.setLoading(1);
     screens.setReady(true);
     /*
@@ -503,10 +550,20 @@ function boot(root: HTMLElement): void {
 
   applyStripReserve();
   screens.setMode(mode);
-  // Touch's half of the collapse trigger. The engine decides whether it happens.
+  // Touch spends through the X trigger above pause. The engine decides whether
+  // the collapse happens.
   hud.onCollapseTap(() => {
     audio.resume();
     game.triggerCollapse();
+  });
+
+  // Face-choice taps on the prompt arrows. Same destination naming as the
+  // keys: left brings the left face forward. Strip swipes are inverted (drag
+  // the board); these labels are not.
+  hud.onTurnTap((direction) => {
+    audio.resume();
+    if (!playing()) return;
+    game.chooseTurn(direction);
   });
 
   hud.onMusicDeck({
@@ -586,12 +643,22 @@ function boot(root: HTMLElement): void {
         case 'stage':
           hud.showStageBanner(stageLabel(game.stage));
           break;
+        case 'spectralReady':
+          // Earned, not spent. The collapse itself is silent on the banner — it
+          // has not happened yet when the bar fills, and announcing it then would
+          // be a lie. Sound + copy mark the threshold; the flicker marks the wait.
+          audio.spectralReady();
+          hud.showBanner(
+            'SPECTRAL COLLAPSE IMMINENT',
+            touchPrimary() ? 'PUSH X TO TRIGGER' : 'PRESS V TO TRIGGER'
+          );
+          break;
         case 'collapse':
           // The event fires the moment the stack gives way, before the clears
-          // it produces resolve -- so the shake lands with the fall rather than
-          // with whatever the fall happens to complete.
-          hud.showBanner('SPECTRAL COLLAPSE');
-          renderer.shake(0.9);
+          // it produces resolve -- so the fanfare lands with the fall rather
+          // than with whatever the fall happens to complete.
+          audio.spectralCollapse();
+          renderer.startCollapse();
           break;
         case 'rescue':
           // Zen took the top of the stack off instead of ending the run. Say

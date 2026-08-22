@@ -85,6 +85,31 @@
   --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Menlo, monospace;
 
   --ease-snap: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /*
+   * Soft caption wash — the scores ledger's treatment, reusable.
+   *
+   * Floating type over the board (and secondary type on the front door) needs
+   * ground without becoming a plate. Same dark void as the HUD panels, masked
+   * so every edge dissolves into the scene. Override `--wash-pad` per surface;
+   * keep the fill achromatic over a live board (§2.2).
+   */
+  --wash-void: rgb(5 6 10 / 0.72);
+  --wash-pad: -0.4em -0.9em;
+  --wash-mask-x: linear-gradient(
+    90deg,
+    transparent 0%,
+    #000 14%,
+    #000 86%,
+    transparent 100%
+  );
+  --wash-mask-y: linear-gradient(
+    180deg,
+    transparent 0%,
+    #000 18%,
+    #000 82%,
+    transparent 100%
+  );
 }
 
 * {
@@ -187,8 +212,9 @@ input,
  * Same material as the rest of the HUD: neutral ink over the board. Hue on a
  * rules-adjacent surface would claim depth (§2.2); this sits over a live well,
  * so it stays on `--surface-*` / `--text-*` / `--accent-ui` like the panels and
- * the gauge. Transport keys and the touch-primary pause button are the only HUD
- * controls besides the gauge that take pointer events.
+ * the gauge. Transport keys, the touch-primary pause button and the collapse
+ * trigger are the only HUD controls that take pointer events — the gauge itself
+ * does not, so a thumb over the well always reaches the piece.
  */
 .lcd {
   position: absolute;
@@ -479,10 +505,8 @@ input,
 .gauge--ready {
   border-color: var(--accent-ui);
   box-shadow: 0 0 14px rgb(var(--accent-ui-glow) / 0.5);
-  /* The touch trigger, live only while it can do something. The HUD is
-     `pointer-events: none` throughout; this is the one thing that opts back in,
-     and only in the state where a tap means anything. */
-  pointer-events: auto;
+  /* Still pointer-events: none — the gauge is a readout. Touch spends through
+     the X trigger above pause, so a thumb on the well always moves the piece. */
 }
 
 .gauge--ready .gauge__fill {
@@ -564,6 +588,99 @@ input,
   }
 }
 
+/*
+ * Touch-primary Spectral Collapse trigger.
+ *
+ * Sits just above the pause button and only while the hot bar is full. Slides
+ * in from the right so earning the charge is a visible handoff, not a flicker
+ * on a thin gauge. Achromatic glow — same rule as the gauge: heat is brightness,
+ * never hue.
+ */
+.hud__collapse {
+  display: none;
+  position: absolute;
+  right: 0;
+  /* Pause height (2.75rem) + gap above it. */
+  bottom: calc(0.75rem + 2.75rem + 0.45rem);
+  z-index: 2;
+  box-sizing: border-box;
+  width: 2.75rem;
+  height: 2.75rem;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--accent-ui);
+  border-radius: 5px;
+  background: rgb(10 12 20 / 0.9);
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.08),
+    0 0 14px rgb(var(--accent-ui-glow) / 0.45),
+    0 8px 28px rgb(0 0 0 / 0.35);
+  backdrop-filter: blur(10px);
+  color: var(--accent-ui);
+  font-family: var(--font-mono);
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  cursor: pointer;
+  pointer-events: none;
+  align-items: center;
+  justify-content: center;
+  -webkit-tap-highlight-color: transparent;
+  transform: translateX(calc(100% + 0.85rem));
+  opacity: 0;
+  transition:
+    transform 280ms var(--ease-snap),
+    opacity 220ms var(--ease-snap),
+    box-shadow 200ms var(--ease-snap);
+}
+
+.hud__collapse--ready {
+  transform: translateX(0);
+  opacity: 1;
+  pointer-events: auto;
+  animation: collapse-trigger-pulse 720ms ease-in-out infinite;
+}
+
+.hud--strip .hud__collapse {
+  /* Same strip lift as pause, then one button height + gap above that. */
+  bottom: calc(5.25rem + 0.5rem + 2.75rem + 0.45rem);
+}
+
+@keyframes collapse-trigger-pulse {
+  0%,
+  100% {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.08),
+      0 0 12px rgb(var(--accent-ui-glow) / 0.35),
+      0 8px 28px rgb(0 0 0 / 0.35);
+    filter: brightness(1);
+  }
+  50% {
+    box-shadow:
+      inset 0 1px 0 rgb(255 255 255 / 0.12),
+      0 0 22px rgb(var(--accent-ui-glow) / 0.7),
+      0 8px 28px rgb(0 0 0 / 0.35);
+    filter: brightness(1.25);
+  }
+}
+
+@media (hover: none) and (pointer: coarse) {
+  .hud__collapse:not([hidden]) {
+    display: flex;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hud__collapse {
+    transition: none;
+  }
+
+  .hud__collapse--ready {
+    animation: none;
+  }
+}
+
 /* --------------------------------------------------------- face and previews */
 
 .hud__face {
@@ -587,6 +704,32 @@ input,
 .slot--window {
   background: transparent;
   backdrop-filter: none;
+}
+
+/*
+ * NEXT keeps an open window for the turning preview, so the panel fill stays
+ * gone — but the label still has to hold against the room. Wash the word only,
+ * right-aligned with the column, not a plate over the piece.
+ */
+.slot--window .hud__label {
+  position: relative;
+  isolation: isolate;
+  width: max-content;
+  margin-inline-start: auto;
+  --wash-pad: -0.25em -0.55em;
+}
+
+.slot--window .hud__label::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
 }
 
 .slot__body {
@@ -615,21 +758,57 @@ input,
 
 /* ------------------------------------------------------------------ messages */
 
+/*
+ * Soft wash under floating captions.
+ *
+ * Same dissolve as the title-screen scores ledger: enough void that type holds
+ * against the disco, not enough to read as a card. Each surface sets its own
+ * `--wash-pad`. `isolation` keeps the ::before behind the glyphs rather than
+ * behind the canvas.
+ *
+ * Skipped on purpose: the wordmark (radial + glow is its ground), scores toggle
+ * (already framed by beam rules), and menu panel copy (already on `.screens`
+ * scrim). Those would add a second plate for no contrast gain.
+ */
+.popup::before,
+.mute::before,
+.stage-banner::before,
+.chain::before,
+.banner::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
+}
+
 .popups {
   position: absolute;
   left: clamp(1rem, 3vw, 2.25rem);
   top: 5.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.15rem;
+  gap: 0.35rem;
   pointer-events: none;
 }
 
 .popup {
+  position: relative;
+  isolation: isolate;
+  width: max-content;
+  padding: 0.12em 0.1em;
   font-family: var(--font-mono);
   font-size: 0.85rem;
   letter-spacing: 0.08em;
   color: var(--accent-ui);
+  --wash-pad: -0.2em -0.45em;
+  /* Slightly denser than the ledger: these rise over busy HUD chrome. */
+  --wash-void: rgb(5 6 10 / 0.78);
   animation: popup-rise 1100ms var(--ease-snap) forwards;
 }
 
@@ -650,23 +829,40 @@ input,
 
 .mute {
   position: absolute;
+  isolation: isolate;
   inset-inline-end: clamp(1rem, 3vw, 2.25rem);
   bottom: clamp(1rem, 3vw, 2.25rem);
+  padding: 0.35em 0.15em;
   font-family: var(--font-mono);
   font-size: 0.62rem;
   letter-spacing: 0.28em;
   color: var(--text-dim);
+  --wash-pad: -0.15em -0.55em;
+  --wash-void: rgb(5 6 10 / 0.8);
 }
 
+/*
+ * Hug the copy rather than spanning the viewport: a full-bleed wash would be a
+ * black bar across the board. `left`/`right` + `margin: auto` centres without a
+ * transform, so the pulse animation still owns `transform`.
+ */
 .stage-banner {
   position: absolute;
-  inset-inline: 0;
+  isolation: isolate;
+  left: 0;
+  right: 0;
   top: 30vh;
+  width: max-content;
+  max-width: min(92vw, 100%);
+  margin-inline: auto;
+  padding: 0.2em 0.15em;
   text-align: center;
   font-size: clamp(1.6rem, 5vw, 3.2rem);
   font-weight: 200;
   letter-spacing: 0.42em;
   text-indent: 0.42em;
+  --wash-pad: -0.35em -1.1em;
+  --wash-void: rgb(5 6 10 / 0.7);
 }
 
 @keyframes stage-banner-pulse {
@@ -692,22 +888,40 @@ input,
 
 .chain {
   position: absolute;
-  inset-inline: 0;
+  isolation: isolate;
+  left: 0;
+  right: 0;
   top: 9vh;
+  width: max-content;
+  max-width: min(92vw, 100%);
+  margin-inline: auto;
+  padding: 0.25em 0.2em;
   text-align: center;
   font-family: var(--font-mono);
   font-size: clamp(0.7rem, 1.6vw, 0.85rem);
   letter-spacing: 0.28em;
   color: var(--accent-ui);
   text-shadow: 0 0 18px rgb(var(--accent-ui-glow) / 0.35);
+  --wash-pad: -0.3em -1em;
+  --wash-void: rgb(5 6 10 / 0.74);
 }
 
 /* Messages overlay the playfield rather than participating in the HUD grid,
    which would push them into an implicit row below the columns. */
 .banner {
   position: absolute;
-  inset-inline: 0;
+  isolation: isolate;
+  left: 0;
+  right: 0;
   top: 16vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.45em;
+  width: max-content;
+  max-width: min(92vw, 100%);
+  margin-inline: auto;
+  padding: 0.35em 0.4em 0.45em;
   font-size: clamp(1.5rem, 5vw, 3rem);
   font-weight: 200;
   letter-spacing: 0.2em;
@@ -718,6 +932,29 @@ input,
      the board does when a Prism chain closes. */
   color: var(--accent-ui);
   text-shadow: 0 0 26px rgb(var(--accent-ui-glow) / 0.4);
+  pointer-events: none;
+  /* Hero beat: a touch more pad so the hint line shares one pool of shade. */
+  --wash-pad: -0.45em -1.35em;
+  --wash-void: rgb(5 6 10 / 0.76);
+}
+
+.banner__text {
+  display: block;
+  line-height: 1.05;
+}
+
+/* Small print under the event name — absolute size, not a fraction of the
+   hero line, so it stays caption-scale even when the title is at its clamp max. */
+.banner__hint {
+  display: block;
+  margin-top: 0.15em;
+  font-size: clamp(0.55rem, 1.5vw, 0.72rem);
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  line-height: 1.2;
+  text-transform: uppercase;
+  opacity: 0.72;
+  text-shadow: 0 0 12px rgb(var(--accent-ui-glow) / 0.28);
 }
 
 @keyframes banner-pulse {
@@ -739,6 +976,11 @@ input,
 
 .banner--pulse {
   animation: banner-pulse 1400ms var(--ease-snap) forwards;
+}
+
+/* Hinted banners stay up longer — see `showBanner` — so the fade matches. */
+.banner--hinted.banner--pulse {
+  animation-duration: 2200ms;
 }
 
 /* Play is frozen while the player picks a face, so this reads as a deliberate
@@ -763,6 +1005,31 @@ input,
   font-size: 0.78rem;
   letter-spacing: 0.28em;
   color: var(--text-secondary);
+  /* The pill itself stays inert; only the ← / → choices take taps. */
+  pointer-events: none;
+}
+
+.prompt__choice {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin: 0;
+  padding: 0.35rem 0.2rem;
+  border: 0;
+  border-radius: 0.4rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.prompt__choice:focus-visible {
+  outline: 1px solid var(--accent-ui);
+  outline-offset: 3px;
 }
 
 .prompt__arrow {
@@ -990,9 +1257,10 @@ input,
 }
 
 /*
- * Pause hints follow the input method. Esc means nothing on a phone; the touch
- * copy means nothing where there is a keyboard. Same query as the controls
- * panels and the in-run pause button — see `touch/primary.ts`.
+ * Pause / game-over hints follow the input method. Esc and Enter mean nothing
+ * on a phone; the touch copy means nothing where there is a keyboard. Same
+ * query as the controls panels and the in-run pause button — see
+ * `touch/primary.ts`.
  */
 .panel__hint--touch {
   display: none;
@@ -1038,6 +1306,161 @@ input,
 .panel__best--new {
   color: var(--accent-ui);
   text-shadow: 0 0 18px rgb(var(--accent-ui-glow) / 0.4);
+}
+
+/*
+ * Game over — a result ledger, not a stack of captions.
+ *
+ * Same dissolve wash as the title scores panel: one composed block so the
+ * ending reads as a verdict rather than four loose lines over the scrim.
+ * Achromatic throughout — this sits over a finished board, and hue on a
+ * rules-adjacent surface is still a depth claim (§2.2).
+ */
+.panel--over {
+  width: min(28rem, 100%);
+  gap: 1.35rem;
+}
+
+.over {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.05rem;
+  width: 100%;
+  padding: 1.35rem 1.5rem 1.25rem;
+  --wash-void: rgb(5 6 10 / 0.78);
+}
+
+.over::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
+}
+
+.over__mast {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.7rem;
+  width: min(18rem, 100%);
+}
+
+.over__rule {
+  display: block;
+  width: 100%;
+  height: 1px;
+  border: 0;
+  margin: 0;
+  background: linear-gradient(
+    to right,
+    transparent,
+    rgb(var(--accent-ui-glow) / 0.38) 22%,
+    rgb(var(--accent-ui-glow) / 0.38) 78%,
+    transparent
+  );
+}
+
+.over__title {
+  font-size: clamp(1.05rem, 2.8vw, 1.35rem);
+  font-weight: 400;
+  letter-spacing: 0.42em;
+  text-indent: 0.42em;
+  color: var(--text-primary);
+}
+
+.over__score {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.over__label {
+  font-family: var(--font-mono);
+  font-size: 0.62rem;
+  letter-spacing: 0.28em;
+  color: var(--text-dim);
+}
+
+.over__value {
+  font-size: clamp(2.8rem, 10vw, 4.8rem);
+  font-weight: 200;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  text-shadow: 0 0 28px rgb(var(--accent-ui-glow) / 0.22);
+}
+
+.over__best {
+  margin-top: 0.15rem;
+  padding: 0.28rem 0.7rem;
+  border: 1px solid rgb(var(--accent-ui-glow) / 0.18);
+  border-radius: 999px;
+  letter-spacing: 0.22em;
+  color: var(--text-secondary);
+}
+
+.over__best.panel__best--new {
+  border-color: rgb(var(--accent-ui-glow) / 0.55);
+  background: rgb(var(--accent-ui-glow) / 0.08);
+  color: var(--accent-ui);
+}
+
+.over__stats {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.65rem 1.4rem;
+  width: min(16rem, 100%);
+  padding-top: 0.15rem;
+  border-top: 1px solid rgb(var(--accent-ui-glow) / 0.12);
+}
+
+.over__stat {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.28rem;
+  padding-top: 0.55rem;
+}
+
+.over__stat-label {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  letter-spacing: 0.24em;
+  color: var(--text-dim);
+}
+
+.over__stat-value {
+  font-size: clamp(1.15rem, 3.2vw, 1.55rem);
+  font-weight: 200;
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-secondary);
+}
+
+.over__challenge {
+  margin-top: 0.1rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid rgb(var(--accent-ui-glow) / 0.2);
+  border-radius: 999px;
+  background: rgb(10 12 20 / 0.55);
+  font-size: 0.78rem;
+  letter-spacing: 0.28em;
+  color: var(--text-primary);
+}
+
+.panel--over .panel__actions {
+  margin-top: 0.15rem;
 }
 
 /*
@@ -1151,6 +1574,8 @@ input,
   letter-spacing: 0.42em;
   text-indent: 0.42em;
   text-shadow: 0 0 12px rgb(var(--accent-beam-glow) / 0.4);
+  /* Front-door wash: same dissolve, tinted into the beam pool rather than grey. */
+  --wash-void: rgb(4 14 20 / 0.58);
 }
 
 /* The way in, lit like the mark it sits under. */
@@ -1229,12 +1654,31 @@ input,
 }
 
 .loading__note {
+  position: relative;
+  isolation: isolate;
+  width: max-content;
   margin: 0;
+  padding: 0.2em 0.15em;
   font-family: var(--font-mono);
   font-size: 0.68rem;
   letter-spacing: 0.34em;
   text-indent: 0.34em;
   color: var(--text-dim);
+  --wash-pad: -0.25em -0.75em;
+  --wash-void: rgb(5 6 10 / 0.62);
+}
+
+.loading__note::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
 }
 
 /* Not an alarm — a fact the player would otherwise have to guess at. */
@@ -1385,10 +1829,33 @@ input,
 }
 
 .title__rule {
+  position: relative;
+  isolation: isolate;
+  display: block;
+  width: max-content;
+  max-width: 100%;
+  margin-inline: auto;
+  padding: 0.2em 0.15em;
   font-family: var(--font-mono);
   font-size: clamp(0.62rem, 1.8vw, 0.8rem);
   letter-spacing: 0.22em;
   color: var(--text-dim);
+  /* Lighter than in-run captions: the front door already has a radial pool. */
+  --wash-pad: -0.3em -0.95em;
+  --wash-void: rgb(5 6 10 / 0.55);
+}
+
+.title__rule::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
 }
 
 /* ------------------------------------------------------------------ buttons */
@@ -1846,15 +2313,35 @@ input,
 }
 
 .scores__clip {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 0.7rem;
   min-height: 0;
   overflow: hidden;
+  padding: 0.55rem 0.85rem 0.75rem;
   opacity: 0;
   /* Close fades first so the collapse does not squash readable type. */
   transition: opacity 160ms var(--ease-snap);
+}
+
+/*
+ * Soft wash under the ledger so type holds against the room. Masked on every
+ * edge so it dissolves into the scene rather than reading as a plate.
+ * Shared tokens: `--wash-*` on `:root`.
+ */
+.scores__clip::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
 }
 
 .scores--open .scores__clip {

@@ -1,18 +1,36 @@
 /**
  * WebAudio plumbing.
  *
- * Deliberately thin: every decision about what to play lives in `tones.ts`.
- * This file only turns a `ToneSpec` into sound, and handles the two awkward
- * facts of browser audio -- a context cannot start until the user has
- * interacted, and it can be suspended out from under you at any time.
+ * Deliberately thin: synthesised decisions live in `tones.ts`, sampled clips in
+ * `sfx.ts`. This file turns either into sound, and handles the two awkward facts
+ * of browser audio -- a context cannot start until the user has interacted, and
+ * it can be suspended out from under you at any time.
  */
 
 import type { ToneSpec } from './tones';
-import { clearTones, gameOverTone, lockTone, prismChord, turnSweep } from './tones';
+import {
+  clearTones,
+  clickTone,
+  gameOverTone,
+  hoverTone,
+  lockTone,
+  prismChord,
+  SPECTRAL_READY_PULSE,
+  spectralCollapseTones,
+  spectralReadyTones,
+  turnSweep,
+} from './tones';
 import { Music } from './music';
+import { SPECTRAL_COLLAPSE, SPECTRAL_COLLAPSE_IMMINENT } from './sfx';
 
 /** A playable catalogue entry handed over after preload. */
 export interface MusicTrack {
+  readonly id: string;
+  readonly url: string;
+}
+
+/** A sampled effect waiting to be decoded into an `AudioBuffer`. */
+export interface SfxTrack {
   readonly id: string;
   readonly url: string;
 }
@@ -36,6 +54,11 @@ export class Audio {
   private gameplay: MusicTrack[] = [];
   private bed: MusicBed | null = null;
   private currentId: string | null = null;
+  /** Sampled clips, keyed by catalogue id, once decoded. */
+  private readonly buffers = new Map<string, AudioBuffer>();
+  /** URLs still waiting on a live context (or a decode in flight). */
+  private pendingSfx: readonly SfxTrack[] = [];
+  private decoding: Promise<void> | null = null;
   /**
    * Player held the bed via the LCD. The frame loop still asks for gameplay
    * every tick; without this flag that ask would un-pause immediately.
@@ -70,6 +93,7 @@ export class Audio {
       this.master.connect(this.context.destination);
     }
     if (this.context.state === 'suspended') void this.context.resume();
+    void this.decodePendingSfx();
   }
 
   /**
@@ -107,6 +131,48 @@ export class Audio {
       this.music.load(theme.url, { loop: true });
       this.bed = 'theme';
       this.currentId = theme.id;
+    }
+  }
+
+  /**
+   * Hand over sampled effects. Decodes once an `AudioContext` exists; safe to
+   * call before the first gesture — decode waits for `resume`.
+   */
+  setSfxCatalog(clips: readonly SfxTrack[]): void {
+    this.pendingSfx = clips.filter((clip) => !this.buffers.has(clip.id));
+    void this.decodePendingSfx();
+  }
+
+  private async decodePendingSfx(): Promise<void> {
+    if (!this.context || this.pendingSfx.length === 0) return;
+    if (this.decoding) {
+      await this.decoding;
+      // Anything catalogued while the first batch ran still needs decoding.
+      return this.decodePendingSfx();
+    }
+    const context = this.context;
+    const batch = this.pendingSfx;
+    this.pendingSfx = [];
+    this.decoding = (async () => {
+      await Promise.all(
+        batch.map(async (clip) => {
+          try {
+            const response = await fetch(clip.url);
+            if (!response.ok) return;
+            const data = await response.arrayBuffer();
+            // `decodeAudioData` may detach the buffer; copy so a retry is possible.
+            const buffer = await context.decodeAudioData(data.slice(0));
+            this.buffers.set(clip.id, buffer);
+          } catch {
+            // Sampled SFX are optional: the synthesised fallback still fires.
+          }
+        })
+      );
+    })();
+    try {
+      await this.decoding;
+    } finally {
+      this.decoding = null;
     }
   }
 
@@ -291,6 +357,22 @@ export class Audio {
     oscillator.stop(start + spec.duration + 0.02);
   }
 
+  /** Play a decoded sample through the master bus. Returns false if unavailable. */
+  private playSample(id: string, gain = 1): boolean {
+    const context = this.context;
+    const master = this.master;
+    const buffer = this.buffers.get(id);
+    if (!context || !master || !this.enabled || !buffer) return false;
+
+    const source = context.createBufferSource();
+    const level = context.createGain();
+    source.buffer = buffer;
+    level.gain.value = gain;
+    source.connect(level).connect(master);
+    source.start(context.currentTime);
+    return true;
+  }
+
   lock(lane: number): void {
     this.play(lockTone(lane));
   }
@@ -330,12 +412,37 @@ export class Audio {
     prismChord().forEach((spec, index) => this.play(spec, index * 0.035));
   }
 
+  /** Hot bar crossed full — collapse is available. */
+  spectralReady(): void {
+    if (this.playSample(SPECTRAL_COLLAPSE_IMMINENT.id)) return;
+    // Sample still decoding, refused by the platform, or never catalogued.
+    spectralReadyTones().forEach((spec, index) => this.play(spec, index * SPECTRAL_READY_PULSE));
+  }
+
+  /** Spectral Collapse spent — the stack gives way. */
+  spectralCollapse(): void {
+    if (this.playSample(SPECTRAL_COLLAPSE.id)) return;
+    spectralCollapseTones().forEach((spec, index) => this.play(spec, index * 0.06));
+  }
+
   gameOver(): void {
     this.play(gameOverTone());
   }
 
+  /** Menu / HUD: cursor entered a live control. */
+  hover(): void {
+    this.play(hoverTone());
+  }
+
+  /** Menu / HUD: a button was pressed. */
+  click(): void {
+    this.play(clickTone());
+  }
+
   dispose(): void {
     this.music.dispose();
+    this.buffers.clear();
+    this.pendingSfx = [];
     void this.context?.close();
     this.context = null;
     this.master = null;

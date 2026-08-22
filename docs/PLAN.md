@@ -496,6 +496,11 @@ behaviour is reverted.
   default `/favicon.ico` probe. One voxel wearing the whole ramp, in the
   palette's own seven bands.
 
+  **Correction (M22i):** the spectrum square said colour and not the game. The
+  mark is now the title's own corner-on O — same silhouette as the wordmark
+  cube, in accent-beam cyan — plus a 180px apple-touch-icon so a home-screen
+  save is the same voxel.
+
 **Exit criteria, met:** the ghost is findable at a glance on a full board — three
 tests hold the buried case specifically — and no cube is dimmed unless it sits
 behind the falling piece. Peek and the turning preview each carry their own
@@ -673,8 +678,9 @@ than pressing an arrow key and a laptop with a touchscreen should not change
 behaviour based on which input was used last.
 
 The turn prompt borrows the strip: while the board waits to be turned, a sideways
-drag chooses the face. Same gesture, same double duty Left and Right already do
-on a keyboard in exactly that state.
+drag chooses the face. Touch inverts the mapping so a swipe pulls the board the
+way the finger moves; the prompt arrows are also tap targets and keep destination
+naming (left still means the left-hand face).
 
 ✅ **Gate the split by mode** _(play notes)_. The field/strip split exists to carry
 three rotation axes. A mode that does not need three does not need the split: the
@@ -823,9 +829,10 @@ the grounds that three rolls get there. And **the strip's height**: tall enough
 for a thumb, which is around 44 px, without eating a well that is already 18 rows
 in portrait.
 
-The **turn prompt** needs a touch answer too. When the Shift meter fills the game
-asks for left or right and falls back after five seconds; on a phone that has to
-be a pair of targets, not a keypress.
+The **turn prompt** on a phone is answered two ways. Strip swipes are inverted
+from the keyboard: a swipe pulls the board the way the finger moves (swipe left
+→ right face comes forward). The prompt's ← / → labels are also tap targets and
+keep destination naming — left still means the left-hand face.
 
 ### Layout — M12b ✅
 
@@ -1295,16 +1302,21 @@ the other drain, which teaches the distinction without a word.
   compacts and then calls `beginResolve`, so the clears glow, cascade and score
   exactly as any other clear does. Reusing that is what keeps a collapse _a lot
   of clears_ rather than a special case with its own rules.
-- ✅ **Off in Flatland**, through a mode-table field. Both controls panels drop
-  the row there through the same `appliesToMode` predicate the rotation gates
-  use, and the gauge is absent entirely.
+- ✅ **On in every shipped mode, including Flatland.** The mode-table field remains
+  so a mode can still withhold the gauge and bindings; Flatland no longer does.
+  (Was off at first ship — see M17b.)
+- ✅ **Ready cue is not the spend.** Crossing full fires `spectralReady` once:
+  sampled klaxon, banner **SPECTRAL COLLAPSE IMMINENT** / **PRESS V TO TRIGGER**.
+  Spending plays `collapse.webm`, a short white bloom, room react, and shake —
+  without announcing the collapse as if it had already happened.
 - ✅ **The piece in hand comes down with everything else.** It is a group of
   voxels in the air when the floor gives way; leaving it hovering would be both
   odd to look at and a second state to reason about. `lock` was split so the
   collapse can settle a piece without starting a resolution.
 - ✅ **Trigger:** `V` on a keyboard — chosen for where it sits, next to `Z`, `X`
   and `C`, rather than for what it spells; `W` was free and left alone for M11c.
-  On touch, a tap on the gauge, which is only interactive while it is ready.
+  On touch, a sliding **X** button above pause while the bar is full — the gauge
+  stays a readout so a thumb over the well always reaches the piece.
 
 ### Decisions that were open
 
@@ -1572,6 +1584,29 @@ something to show.
 The mode table is listed easiest → hardest: Flatland, Zen, Ascent, Endless,
 Prism, Blind Spectrum. Cards carry a pip rating and a cool→warm accent (not
 spectrum stops). `difficulty` is presentation only; the engine ignores it.
+
+---
+
+### M22h — Caption washes, and a game-over ledger ✅ _(play note)_
+
+Floating type over the board (popups, MUTED, stage / event banners, chain,
+spinning NEXT label) and secondary front-door copy (tagline, loading notes)
+now sit on the same soft edge-faded void wash as the title Scores fold —
+ground without a plate. Achromatic over a live board; beam-tinted only on
+boot/title. Wordmark, Scores toggle, and menu copy on the `.screens` scrim
+were left alone on purpose.
+
+Game over stops being a stack of captions: one washed result block with
+masthead rules, a labeled score hero, a best pill, LINES / STAGE columns, and
+a challenge chip when the run was coded.
+
+---
+
+### M22i — The title voxel as the page icon ✅ _(play note)_
+
+Favicon and apple-touch-icon now draw the wordmark's O: the corner-on voxel
+from M22d, in `--accent-beam` on `--surface-deep`. The spectrum cube they
+replaced was legible as a rainbow square, not as this game.
 
 ---
 

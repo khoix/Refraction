@@ -122,6 +122,7 @@ export class Hud {
   private readonly prompt = element('div', 'prompt');
   private readonly promptLeft = element('span', 'prompt__face', 'LEFT');
   private readonly promptRight = element('span', 'prompt__face', 'RIGHT');
+  private turnHandler: ((direction: 'left' | 'right') => void) | null = null;
   /**
    * In-run music deck: a thin LCD with a scrolling credit and transport keys.
    * Live only while a run is on screen; the menus have no business showing it.
@@ -138,6 +139,14 @@ export class Hud {
    */
   private readonly pauseBtn = element('button', 'hud__pause');
   private pauseHandler: (() => void) | null = null;
+  /**
+   * Touch-primary Spectral Collapse trigger. Slides in above the pause button
+   * only while the hot bar is full — the gauge alone is a thin target under a
+   * thumb, and "tap X" is a clearer spend than hoping they find the flicker.
+   */
+  private readonly collapseBtn = element('button', 'hud__collapse');
+  private pauseVisible = false;
+  private collapseReady = false;
 
   readonly root = element('div', 'hud');
 
@@ -158,14 +167,8 @@ export class Hud {
 
     this.gauge.append(this.gaugeFill);
     this.gauge.hidden = true;
-    // Tapping the gauge is the touch trigger, and it is only interactive while
-    // it is ready -- see `.gauge--ready` in the stylesheet, which is what turns
-    // pointer events back on. A target that is live but does nothing teaches a
-    // player it is not a target at all.
-    this.gauge.addEventListener('pointerdown', (event) => {
-      event.preventDefault();
-      this.collapseHandler?.();
-    });
+    // The gauge is read-only under a thumb. Touch spends the charge through the
+    // X trigger above pause — a live gauge over the well steals the play column.
 
     const left = element('div', 'hud__column hud__column--left');
     left.append(stats);
@@ -185,13 +188,17 @@ export class Hud {
     this.stageBanner.hidden = true;
 
     const pill = element('div', 'prompt__pill');
-    pill.append(
-      element('span', 'prompt__arrow', '←'),
-      this.promptLeft,
-      element('span', 'prompt__text', '·'),
-      this.promptRight,
-      element('span', 'prompt__arrow', '→')
-    );
+    const leftChoice = element('button', 'prompt__choice prompt__choice--left');
+    leftChoice.type = 'button';
+    leftChoice.setAttribute('aria-label', 'Turn left');
+    leftChoice.append(element('span', 'prompt__arrow', '←'), this.promptLeft);
+    const rightChoice = element('button', 'prompt__choice prompt__choice--right');
+    rightChoice.type = 'button';
+    rightChoice.setAttribute('aria-label', 'Turn right');
+    rightChoice.append(this.promptRight, element('span', 'prompt__arrow', '→'));
+    this.bindTurnChoice(leftChoice, 'left');
+    this.bindTurnChoice(rightChoice, 'right');
+    pill.append(leftChoice, element('span', 'prompt__text', '·'), rightChoice);
     this.prompt.append(pill);
     this.prompt.hidden = true;
     this.banner.hidden = true;
@@ -233,12 +240,27 @@ export class Hud {
       this.pauseHandler?.();
     });
 
+    this.collapseBtn.type = 'button';
+    this.collapseBtn.setAttribute('aria-label', 'Spectral Collapse');
+    this.collapseBtn.textContent = 'X';
+    this.collapseBtn.hidden = true;
+    this.collapseBtn.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    this.collapseBtn.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.collapseHandler?.();
+    });
+
     this.root.append(
       this.lcd,
       left,
       right,
       this.gauge,
       this.shift,
+      this.collapseBtn,
       this.pauseBtn,
       this.chain,
       this.popups,
@@ -331,14 +353,26 @@ export class Hud {
     this.stageBannerTimer = 2000;
   }
 
-  showBanner(text: string): void {
-    this.banner.textContent = text;
+  /**
+   * Flash a playfield message. Optional `hint` is a second, quieter line for
+   * a control prompt (e.g. how to spend a charge) without shouting it at the
+   * same weight as the event name.
+   */
+  showBanner(text: string, hint?: string): void {
+    this.banner.replaceChildren();
+    const main = element('span', 'banner__text', text);
+    this.banner.append(main);
+    if (hint) {
+      this.banner.append(element('span', 'banner__hint', hint));
+    }
     this.banner.hidden = false;
+    this.banner.classList.toggle('banner--hinted', Boolean(hint));
     this.banner.classList.remove('banner--pulse');
     // Restart the animation on a repeat of the same label.
     void this.banner.offsetWidth;
     this.banner.classList.add('banner--pulse');
-    this.bannerTimer = 1400;
+    // A hinted line needs a beat longer to read than a single word.
+    this.bannerTimer = hint ? 2200 : 1400;
   }
 
   /**
@@ -402,7 +436,7 @@ export class Hud {
    * flicker: at that point the number has stopped moving and what the gauge has
    * to say is no longer "how full" but "now".
    */
-  /** What a tap on a ready gauge should do. */
+  /** What the touch X trigger (and any other spend control) should do. */
   onCollapseTap(handler: () => void): void {
     this.collapseHandler = handler;
   }
@@ -419,20 +453,46 @@ export class Hud {
   }
 
   /**
+   * Tap targets on the face-choice prompt (← / →). Keyboard and strip swipes
+   * still choose a face on their own paths; this is the phone answer to the
+   * same prompt.
+   */
+  onTurnTap(handler: (direction: 'left' | 'right') => void): void {
+    this.turnHandler = handler;
+  }
+
+  private bindTurnChoice(button: HTMLButtonElement, direction: 'left' | 'right'): void {
+    // Stop the root touch controller claiming this tap as a roll / drop.
+    button.addEventListener('pointerdown', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+    });
+    button.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      this.turnHandler?.(direction);
+    });
+  }
+
+  /**
    * Show the pause control only while a run is on screen.
    *
    * CSS still gates it to touch-primary devices — a laptop with a keyboard has
-   * Esc, and showing a second pause control there would be noise.
+   * Esc, and showing a second pause control there would be noise. The collapse
+   * trigger rides the same visibility: it only belongs next to pause mid-run.
    */
   setPauseVisible(visible: boolean): void {
+    this.pauseVisible = visible;
     this.pauseBtn.hidden = !visible;
+    this.syncCollapseTrigger();
   }
 
   /**
    * Lift the pause button clear of the movement strip when the mode has one.
    *
    * The strip is a region of the window, not an element, so the button has to be
-   * told — the same reason the Shift meter takes `stripTop`.
+   * told — the same reason the Shift meter takes `stripTop`. The collapse
+   * trigger shares the lift via `.hud--strip`.
    */
   setStripReserve(hasStrip: boolean): void {
     this.root.classList.toggle('hud--strip', hasStrip);
@@ -464,6 +524,8 @@ export class Hud {
 
   setHeat(heat: number | null, ready: boolean): void {
     this.gauge.hidden = heat === null;
+    this.collapseReady = heat !== null && ready;
+    this.syncCollapseTrigger();
     if (heat === null) return;
     const level = Math.min(1, Math.max(0, heat));
     this.gaugeFill.style.height = `${level * 100}%`;
@@ -472,6 +534,21 @@ export class Hud {
     // earned is doing the job the play note asked for.
     this.gauge.style.setProperty('--gauge-agitation', level.toFixed(3));
     this.gauge.classList.toggle('gauge--ready', ready);
+  }
+
+  /**
+   * Slide the touch collapse trigger in while the bar is full and a run is on
+   * screen; slide it out the moment either stops being true.
+   *
+   * Kept in the DOM (not `hidden`) while pause is up so the exit transition can
+   * play — `hidden` would cut the slide short.
+   */
+  private syncCollapseTrigger(): void {
+    this.collapseBtn.hidden = !this.pauseVisible;
+    this.collapseBtn.classList.toggle(
+      'hud__collapse--ready',
+      this.pauseVisible && this.collapseReady
+    );
   }
 
   update(game: Game, deltaMs: number): void {

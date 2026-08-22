@@ -80,6 +80,14 @@ export const HEAT_PER_LINE = 0.1;
 /** Full to empty in one hundred and thirty seconds of clearing nothing. */
 export const HEAT_DECAY_PER_MS = 1 / 130_000;
 
+/**
+ * Full Spectrum reward: each Prism permanently multiplies gravity by this
+ * factor (a 25% drop). The stage / continuous curve keeps climbing underneath;
+ * the scale just sits on top, so later Full Spectrums buy another permanent
+ * breath without freezing the arc.
+ */
+export const PRISM_GRAVITY_FACTOR = 0.75;
+
 export type GameStatus =
   'falling' | 'awaitingTurn' | 'turning' | 'resolving' | 'paused' | 'gameOver';
 
@@ -96,7 +104,17 @@ export interface ActivePiece {
 }
 
 export interface GameEvent {
-  readonly type: 'lock' | 'clear' | 'turn' | 'stage' | 'gameOver' | 'hold' | 'rescue' | 'collapse';
+  readonly type:
+    | 'lock'
+    | 'clear'
+    | 'turn'
+    | 'stage'
+    | 'gameOver'
+    | 'hold'
+    | 'rescue'
+    | 'collapse'
+    /** The hot bar just crossed full — collapse is available, not yet spent. */
+    | 'spectralReady';
   readonly lines?: number;
   readonly label?: string;
   readonly score?: number;
@@ -230,6 +248,8 @@ export class Game {
   /** Status to return to on resume. Null whenever the game is not paused. */
   private statusBeforePause: GameStatus | null = null;
   private revolutionFaces = new Set<Face>();
+  /** Permanent gravity scale from Full Spectrum rewards. Starts at 1. */
+  private prismGravityScale = 1;
   private events: GameEvent[] = [];
 
   constructor(options: GameOptions) {
@@ -249,7 +269,7 @@ export class Game {
 
   /** Cells per second right now, after the mode's own acceleration. */
   get gravity(): number {
-    return modeGravity(this.mode, this.stage, this.lines);
+    return modeGravity(this.mode, this.stage, this.lines) * this.prismGravityScale;
   }
 
   get depthNudgeAllowed(): boolean {
@@ -800,8 +820,13 @@ export class Game {
     this.shiftMeter += complete.length;
     this.linesThisResolve += complete.length;
     // A collapse's own clears do not pay for the next one -- see `collapsing`.
+    let crossedReady = false;
     if (this.spectralAllowed && !this.collapsing) {
+      const before = this.heat;
       this.heat = Math.min(1, this.heat + complete.length * HEAT_PER_LINE);
+      // The ready cue belongs to *earning* the charge, not to spending it. Fire
+      // once on the crossing, not while the bar sits full.
+      crossedReady = before < 1 && this.heat >= 1;
     }
 
     let prism = false;
@@ -829,7 +854,10 @@ export class Game {
         (this.resolveRefraction ? this.mode.refractionScale : 1)
     );
     this.score += gained;
-    if (prism) this.prisms += 1;
+    if (prism) {
+      this.prisms += 1;
+      this.prismGravityScale *= PRISM_GRAVITY_FACTOR;
+    }
 
     const label = clearLabel(context);
     this.events.push({
@@ -842,6 +870,9 @@ export class Game {
       ...(prism ? { prism: true } : {}),
       ...(label ? { label } : {}),
     });
+    // After the clear event so a labeled clear cannot overwrite the ready banner
+    // in the same drain.
+    if (crossedReady) this.events.push({ type: 'spectralReady' });
 
     this.cascadeIndex += 1;
     this.dealer.setTier(this.stage.maxTier);

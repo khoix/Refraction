@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { Game, HEAT_DECAY_PER_MS, HEAT_PER_LINE, facePreview } from '@core/game';
+import {
+  Game,
+  HEAT_DECAY_PER_MS,
+  HEAT_PER_LINE,
+  PRISM_GRAVITY_FACTOR,
+  facePreview,
+} from '@core/game';
 import { modeById } from '@core/modes';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { fromView, lineCells } from '@core/projection';
@@ -413,6 +419,69 @@ describe('event reporting', () => {
   });
 });
 
+describe('Full Spectrum gravity reward', () => {
+  /** Close a four-face revolution so the Prism flag fires. */
+  function closeRevolution(game: Game): void {
+    for (let turnIndex = 0; turnIndex < 4; turnIndex += 1) {
+      const destination = facePreview(game.face, 'right');
+      const countsAlongX = destination === 'front' || destination === 'back';
+      for (let i = 0; i < BOARD_DEPTH; i += 1) {
+        game.board.fill(countsAlongX ? { x: i, y: 0, z: 3 } : { x: 3, y: 0, z: i });
+      }
+      game.drainEvents();
+      game.status = 'awaitingTurn';
+      game.chooseTurn('right');
+      settle(game);
+    }
+  }
+
+  it('drops gravity by 25% when Full Spectrum lands', () => {
+    const game = new Game({ seed: 'prism-drop', turnDurationMs: 10, clearFlashMs: 10 });
+    const before = game.gravity;
+
+    closeRevolution(game);
+
+    expect(game.prisms).toBe(1);
+    expect(game.gravity).toBeCloseTo(before * PRISM_GRAVITY_FACTOR, 5);
+  });
+
+  it('keeps the drop permanently', () => {
+    const game = new Game({ seed: 'prism-permanent', turnDurationMs: 10, clearFlashMs: 10 });
+    closeRevolution(game);
+    const afterPrism = game.gravity;
+
+    game.tick(60_000);
+    expect(game.gravity).toBeCloseTo(afterPrism, 5);
+  });
+
+  it('stacks on further Full Spectrums', () => {
+    const game = new Game({ seed: 'prism-stack', turnDurationMs: 10, clearFlashMs: 10 });
+    const baseline = game.gravity;
+
+    closeRevolution(game);
+    expect(game.gravity).toBeCloseTo(baseline * PRISM_GRAVITY_FACTOR, 5);
+
+    closeRevolution(game);
+    expect(game.prisms).toBe(2);
+    expect(game.gravity).toBeCloseTo(baseline * PRISM_GRAVITY_FACTOR ** 2, 5);
+  });
+
+  it('still climbs with the stage curve under the scale', () => {
+    const game = new Game({ seed: 'prism-climb', turnDurationMs: 10, clearFlashMs: 10 });
+    closeRevolution(game);
+    const slowedAtStage = game.gravity;
+    const stageBefore = game.stage.index;
+
+    game.lines += LINES_PER_STAGE;
+    expect(game.stage.index).toBe(stageBefore + 1);
+    expect(game.gravity).toBeGreaterThan(slowedAtStage);
+    // Relative climb matches the unscaled stage table; only the absolute speed is cut.
+    const unscaledBefore = stageForLines(game.lines - LINES_PER_STAGE).gravity;
+    const unscaledAfter = stageForLines(game.lines).gravity;
+    expect(game.gravity / slowedAtStage).toBeCloseTo(unscaledAfter / unscaledBefore, 5);
+  });
+});
+
 describe('hold', () => {
   it('swaps the active piece and refuses a second swap for the same piece', () => {
     const game = newGame();
@@ -689,21 +758,58 @@ describe('the hot bar', () => {
     expect(game.spectralReady).toBe(true);
   });
 
+  it('fires spectralReady once when the bar crosses full', () => {
+    const game = hot();
+    game.heat = 1 - HEAT_PER_LINE / 2;
+    game.drainEvents();
+    fillLine(game, 0, 0);
+    game.hardDrop();
+    game.tick(1000);
+
+    const ready = game.drainEvents().filter((event) => event.type === 'spectralReady');
+    expect(ready).toHaveLength(1);
+    expect(game.heat).toBe(1);
+    expect(game.spectralReady).toBe(true);
+  });
+
+  it('does not re-fire while the bar is already full', () => {
+    const game = hot();
+    game.heat = 1;
+    game.drainEvents();
+    fillLine(game, 0, 0);
+    game.hardDrop();
+    game.tick(1000);
+    expect(game.drainEvents().some((event) => event.type === 'spectralReady')).toBe(false);
+  });
+
   it('is absent entirely in a mode without it', () => {
-    const flat = new Game({ seed: 'heat', mode: modeById('flatland') });
-    expect(flat.spectralAllowed).toBe(false);
-    flat.heat = 1;
-    expect(flat.spectralReady).toBe(false);
-    expect(flat.triggerCollapse()).toBe(false);
+    // No shipped mode withholds the mechanic today; the gate still has to hold
+    // for any mode that sets the field off.
+    const cold = new Game({
+      seed: 'heat',
+      mode: { ...modeById('ascent'), spectralCollapse: false },
+    });
+    expect(cold.spectralAllowed).toBe(false);
+    cold.heat = 1;
+    expect(cold.spectralReady).toBe(false);
+    expect(cold.triggerCollapse()).toBe(false);
 
     // And it never gains any, so the gauge has nothing to draw. Reset first --
     // the line above forced it high to prove `spectralReady` ignores it, and
     // nothing in a mode without the mechanic will bring it back down.
-    flat.heat = 0;
-    fillLine(flat, 0, 0);
-    flat.hardDrop();
-    flat.tick(1000);
-    expect(flat.heat).toBe(0);
+    cold.heat = 0;
+    fillLine(cold, 0, 0);
+    cold.hardDrop();
+    cold.tick(1000);
+    expect(cold.heat).toBe(0);
+  });
+
+  it('is available in Flatland', () => {
+    const flat = new Game({ seed: 'heat', mode: modeById('flatland') });
+    expect(flat.spectralAllowed).toBe(true);
+    flat.heat = 1;
+    expect(flat.spectralReady).toBe(true);
+    expect(flat.triggerCollapse()).toBe(true);
   });
 });
 

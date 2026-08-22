@@ -171,6 +171,10 @@ better in isolation:
 - **Scoring banners are white, not a rainbow sweep.** White is also the truer
   image: the whole spectrum together is white light, which is exactly what the
   board does when a Prism chain closes.
+- **Floating captions sit on a soft wash, not bare type.** Score popups, MUTED,
+  stage and event banners, the refraction chain, and the spinning NEXT label
+  share the title Scores fold's edge-faded void — ground without a plate, still
+  achromatic. The wordmark and menu copy on the screen scrim do not need it.
 
 The title screen is the partition's clearest consequence. It was plain type over
 an 86%-opaque blackout, and on a cold boot there was nothing behind the blackout
@@ -584,6 +588,12 @@ Multipliers, applied in this order:
 | Soft drop                                                           | +1 per cell            |
 | Hard drop                                                           | +2 per cell            |
 
+**Full Spectrum also drops gravity by 25%** permanently
+(`PRISM_GRAVITY_FACTOR = 0.75`). Each further Prism multiplies again; the stage
+and continuous-gravity curves keep climbing underneath the scale, so the reward
+is a lasting breath rather than a freeze of the arc. Soft drop follows the
+scaled gravity; lock delay does not change.
+
 A Refraction Chain breaks on any turn that clears nothing.
 
 The escalating on-screen language from the proposal is preserved:
@@ -971,6 +981,11 @@ follow and both are rules rather than tuning:
   they count, they feed the Shift meter — but feeding them back into the bar
   would let a large enough stack buy the next collapse outright.
 
+**Ready and spend are different beats.** Filling the bar is a warning
+(imminent banner + klaxon sample); spending it is the fall (collapse sample,
+short white bloom, room flash, shake). Announcing “Spectral Collapse” on the
+fill would claim an event that has not happened yet.
+
 The clears resolve through the ordinary cycle, so they glow, cascade and score
 like any others. That is what keeps a collapse _a lot of clears_ rather than a
 second set of rules.
@@ -1016,10 +1031,13 @@ the spectrum, and for anyone whose colour vision makes the ramp harder.
 | Clear         | one note per line, rising; brighter with each cascade step         |
 | Turn          | a filtered sweep, falling when choosing left and rising when right |
 | Full Spectrum | every band at once — the audible form of white light               |
+| Bar full      | sampled klaxon (`sfx/spectral_collapse_imminent.webm`)             |
+| Collapse      | sampled fall (`sfx/collapse.webm`)                                 |
 | Game over     | a single low fall                                                  |
 
-Decisions live in `src/audio/tones.ts` as pure data and are unit-tested;
-`audio.ts` only turns them into sound. `M` mutes.
+Synthesised decisions live in `src/audio/tones.ts` as pure data (and as
+fallbacks when a sample is missing); sampled clips live in `src/audio/sfx.ts`.
+`audio.ts` turns either into sound. `M` mutes.
 
 ### 10.2 Starting the sound
 

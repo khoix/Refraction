@@ -3,10 +3,15 @@ import { DEPTH_LANES } from '@core/constants';
 import {
   BASE_FREQUENCY,
   clearTones,
+  clickTone,
   gameOverTone,
+  hoverTone,
   laneFrequency,
   lockTone,
   prismChord,
+  SPECTRAL_READY_PULSE,
+  spectralCollapseTones,
+  spectralReadyTones,
   turnSweep,
 } from '../../src/audio/tones';
 
@@ -96,8 +101,62 @@ describe('Full Spectrum', () => {
   });
 });
 
+describe('Spectral Collapse ready', () => {
+  it('is a two-tone klaxon — alternating blasts, not a climb', () => {
+    const tones = spectralReadyTones();
+    expect(tones.length).toBeGreaterThanOrEqual(4);
+    // High, low, high, low…
+    expect(tones[0]!.frequency).toBeGreaterThan(tones[1]!.frequency);
+    expect(tones[0]!.frequency).toBe(tones[2]!.frequency);
+    expect(tones[1]!.frequency).toBe(tones[3]!.frequency);
+    for (const tone of tones) {
+      expect(tone.type).toBe('square');
+      expect(tone.duration).toBeLessThan(SPECTRAL_READY_PULSE);
+    }
+  });
+
+  it('keeps each blast modest — pulses are sequential, not a chord', () => {
+    for (const tone of spectralReadyTones()) {
+      expect(tone.gain).toBeLessThanOrEqual(0.16);
+    }
+    // Peak concurrent gain is one blast; Prism stacks every band at once.
+    expect(spectralReadyTones()[0]!.gain).toBeLessThan(
+      prismChord().reduce((sum, tone) => sum + tone.gain, 0)
+    );
+  });
+});
+
+describe('Spectral Collapse spent', () => {
+  it('falls the spectrum and lands on a held low note', () => {
+    const tones = spectralCollapseTones();
+    expect(tones.length).toBeGreaterThanOrEqual(3);
+    for (let i = 1; i < tones.length; i += 1) {
+      expect(tones[i]!.frequency).toBeLessThan(tones[i - 1]!.frequency);
+    }
+    const last = tones[tones.length - 1]!;
+    expect(last.duration).toBeGreaterThan(tones[0]!.duration);
+    expect(last.frequency).toBe(laneFrequency(0));
+  });
+
+  it('stays under Full Spectrum in total gain', () => {
+    const spentGain = spectralCollapseTones().reduce((sum, tone) => sum + tone.gain, 0);
+    const prismGain = prismChord().reduce((sum, tone) => sum + tone.gain, 0);
+    expect(spentGain).toBeLessThan(prismGain);
+  });
+});
+
 describe('every tone', () => {
-  const all = [lockTone(0), lockTone(7), ...clearTones(4, 2, 3), ...prismChord(), gameOverTone()];
+  const all = [
+    lockTone(0),
+    lockTone(7),
+    ...clearTones(4, 2, 3),
+    ...prismChord(),
+    ...spectralReadyTones(),
+    ...spectralCollapseTones(),
+    gameOverTone(),
+    hoverTone(),
+    clickTone(),
+  ];
 
   it('is audible, finite and bounded', () => {
     for (const tone of all) {
@@ -114,5 +173,12 @@ describe('every tone', () => {
     // It fires on every single piece, so it must never dominate.
     expect(lockTone(0).duration).toBeLessThan(0.2);
     expect(lockTone(0).gain).toBeLessThan(clearTones(1, 0, 0)[0]!.gain + 0.05);
+  });
+
+  it('keeps chrome ticks softer than board events', () => {
+    expect(hoverTone().duration).toBeLessThan(clickTone().duration);
+    expect(hoverTone().gain).toBeLessThan(clickTone().gain);
+    expect(clickTone().gain).toBeLessThan(lockTone(0).gain);
+    expect(clickTone().duration).toBeLessThan(lockTone(0).duration);
   });
 });

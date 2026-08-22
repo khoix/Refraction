@@ -44,6 +44,13 @@ export const TURN_DURATION_MS = 750;
 
 /** How long the Full Spectrum whiteout takes to bloom and fade. */
 const PRISM_BLOOM_MS = 1500;
+/**
+ * Spectral Collapse whiteout: shorter and softer than Prism so Full Spectrum
+ * still reads as the bigger event, but bright enough that the floor giving way
+ * is not only a camera bump.
+ */
+const COLLAPSE_BLOOM_MS = 720;
+const COLLAPSE_WHITEOUT_PEAK = 0.72;
 /** Peak camera pan during a shake, in board cells. */
 const SHAKE_AMPLITUDE = 0.32;
 const SHAKE_DECAY_MS = 380;
@@ -491,6 +498,7 @@ export class GameRenderer {
   private aspect = 1;
   private glowElapsed = 0;
   private prismElapsed = PRISM_BLOOM_MS;
+  private collapseElapsed = COLLAPSE_BLOOM_MS;
   private shakeElapsed = SHAKE_DECAY_MS;
   private shakeStrength = 0;
   private prefs: RenderPreferences = DEFAULT_PREFERENCES;
@@ -701,6 +709,18 @@ export class GameRenderer {
   }
 
   /**
+   * Spend Spectral Collapse: a short white bloom, the room answering, and a hard
+   * camera knock. Achromatic on purpose — heat is brightness, never hue — and
+   * softer than Prism so the two events stay distinct.
+   */
+  startCollapse(): void {
+    this.collapseElapsed = 0;
+    this.environment.react(1);
+    this.environment.ripple(1);
+    this.shake(1);
+  }
+
+  /**
    * Apply a settings change. Takes effect on the next frame.
    *
    * These are mutable rather than constructor options because the settings
@@ -732,16 +752,33 @@ export class GameRenderer {
   /**
    * How white the board currently is, 0..1.
    *
-   * Rises quickly and falls slowly, so Full Spectrum reads as a bloom rather
-   * than a strobe. Capped well below full white under reduced motion, which is
-   * also the photosensitivity guard.
+   * Prism rises quickly and falls slowly so Full Spectrum reads as a bloom
+   * rather than a strobe. Collapse is a shorter, harder flash for the floor
+   * giving way. Both are capped under reduced motion (photosensitivity guard).
+   * The louder of the two wins when they overlap.
    */
   private get whiteout(): number {
+    return Math.max(this.prismWhiteout, this.collapseWhiteout);
+  }
+
+  private get prismWhiteout(): number {
     if (this.prismElapsed >= PRISM_BLOOM_MS) return 0;
     const t = this.prismElapsed / PRISM_BLOOM_MS;
     const shape = t < 0.18 ? t / 0.18 : 1 - (t - 0.18) / 0.82;
     if (!this.prefs.bloom) return 0;
     return THREE.MathUtils.clamp(shape, 0, 1) * (this.reducedMotion ? 0.35 : 0.92);
+  }
+
+  private get collapseWhiteout(): number {
+    if (this.collapseElapsed >= COLLAPSE_BLOOM_MS) return 0;
+    const t = this.collapseElapsed / COLLAPSE_BLOOM_MS;
+    // Faster rise than Prism — impact, not a swell.
+    const shape = t < 0.1 ? t / 0.1 : 1 - (t - 0.1) / 0.9;
+    if (!this.prefs.bloom) return 0;
+    return (
+      THREE.MathUtils.clamp(shape, 0, 1) *
+      (this.reducedMotion ? 0.28 : COLLAPSE_WHITEOUT_PEAK)
+    );
   }
 
   /**
@@ -884,6 +921,7 @@ export class GameRenderer {
     }
 
     this.prismElapsed = Math.min(PRISM_BLOOM_MS, this.prismElapsed + deltaMs);
+    this.collapseElapsed = Math.min(COLLAPSE_BLOOM_MS, this.collapseElapsed + deltaMs);
     this.shakeElapsed = Math.min(SHAKE_DECAY_MS, this.shakeElapsed + deltaMs);
 
     const yaw = this.yaw;
