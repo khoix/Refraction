@@ -1179,6 +1179,30 @@ test.describe('persistence', () => {
     await expect(page.locator('.panel--title')).toBeVisible();
   });
 
+  test('game over is a result ledger, not a stack of captions', async ({ page }) => {
+    await page.goto('/?debug=1&mode=ascent&seed=ledger');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => {
+      const game = window.__refraction?.game;
+      if (!game) throw new Error('debug hook unavailable');
+      game.score = 12_400;
+      game.lines = 17;
+      game.status = 'gameOver';
+    });
+
+    const over = page.locator('.panel--over');
+    await expect(over).toBeVisible();
+    await expect(over.locator('.over')).toBeVisible();
+    await expect(over.locator('.over__title')).toHaveText('GAME OVER');
+    await expect(over.locator('.over__label')).toHaveText('SCORE');
+    await expect(over.locator('.over__value')).toHaveText('12,400');
+    await expect(over.locator('.over__stat-label')).toHaveText(['LINES', 'STAGE']);
+    await expect(over.locator('.over__stat-value').first()).toHaveText('17');
+    await expect(over.locator('.over__best')).toBeVisible();
+    await expect(over.locator('.over__challenge')).toBeHidden();
+    await expect(over.getByRole('button', { name: 'PLAY AGAIN' })).toBeVisible();
+  });
+
   test('leaves no board on the title after game over', async ({ page }) => {
     /*
      * The menus carry the room, not a stack. Leaving a finished run used to keep
@@ -1286,6 +1310,7 @@ test.describe('challenges', () => {
       if (game) game.status = 'gameOver';
     });
     await expect(page.locator('.panel--over .panel__detail')).toContainText(daily);
+    await expect(page.locator('.panel--over .over__challenge')).toBeVisible();
   });
 
   test('the same code gives the same game', async ({ page }) => {

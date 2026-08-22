@@ -1580,6 +1580,21 @@ spectrum stops). `difficulty` is presentation only; the engine ignores it.
 
 ---
 
+### M22h — Caption washes, and a game-over ledger ✅ _(play note)_
+
+Floating type over the board (popups, MUTED, stage / event banners, chain,
+spinning NEXT label) and secondary front-door copy (tagline, loading notes)
+now sit on the same soft edge-faded void wash as the title Scores fold —
+ground without a plate. Achromatic over a live board; beam-tinted only on
+boot/title. Wordmark, Scores toggle, and menu copy on the `.screens` scrim
+were left alone on purpose.
+
+Game over stops being a stack of captions: one washed result block with
+masthead rules, a labeled score hero, a best pill, LINES / STAGE columns, and
+a challenge chip when the run was coded.
+
+---
+
 ## Deliberately out of scope
 
 Not in this plan, and not by accident:

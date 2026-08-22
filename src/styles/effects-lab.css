@@ -74,7 +74,9 @@ body,
 .lab-panel button {
   appearance: none;
   border: 1px solid var(--surface-line);
-  background: transparent;
+  /* Soft raise rather than a dissolve wash: these are bordered controls, and a
+     fade-edge plate under a hard border reads as two surfaces fighting. */
+  background: rgb(10 12 20 / 0.55);
   color: var(--accent-ui);
   font: inherit;
   font-size: 0.78rem;
@@ -167,9 +169,15 @@ body,
 
 .lab-banner {
   position: absolute;
+  isolation: isolate;
   z-index: 4;
-  inset-inline: 0;
+  left: 0;
+  right: 0;
   top: 14vh;
+  width: max-content;
+  max-width: min(92vw, 100%);
+  margin-inline: auto;
+  padding: 0.35em 0.4em 0.45em;
   pointer-events: none;
   display: flex;
   flex-direction: column;
@@ -182,6 +190,21 @@ body,
   color: var(--accent-ui);
   text-shadow: 0 0 26px rgb(var(--accent-ui-glow) / 0.4);
   opacity: 0;
+  --wash-pad: -0.45em -1.35em;
+  --wash-void: rgb(5 6 10 / 0.76);
+}
+
+.lab-banner::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
 }
 
 .lab-banner.is-on {

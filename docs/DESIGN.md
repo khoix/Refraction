@@ -171,6 +171,10 @@ better in isolation:
 - **Scoring banners are white, not a rainbow sweep.** White is also the truer
   image: the whole spectrum together is white light, which is exactly what the
   board does when a Prism chain closes.
+- **Floating captions sit on a soft wash, not bare type.** Score popups, MUTED,
+  stage and event banners, the refraction chain, and the spinning NEXT label
+  share the title Scores fold's edge-faded void — ground without a plate, still
+  achromatic. The wordmark and menu copy on the screen scrim do not need it.
 
 The title screen is the partition's clearest consequence. It was plain type over
 an 86%-opaque blackout, and on a cold boot there was nothing behind the blackout

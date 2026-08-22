@@ -304,9 +304,11 @@ export class Screens {
   private readonly syncers: (() => void)[] = [];
   private readonly modeCards = new Map<ModeId, HTMLButtonElement>();
 
-  private readonly overTitle = element('h2', 'panel__title', 'GAME OVER');
-  private readonly overScore = element('p', 'panel__score', '0');
-  private readonly overDetail = element('p', 'panel__detail', '');
+  private readonly overTitle = element('h2', 'panel__title over__title', 'GAME OVER');
+  private readonly overScore = element('p', 'panel__score over__value', '0');
+  private readonly overLines = element('span', 'over__stat-value', '0');
+  private readonly overStage = element('span', 'over__stat-value', '1');
+  private readonly overDetail = element('p', 'panel__detail over__challenge', '');
   /**
    * Where the two controls panels live, so they can be rebuilt.
    *
@@ -317,7 +319,7 @@ export class Screens {
    */
   private readonly controls = element('div', 'keymap__pair');
   private mode: ModeConfig = modeById(DEFAULT_MODE_ID);
-  private readonly overBest = element('p', 'panel__best', '');
+  private readonly overBest = element('p', 'panel__best over__best', '');
   private readonly statsLine = element('p', 'scores__stats', '');
   private readonly sessionLog = element('ol', 'scores__log');
   /** Title-screen ledger: collapsed until the player asks to see it. */
@@ -350,6 +352,7 @@ export class Screens {
     private readonly handlers: ScreenHandlers
   ) {
     this.save = save;
+    this.overDetail.hidden = true;
     this.panels.set('boot', this.buildBoot());
     this.panels.set('title', this.buildTitle());
     this.panels.set('modes', this.buildModes());
@@ -549,6 +552,26 @@ export class Screens {
   }
 
   private buildGameOver(): HTMLElement {
+    const mast = element('div', 'over__mast');
+    mast.append(
+      element('hr', 'over__rule'),
+      this.overTitle,
+      element('hr', 'over__rule')
+    );
+
+    const score = element('div', 'over__score');
+    score.append(element('span', 'over__label', 'SCORE'), this.overScore, this.overBest);
+
+    const lines = element('div', 'over__stat');
+    lines.append(element('span', 'over__stat-label', 'LINES'), this.overLines);
+    const stage = element('div', 'over__stat');
+    stage.append(element('span', 'over__stat-label', 'STAGE'), this.overStage);
+    const stats = element('div', 'over__stats');
+    stats.append(lines, stage);
+
+    const result = element('div', 'over');
+    result.append(mast, score, stats, this.overDetail);
+
     const actions = element('div', 'panel__actions');
     actions.append(
       button('PLAY AGAIN', 'button button--primary', () => this.handlers.onRestart()),
@@ -557,10 +580,7 @@ export class Screens {
     );
     return this.panel(
       'over',
-      this.overTitle,
-      this.overScore,
-      this.overDetail,
-      this.overBest,
+      result,
       actions,
       element('p', 'panel__hint panel__hint--keys', 'Press Enter to play again'),
       element('p', 'panel__hint panel__hint--touch', 'Tap Play Again to restart')
@@ -903,9 +923,10 @@ export class Screens {
   }): void {
     this.overTitle.textContent = options.canFail ? 'GAME OVER' : 'RUN ENDED';
     this.overScore.textContent = options.score.toLocaleString('en-US');
-    this.overDetail.textContent = options.challenge
-      ? `${options.lines} lines · stage ${options.stage} · ${options.challenge}`
-      : `${options.lines} lines · stage ${options.stage}`;
+    this.overLines.textContent = options.lines.toLocaleString('en-US');
+    this.overStage.textContent = String(options.stage);
+    this.overDetail.textContent = options.challenge ? options.challenge : '';
+    this.overDetail.hidden = !options.challenge;
     this.overBest.textContent = options.personalBest
       ? 'NEW BEST'
       : `Best ${options.best.toLocaleString('en-US')}`;

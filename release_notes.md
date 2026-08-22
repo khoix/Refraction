@@ -7,6 +7,39 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22h — Caption washes, and a game-over ledger
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Play note: floating captions needed ground; game over needed a composition.
+
+### Soft washes
+
+Shared `--wash-*` tokens reuse the title Scores fold's dissolve: dark void,
+masked on every edge so type holds against the room without reading as a card.
+Applied to in-run floaters (score popups, MUTED, stage banner, refraction
+chain, event banners, NEXT label when the preview window is open) and to
+front-door secondary copy (tagline, loading notes — beam-tinted wash there).
+Effects-lab banners match; its transparent buttons take a soft raise instead
+of a fade under a hard border.
+
+Left alone: wordmark (radial + glow), Scores toggle (beam rules), menu panel
+copy already on the `.screens` scrim.
+
+### Game over
+
+A single washed `.over` ledger: hairline masthead, SCORE label + hero number,
+best / NEW BEST pill, LINES and STAGE as a two-column row, challenge code as a
+chip when present. Actions and Enter/tap hints sit below unchanged.
+
+### Tested
+
+E2e: game-over ledger structure (mast, score, stats, best); challenge code
+still lands in `.panel__detail`; existing restart / main-menu / persistence
+paths unchanged.
+
+---
+
 ## M4b — Full Spectrum gravity reward
 
 **Branch:** `cursor/refraction-kendega-desktop`
