@@ -7,6 +7,32 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M4b — Full Spectrum gravity reward
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Play note on the biggest clear in the game.
+
+### What changed
+
+Full Spectrum already paid on the scoreboard. It now also **drops gravity by
+25%** for the rest of the run (`PRISM_GRAVITY_FACTOR = 0.75`). Each further
+Prism multiplies again. The stage table and Endless continuous climb keep
+moving underneath the scale — the reward is a lasting breath, not a freeze of
+the arc. Soft drop follows the scaled gravity; lock delay is unchanged.
+
+### Tested
+
+Unit (`Full Spectrum gravity reward` in `game.test.ts`): drop is 25% on the
+first Prism; it survives a long tick; a second Prism stacks to \(0.75^2\);
+advancing a stage still raises gravity in the same ratio as the unscaled table.
+
+### Spec
+
+`docs/DESIGN.md` §6 records the permanent scale next to the Prism score payout.
+
+---
+
 ## M17b — Spectral Collapse presentation
 
 **Branch:** `cursor/refraction-kendega-desktop`
