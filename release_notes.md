@@ -7,6 +7,31 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## M22i — The title voxel as the page icon
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+The tab icon was a rounded cube swept through the spectrum. It said colour,
+which this game uses, and not the mark, which this game already has. It is now
+the wordmark's O: the same corner-on voxel (yawed 45°, tilted ~20°), three
+faces lit like the artwork, outline in `--accent-beam` on the HUD's
+near-black. A 180×180 apple-touch-icon.png — square and opaque, so iOS can
+mask its own corners — is the same voxel for a home-screen save.
+
+The SVG source sits beside it as `apple-touch-icon.svg`. Geometry is copied
+from the wordmark in `screens.ts`; a unit test holds the three drawings to the
+same five paths so a later tweak to the cube cannot leave the tab icon
+drawing a different one.
+
+### Tested
+
+Unit: icon SVGs share the wordmark's voxel paths; both wear accent-beam on
+`--surface-deep`; both HTML shells declare favicon + apple-touch; the PNG is
+180×180. E2e: both assets 200, and the served SVG is the cube rather than the
+old gradient square.
+
+---
+
 ## M22h — Caption washes, and a game-over ledger
 
 **Branch:** `cursor/refraction-kendega-desktop`

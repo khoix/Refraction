@@ -496,6 +496,11 @@ behaviour is reverted.
   default `/favicon.ico` probe. One voxel wearing the whole ramp, in the
   palette's own seven bands.
 
+  **Correction (M22i):** the spectrum square said colour and not the game. The
+  mark is now the title's own corner-on O — same silhouette as the wordmark
+  cube, in accent-beam cyan — plus a 180px apple-touch-icon so a home-screen
+  save is the same voxel.
+
 **Exit criteria, met:** the ghost is findable at a glance on a full board — three
 tests hold the buried case specifically — and no cube is dimmed unless it sits
 behind the falling piece. Peek and the turning preview each carry their own
@@ -1592,6 +1597,14 @@ were left alone on purpose.
 Game over stops being a stack of captions: one washed result block with
 masthead rules, a labeled score hero, a best pill, LINES / STAGE columns, and
 a challenge chip when the run was coded.
+
+---
+
+### M22i — The title voxel as the page icon ✅ _(play note)_
+
+Favicon and apple-touch-icon now draw the wordmark's O: the corner-on voxel
+from M22d, in `--accent-beam` on `--surface-deep`. The spectrum cube they
+replaced was legible as a rainbow square, not as this game.
 
 ---
 

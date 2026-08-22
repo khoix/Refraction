@@ -1,0 +1,18 @@
+<!--
+  Source for apple-touch-icon.png. Same voxel as the title O and favicon.svg;
+  square and opaque so iOS can mask its own corners. Regenerated with:
+
+    magick -background none public/apple-touch-icon.svg -resize 180x180 public/apple-touch-icon.png
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 180 180" role="img" aria-label="Refraction">
+  <rect width="180" height="180" fill="#0a0c14" />
+  <g transform="translate(22 22) scale(1.36)" fill="none">
+    <path d="M50 3 L96.6 19.1 L50 35.2 L3.4 19.1 Z" fill="#57daff" fill-opacity="0.2" />
+    <path d="M3.4 19.1 L50 35.2 L50 97 L3.4 80.9 Z" fill="#57daff" fill-opacity="0.1" />
+    <path d="M50 35.2 L96.6 19.1 L96.6 80.9 L50 97 Z" fill="#57daff" fill-opacity="0.075" />
+    <g stroke="#57daff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M50 3 L96.6 19.1 L96.6 80.9 L50 97 L3.4 80.9 L3.4 19.1 Z" />
+      <path d="M3.4 19.1 L50 35.2 L96.6 19.1 M50 35.2 L50 97" />
+    </g>
+  </g>
+</svg>
