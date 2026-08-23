@@ -2565,24 +2565,6 @@ input,
   display: none;
 }
 
-@media (hover: none) and (pointer: coarse) {
-  .keymap {
-    display: none;
-  }
-
-  .keymap--touch {
-    display: block;
-  }
-
-  .control-diagram--keyboard {
-    display: none;
-  }
-
-  .control-diagram--touch {
-    display: block;
-  }
-}
-
 .control-diagram--touch {
   display: none;
 }
@@ -2601,6 +2583,10 @@ input,
   margin-bottom: 0.75rem;
 }
 
+.controls-editor__tab {
+  flex: 1 1 0;
+}
+
 .controls-editor__tab--on {
   border-color: var(--accent-beam);
   color: var(--accent-beam);
@@ -2610,12 +2596,30 @@ input,
   margin-bottom: 1rem;
 }
 
+.control-diagram__title {
+  width: 100%;
+  margin: 0 0 0.6rem;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-align: center;
+  text-transform: uppercase;
+}
+
 .control-diagram {
   display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   align-items: flex-start;
   margin-bottom: 0.5rem;
+}
+
+.control-diagram.control-diagram--touch {
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: 100%;
 }
 
 .control-diagram__pad {
@@ -2648,67 +2652,185 @@ input,
 .control-diagram__cap {
   margin: 0.35rem 0 0;
   font-size: 0.72rem;
-  color: var(--text-muted);
+  color: var(--text-dim);
+  text-align: center;
+  max-width: 11rem;
+}
+
+.control-diagram--touch .control-diagram__cap {
+  width: 100%;
+  max-width: 11rem;
+}
+
+
+.control-diagram__device {
+  width: min(100%, 11rem);
 }
 
 .control-diagram__wedge {
-  width: min(100%, 14rem);
+  display: block;
+  width: 100%;
   height: auto;
-  border: 1px solid var(--surface-line);
-  border-radius: 0.4rem;
-  background: var(--surface-deep);
+  aspect-ratio: 100 / 216;
+  border-radius: 0.85rem;
+  background: transparent;
+}
+
+.phone-bezel {
+  fill: #141824;
+  stroke: #2a3048;
+  stroke-width: 0.6;
+}
+
+.phone-screen {
+  fill: var(--surface-deep);
+}
+
+.phone-status {
+  fill: rgb(255 255 255 / 0.04);
+}
+
+.phone-notch {
+  fill: rgb(0 0 0 / 0.35);
+}
+
+.phone-home {
+  fill: rgb(255 255 255 / 0.22);
 }
 
 .wedge {
   fill: rgba(255, 255, 255, 0.04);
-  stroke: var(--surface-line);
-  stroke-width: 0.4;
+  stroke: #4a5270;
+  stroke-width: 0.35;
+  stroke-dasharray: 2.5 1.5;
 }
 
 .wedge--roll {
-  fill: rgba(120, 200, 255, 0.08);
+  fill: rgba(120, 200, 255, 0.14);
+  stroke: rgba(120, 200, 255, 0.45);
 }
 
 .wedge--yaw {
-  fill: rgba(180, 255, 160, 0.08);
+  fill: rgba(180, 255, 160, 0.12);
+  stroke: rgba(180, 255, 160, 0.4);
 }
 
 .wedge--pitch {
-  fill: rgba(255, 200, 120, 0.08);
+  fill: rgba(255, 200, 120, 0.12);
+  stroke: rgba(255, 200, 120, 0.4);
 }
 
-.wedge-dead {
-  fill: #0a0c14;
-  stroke: var(--accent-beam);
-  stroke-width: 0.5;
+.diagram-playfield__cell {
+  fill: rgb(255 255 255 / 0.05);
+  stroke: rgb(255 255 255 / 0.1);
+  stroke-width: 0.15;
+}
+
+.diagram-block__cell {
+  fill: rgba(120, 200, 255, 0.55);
+  stroke: rgba(180, 230, 255, 0.85);
+  stroke-width: 0.25;
+}
+
+.diagram-roll-zone {
+  fill: transparent;
+  stroke: none;
+}
+
+.diagram-roll-zone--left {
+  fill: rgba(120, 200, 255, 0.07);
+}
+
+.diagram-roll-zone--right {
+  fill: rgba(120, 200, 255, 0.07);
+}
+
+text.diagram-finger-emoji {
+  font-size: 14px;
+  font-family: 'Apple Color Emoji', 'Segoe UI Emoji', 'Noto Color Emoji', sans-serif;
+  pointer-events: none;
+  user-select: none;
+}
+
+.diagram-finger-actuator {
+  pointer-events: none;
+}
+
+.diagram-block__rotate {
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.control-diagram__wedge--flatland {
+  --flatland-cycle: 8.55s;
+}
+
+.control-diagram__wedge--flatland .flatland-phase,
+.control-diagram__wedge--flatland .flatland-ripple {
+  opacity: 0;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .control-diagram__wedge--flatland .flatland-phase {
+    opacity: 0.85;
+  }
+
+  .control-diagram__wedge--flatland .flatland-ripple {
+    opacity: 0.45;
+  }
+
+  .control-diagram__wedge--flatland animate,
+  .control-diagram__wedge--flatland animateTransform {
+    display: none;
+  }
+}
+
+.diagram-tap-ring {
+  fill: none;
+  stroke: rgb(248 250 255 / 0.45);
+  stroke-width: 0.45;
+}
+
+.diagram-tap-ring--inner {
+  stroke: rgb(248 250 255 / 0.7);
+  stroke-width: 0.35;
+}
+
+.diagram-gesture__path {
+  fill: none;
+  stroke: rgb(248 250 255 / 0.75);
+  stroke-width: 0.55;
+  stroke-linecap: round;
+}
+
+.diagram-gesture__path--flick {
+  stroke-dasharray: 2 1.8;
+}
+
+.diagram-gesture__head {
+  fill: rgb(248 250 255 / 0.75);
+}
+
+.diagram-gesture__label {
+  fill: var(--text-primary);
+  font-size: 5px;
+  font-weight: 600;
+  font-family: inherit;
+  paint-order: stroke fill;
+  stroke: rgb(5 6 10 / 0.9);
+  stroke-width: 0.35;
 }
 
 .wedge-label {
   fill: var(--text-primary);
-  font-size: 5px;
+  font-size: 5.5px;
+  font-weight: 600;
   font-family: inherit;
+  paint-order: stroke fill;
+  stroke: rgb(5 6 10 / 0.85);
+  stroke-width: 0.35;
 }
 
-.wedge-dead-label {
-  fill: var(--text-muted);
-  font-size: 4px;
-}
-
-.control-diagram__phone-body {
-  display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  padding: 1rem;
-  border: 1px solid var(--surface-line);
-  border-radius: 0.5rem;
-  min-height: 8rem;
-  justify-content: center;
-}
-
-.control-diagram__hint {
-  font-size: 0.78rem;
-  color: var(--text-primary);
-}
 
 .controls-editor__remap .keymap__row--rebind {
   display: grid;
@@ -2742,6 +2864,64 @@ input,
 .gesture {
   color: var(--text-primary);
   font-size: 0.76rem;
+}
+
+/*
+ * Input-method swaps come *after* the base control styles. Equal-specificity
+ * rules declared earlier lose to `.control-diagram { display: flex }` and the
+ * default `.control-diagram--touch { display: none }`, which is why the
+ * keyboard diagram was still visible on a phone.
+ */
+@media (hover: none) and (pointer: coarse) {
+  .keymap:not(.keymap--touch) {
+    display: none;
+  }
+
+  .keymap--touch {
+    display: block;
+  }
+
+  .control-diagram--keyboard {
+    display: none;
+  }
+
+  .control-diagram.control-diagram--touch {
+    display: flex;
+  }
+
+  .controls-editor__remap {
+    display: none;
+  }
+
+  .controls-editor__tabs {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0;
+    margin-bottom: 0;
+    border-bottom: 1px solid var(--surface-line);
+  }
+
+  .controls-editor__tab {
+    border: none;
+    border-radius: 0;
+    margin-bottom: -1px;
+    padding: 0.7rem 0.5rem;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 0.82rem;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    text-align: center;
+  }
+
+  .controls-editor__tab--on {
+    border-bottom: 2px solid var(--accent-beam);
+    color: var(--accent-beam);
+  }
+
+  .controls-editor__diagrams {
+    padding-top: 0.85rem;
+  }
 }
 
 @media (max-width: 34rem) {

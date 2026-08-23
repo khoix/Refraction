@@ -106,6 +106,20 @@ describe('Flatland / roll scheme', () => {
     ]);
     expect(intents.some((i) => i.kind === 'rotate')).toBe(true);
   });
+
+  it('peeks on a two-finger vertical swipe and releases on lift', () => {
+    const recogniser = new GestureRecogniser();
+    const out: TouchIntent[] = [];
+    out.push(...recogniser.begin({ x: 200, y: 400, t: 0, id: 1 }, ROLL));
+    out.push(...recogniser.begin({ x: 240, y: 400, t: 10, id: 2 }, ROLL));
+    out.push(...recogniser.move({ x: 200, y: 360, t: 40, id: 1 }, ROLL));
+    out.push(...recogniser.move({ x: 240, y: 360, t: 40, id: 2 }, ROLL));
+    out.push(...recogniser.end({ x: 200, y: 360, t: 80, id: 1 }, ROLL));
+    expect(out.filter((i) => i.kind === 'peek').map((i) => (i as { held: boolean }).held)).toEqual([
+      true,
+      false,
+    ]);
+  });
 });
 
 describe('full scheme', () => {

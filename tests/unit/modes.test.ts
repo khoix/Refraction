@@ -140,6 +140,15 @@ describe('mode overrides reach the stage', () => {
     }
   });
 
+  it('starts Flatland at stage 1', () => {
+    expect(stageOf(modeById('flatland'), 0).index).toBe(1);
+  });
+
+  it('keeps Peek available for the whole Flatland run', () => {
+    expect(modeById('flatland').peekPolicy).toBe('always');
+    expect(modeById('ascent').peekPolicy).toBe('byStage');
+  });
+
   it('turns the board twice as often in Prism', () => {
     const prism = modeById('prism');
     const ascent = modeById('ascent');

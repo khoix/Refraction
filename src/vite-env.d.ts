@@ -3,7 +3,7 @@
 /*
  * Vite's ambient types, pulled in explicitly.
  *
- * `tsconfig.json` pins `types` to `vitest/globals`, which switches off automatic
+ * `tsconfig.json` sets `types` to `[]`, which switches off automatic
  * `@types` discovery -- so `import url from './track.webm?url'` would otherwise
  * be an untyped module. A triple-slash reference is honoured regardless of that
  * list, which keeps the pin (deliberate: it stops stray `@types` packages

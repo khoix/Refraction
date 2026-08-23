@@ -361,12 +361,13 @@ export class Game {
    * one. The rule keys off `depthColour` rather than naming the mode, because
    * that is the actual reason.
    *
-   * **Off from Stage 6.** By then the spectrum has to carry it alone; that is
-   * the skill the arc exists to teach, and a tool that never withdraws teaches
-   * the player to lean on it instead.
+   * **Off from Stage 6** in modes with `peekPolicy: 'byStage'`. Flatland keeps
+   * Peek for the whole run — projection reading never stops needing parallax.
    */
   get peekAllowed(): boolean {
-    return this.mode.depthColour && this.stage.index < PEEK_LOCKED_FROM_STAGE;
+    if (!this.mode.depthColour) return false;
+    if (this.mode.peekPolicy === 'always') return true;
+    return this.stage.index < PEEK_LOCKED_FROM_STAGE;
   }
 
   get held(): PieceId | null {

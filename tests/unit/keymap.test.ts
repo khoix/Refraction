@@ -12,6 +12,7 @@ import {
   TOUCH_ACTIONS,
   actionByCodeMap,
   bindingCodesUnique,
+  capsForProfile,
   keyLabel,
   profileForMode,
   rebindAction,
@@ -91,6 +92,20 @@ describe('the touch controls table', () => {
     expect(collapse).toBeDefined();
     expect(collapse!.gesture).toBe('X button');
   });
+
+  it('documents Flatland peek as a two-finger vertical swipe', () => {
+    const peek = TOUCH_ACTIONS.find(
+      (row) => row.label === 'Peek' && row.profile === 'roll'
+    );
+    expect(peek?.gesture).toBe('Two-finger swipe up / down');
+  });
+});
+
+describe('settings profile caps', () => {
+  it('keeps Peek always on for Flatland and stage-gated for 3D modes', () => {
+    expect(capsForProfile('roll').peekPolicy).toBe('always');
+    expect(capsForProfile('full').peekPolicy).toBe('byStage');
+  });
 });
 
 describe('the depth nudge', () => {
@@ -122,6 +137,13 @@ describe('Peek', () => {
     game.lines = LINES_PER_STAGE * (PEEK_LOCKED_FROM_STAGE - 1);
     expect(game.stage.index).toBe(PEEK_LOCKED_FROM_STAGE);
     expect(game.peekAllowed).toBe(false);
+  });
+
+  it('stays available in Flatland past that stage', () => {
+    const game = new Game({ seed: 'peek', mode: modeById('flatland') });
+    game.lines = LINES_PER_STAGE * (PEEK_LOCKED_FROM_STAGE - 1);
+    expect(game.stage.index).toBe(PEEK_LOCKED_FROM_STAGE);
+    expect(game.peekAllowed).toBe(true);
   });
 
   it('is off entirely where there is no colour to supplement', () => {
