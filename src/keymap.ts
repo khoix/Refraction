@@ -1,26 +1,22 @@
 /**
- * The bindings, as data.
+ * The bindings, as data — two profiles, one resolve path.
  *
- * One table, read by both the input controller and the key map in settings. The
- * settings panel could have listed the controls in its own words, and that is
- * exactly how a key map goes stale: it would have been right on the day it was
- * written and wrong by the next binding change, with nothing to catch it. Here
- * the panel cannot describe a key the engine does not answer to, because it is
- * reading the same rows.
+ * **roll** (Flatland): arrows + WASD move, Z/X roll, classic soft drop. No
+ * depth rotations or nudge in the panel.
  *
- * Writing the table out is also what found the gap it now documents. The depth
- * nudge takes `-1 | 1` and the design spec says it "shifts the piece +/-1 lane",
- * but only one direction had ever been bound: `W` moved the piece nearer and
- * nothing moved it away. The spec's suggested pair was `W` / `S`, which cannot
- * work, because `S` is half of the WASD movement cluster the README advertises
- * and is already the soft drop. So depth takes its own vertical pair, `T` and
- * `G`, sitting next to the `R` / `F` used for pitch: two spatial axes, two
- * adjacent pairs, and neither of them stealing a movement key.
+ * **full** (every other mode): arrows are left/right/push/pull; Q/E roll;
+ * A/D yaw; W/S pitch; mouse drag translates, LMB soft drop, RMB + Space hard
+ * drop. Mode-dependent meaning is intentional — remapping in Settings edits
+ * each profile separately.
+ *
+ * One table shape, read by the input controller, the settings remap UI, and
+ * the key/touch maps. The panel cannot describe a key the engine does not
+ * answer to, because it reads the same resolved rows.
  */
 
-/** Everything the player can ask for. */
 import type { DepthNudgePolicy, RotationPolicy } from '@core/modes';
 
+/** Everything the player can ask for. */
 export type Action =
   | 'moveLeft'
   | 'moveRight'
@@ -41,79 +37,104 @@ export type Action =
   | 'mute'
   | 'restart';
 
+/** Flatland vs every other shipped mode. */
+export type BindingProfile = 'roll' | 'full';
+
+/** Mouse buttons stored like keyboard codes in remaps. */
+export type MouseButtonCode = 'Mouse0' | 'Mouse2';
+
+export type BindingCode = string;
+
 export interface Binding {
   readonly action: Action;
-  /** `KeyboardEvent.code` values, in the order they should be shown. */
-  readonly codes: readonly string[];
-  /** What it does, in the player's words. */
+  /** `KeyboardEvent.code` and/or `Mouse0` / `Mouse2`, display order. */
+  readonly codes: readonly BindingCode[];
   readonly label: string;
   readonly group: BindingGroup;
-  /**
-   * Shown alongside the row when the control is not always available.
-   */
   readonly note?: string;
-  /**
-   * What the mode has to permit for this row to mean anything.
-   *
-   * A mode can withhold a verb outright -- Flatland permits roll alone and never
-   * offers the depth nudge -- and a controls panel that lists a key the engine
-   * ignores is exactly the drift a shared table exists to prevent. Absent means
-   * the control is always available.
-   */
   readonly needs?: Capability;
 }
 
-/**
- * A capability a mode may or may not offer.
- *
- * Named for the verb rather than for the field it is read from, because the two
- * tables here are read by both a keyboard panel and a touch panel and neither
- * should have to know how a mode stores its policy.
- */
 export type Capability = 'depthRotation' | 'depthNudge' | 'spectralCollapse';
 
 export type BindingGroup = 'Move' | 'Rotate' | 'Depth' | 'Game';
 
 export const BINDING_GROUPS: readonly BindingGroup[] = ['Move', 'Rotate', 'Depth', 'Game'];
 
-/*
- * `V` for Spectral Collapse.
- *
- * Chosen for where it sits rather than for what it spells: the left hand already
- * covers `Z` and `X` for roll and `C` for hold, and `V` is the next key along.
- * The alternative was a mnemonic somewhere the hand is not, which is the wrong
- * trade for an action taken under pressure. `W` was free and is deliberately
- * left alone -- M11c has it becoming half the depth cluster.
- */
-export const BINDINGS: readonly Binding[] = [
-  { action: 'moveLeft', codes: ['ArrowLeft', 'KeyA'], label: 'Left', group: 'Move' },
-  { action: 'moveRight', codes: ['ArrowRight', 'KeyD'], label: 'Right', group: 'Move' },
-  { action: 'softDrop', codes: ['ArrowDown', 'KeyS'], label: 'Soft drop', group: 'Move' },
-  { action: 'hardDrop', codes: ['Space'], label: 'Hard drop', group: 'Move' },
+export const ALL_ACTIONS: readonly Action[] = [
+  'moveLeft',
+  'moveRight',
+  'softDrop',
+  'hardDrop',
+  'rollAnti',
+  'rollClock',
+  'yawAnti',
+  'yawClock',
+  'pitchUp',
+  'pitchDown',
+  'nudgeNearer',
+  'nudgeDeeper',
+  'peek',
+  'collapse',
+  'hold',
+  'pause',
+  'mute',
+  'restart',
+] as const;
 
-  { action: 'rollClock', codes: ['KeyX', 'ArrowUp'], label: 'Roll', group: 'Rotate' },
-  { action: 'rollAnti', codes: ['KeyZ'], label: 'Roll back', group: 'Rotate' },
-  { action: 'yawClock', codes: ['KeyE'], label: 'Yaw', group: 'Rotate', needs: 'depthRotation' },
-  {
-    action: 'yawAnti',
-    codes: ['KeyQ'],
-    label: 'Yaw back',
-    group: 'Rotate',
-    needs: 'depthRotation',
-  },
-  { action: 'pitchUp', codes: ['KeyR'], label: 'Pitch', group: 'Rotate', needs: 'depthRotation' },
-  {
-    action: 'pitchDown',
-    codes: ['KeyF'],
-    label: 'Pitch back',
-    group: 'Rotate',
-    needs: 'depthRotation',
-  },
+/** Player remaps: only overridden actions need entries. */
+export type RemapTable = Partial<Record<Action, readonly BindingCode[]>>;
 
+export interface BindingRemaps {
+  readonly roll: RemapTable;
+  readonly full: RemapTable;
+}
+
+export const EMPTY_REMAPS: BindingRemaps = { roll: {}, full: {} };
+
+/** Keep only known actions from a saved remap blob. */
+export function remapFromSave(raw: Readonly<Record<string, readonly string[]>> | undefined): RemapTable {
+  if (!raw) return {};
+  const table: RemapTable = {};
+  for (const action of ALL_ACTIONS) {
+    const codes = raw[action];
+    if (codes && codes.length > 0) table[action] = [...codes];
+  }
+  return table;
+}
+
+export function remapsFromSave(bindings: {
+  readonly roll: Readonly<Record<string, readonly string[]>>;
+  readonly full: Readonly<Record<string, readonly string[]>>;
+}): BindingRemaps {
+  return {
+    roll: remapFromSave(bindings.roll),
+    full: remapFromSave(bindings.full),
+  };
+}
+
+interface BindingMeta {
+  readonly action: Action;
+  readonly label: string;
+  readonly group: BindingGroup;
+  readonly note?: string;
+  readonly needs?: Capability;
+}
+
+const BINDING_META: readonly BindingMeta[] = [
+  { action: 'moveLeft', label: 'Left', group: 'Move' },
+  { action: 'moveRight', label: 'Right', group: 'Move' },
+  { action: 'softDrop', label: 'Soft drop', group: 'Move' },
+  { action: 'hardDrop', label: 'Hard drop', group: 'Move' },
+  { action: 'rollClock', label: 'Roll', group: 'Rotate' },
+  { action: 'rollAnti', label: 'Roll back', group: 'Rotate' },
+  { action: 'yawClock', label: 'Yaw', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'yawAnti', label: 'Yaw back', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'pitchUp', label: 'Pitch', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'pitchDown', label: 'Pitch back', group: 'Rotate', needs: 'depthRotation' },
   {
     action: 'nudgeDeeper',
     needs: 'depthNudge',
-    codes: ['KeyT'],
     label: 'Push deeper',
     group: 'Depth',
     note: 'From stage 4',
@@ -121,45 +142,178 @@ export const BINDINGS: readonly Binding[] = [
   {
     action: 'nudgeNearer',
     needs: 'depthNudge',
-    codes: ['KeyG'],
     label: 'Pull nearer',
     group: 'Depth',
     note: 'From stage 4',
   },
-
   {
     action: 'peek',
-    codes: ['KeyP'],
     label: 'Peek — hold to tilt',
     group: 'Depth',
     note: 'Until stage 6',
   },
-
   {
     action: 'collapse',
-    codes: ['KeyV'],
     label: 'Spectral Collapse',
     group: 'Game',
     note: 'When the bar is full',
     needs: 'spectralCollapse',
   },
-  { action: 'hold', codes: ['KeyC', 'ShiftLeft'], label: 'Hold', group: 'Game' },
-  { action: 'pause', codes: ['Escape'], label: 'Pause', group: 'Game' },
-  { action: 'mute', codes: ['KeyM'], label: 'Mute', group: 'Game' },
-  { action: 'restart', codes: ['Enter'], label: 'Play again', group: 'Game', note: 'After a run' },
+  { action: 'hold', label: 'Hold', group: 'Game' },
+  { action: 'pause', label: 'Pause', group: 'Game' },
+  { action: 'mute', label: 'Mute', group: 'Game' },
+  { action: 'restart', label: 'Play again', group: 'Game', note: 'After a run' },
 ];
 
-/** `KeyboardEvent.code` to the action it performs. */
-export const ACTION_BY_CODE: ReadonlyMap<string, Action> = new Map(
-  BINDINGS.flatMap((binding) => binding.codes.map((code) => [code, binding.action] as const))
-);
+/** Flatland / roll-only defaults (unchanged from the classic map). */
+export const DEFAULT_CODES_ROLL: Readonly<Record<Action, readonly BindingCode[]>> = {
+  moveLeft: ['ArrowLeft', 'KeyA'],
+  moveRight: ['ArrowRight', 'KeyD'],
+  softDrop: ['ArrowDown', 'KeyS'],
+  hardDrop: ['Space'],
+  rollClock: ['KeyX', 'ArrowUp'],
+  rollAnti: ['KeyZ'],
+  yawClock: ['KeyE'],
+  yawAnti: ['KeyQ'],
+  pitchUp: ['KeyR'],
+  pitchDown: ['KeyF'],
+  nudgeDeeper: ['KeyT'],
+  nudgeNearer: ['KeyG'],
+  peek: ['KeyP'],
+  collapse: ['KeyV'],
+  hold: ['KeyC', 'ShiftLeft'],
+  pause: ['Escape'],
+  mute: ['KeyM'],
+  restart: ['Enter'],
+};
 
 /**
- * How a key is written on screen.
+ * Standard / full 3D defaults.
  *
- * Derived from the `code` rather than stored beside it, so a binding change
- * cannot leave a stale caption behind.
+ * Arrows translate (including depth). WASD-adjacent cluster orients the piece.
+ * Soft drop is mouse-only by default; Space and right-click hard-drop.
  */
+export const DEFAULT_CODES_FULL: Readonly<Record<Action, readonly BindingCode[]>> = {
+  moveLeft: ['ArrowLeft'],
+  moveRight: ['ArrowRight'],
+  softDrop: ['Mouse0'],
+  hardDrop: ['Space', 'Mouse2'],
+  rollClock: ['KeyE'],
+  rollAnti: ['KeyQ'],
+  yawClock: ['KeyD'],
+  yawAnti: ['KeyA'],
+  pitchUp: ['KeyW'],
+  pitchDown: ['KeyS'],
+  nudgeDeeper: ['ArrowUp'],
+  nudgeNearer: ['ArrowDown'],
+  peek: ['KeyP'],
+  collapse: ['KeyV'],
+  hold: ['KeyC', 'ShiftLeft'],
+  pause: ['Escape'],
+  mute: ['KeyM'],
+  restart: ['Enter'],
+};
+
+export function defaultCodes(profile: BindingProfile): Readonly<Record<Action, readonly BindingCode[]>> {
+  return profile === 'roll' ? DEFAULT_CODES_ROLL : DEFAULT_CODES_FULL;
+}
+
+export function profileForMode(mode: { readonly rotation: RotationPolicy }): BindingProfile {
+  return mode.rotation === 'roll' ? 'roll' : 'full';
+}
+
+/**
+ * Merge defaults with saved remaps. Empty remap arrays are ignored (fall back).
+ */
+export function resolveBindings(
+  profile: BindingProfile,
+  remaps: RemapTable | undefined = {}
+): readonly Binding[] {
+  const defaults = defaultCodes(profile);
+  return BINDING_META.map((meta) => {
+    const override = remaps[meta.action];
+    const codes =
+      override && override.length > 0 ? [...override] : [...(defaults[meta.action] ?? [])];
+    return {
+      action: meta.action,
+      codes,
+      label: meta.label,
+      group: meta.group,
+      ...(meta.note ? { note: meta.note } : {}),
+      ...(meta.needs ? { needs: meta.needs } : {}),
+    };
+  });
+}
+
+/** Build a code → action map; later duplicates win only if we skip conflicts — first wins. */
+export function actionByCodeMap(bindings: readonly Binding[]): ReadonlyMap<string, Action> {
+  const map = new Map<string, Action>();
+  for (const binding of bindings) {
+    for (const code of binding.codes) {
+      if (!map.has(code)) map.set(code, binding.action);
+    }
+  }
+  return map;
+}
+
+/** Whether every code is unique within the table. */
+export function bindingCodesUnique(bindings: readonly Binding[]): boolean {
+  const codes = bindings.flatMap((b) => b.codes);
+  return new Set(codes).size === codes.length;
+}
+
+/**
+ * Assign `codes` to `action`, clearing those codes from every other action.
+ * Returns null if any action would end up with no binding.
+ */
+export function rebindAction(
+  profile: BindingProfile,
+  remaps: RemapTable,
+  action: Action,
+  codes: readonly BindingCode[]
+): RemapTable | null {
+  if (codes.length === 0) return null;
+
+  const current = resolveBindings(profile, remaps);
+  const byAction = new Map<Action, BindingCode[]>(
+    current.map((binding) => [binding.action, [...binding.codes]])
+  );
+  const taken = new Set(codes);
+
+  for (const a of ALL_ACTIONS) {
+    if (a === action) continue;
+    const existing = byAction.get(a) ?? [];
+    byAction.set(
+      a,
+      existing.filter((c) => !taken.has(c))
+    );
+  }
+  byAction.set(action, [...codes]);
+
+  for (const a of ALL_ACTIONS) {
+    if ((byAction.get(a) ?? []).length === 0) return null;
+  }
+
+  const trimmed: RemapTable = {};
+  const defaults = defaultCodes(profile);
+  for (const a of ALL_ACTIONS) {
+    const nextCodes = byAction.get(a) ?? [];
+    const def = defaults[a];
+    if (nextCodes.length === def.length && nextCodes.every((c, i) => c === def[i])) continue;
+    trimmed[a] = nextCodes;
+  }
+  return trimmed;
+}
+
+/**
+ * @deprecated Prefer resolveBindings — kept as the roll-profile default table
+ * shape for older imports during migration of call sites.
+ */
+export const BINDINGS: readonly Binding[] = resolveBindings('roll');
+
+/** @deprecated Boot-time roll map; live play rebuilds from resolveBindings. */
+export const ACTION_BY_CODE: ReadonlyMap<string, Action> = actionByCodeMap(BINDINGS);
+
 export function keyLabel(code: string): string {
   const arrows: Record<string, string> = {
     ArrowLeft: '←',
@@ -168,109 +322,123 @@ export function keyLabel(code: string): string {
     ArrowDown: '↓',
   };
   if (arrows[code]) return arrows[code];
+  if (code === 'Mouse0') return 'LMB';
+  if (code === 'Mouse2') return 'RMB';
   if (code.startsWith('Key')) return code.slice(3);
   if (code.startsWith('Digit')) return code.slice(5);
   if (code === 'Escape') return 'Esc';
   if (code === 'ShiftLeft' || code === 'ShiftRight') return 'Shift';
+  if (code === 'Space') return 'Space';
   return code;
 }
 
-/**
- * The turn prompt borrows left and right while it is up.
- *
- * Listed separately because it is not a binding of its own -- it is the movement
- * keys meaning something else for as long as the board is waiting for an answer
- * -- and the key map has to say so, or the player reads "Left: move left" while
- * pressing it turns the board.
- */
 export const TURN_PROMPT_NOTE =
   'While the Shift meter is full, Left and Right choose which face comes forward.';
 
-/**
- * The same thing for touch.
- *
- * A separate table rather than a column added to `BINDINGS`, because the two
- * vocabularies do not line up: a keyboard binds a key per direction, and touch
- * gets both directions of roll out of *where* a tap lands. Forcing them into one
- * table would mean inventing rows that do not exist on one side or the other.
- *
- * Read by the settings panel on touch-primary devices, where a key map is no use
- * to anyone. Same contract as the keyboard table: the panel cannot describe a
- * gesture the game does not answer to.
- */
 export interface TouchAction {
   readonly gesture: string;
   readonly label: string;
   readonly group: BindingGroup;
   readonly note?: string;
-  /** As `Binding.needs`. */
   readonly needs?: Capability;
-  /**
-   * True for rows whose wording assumes the field/strip split.
-   *
-   * A roll-only mode has no strip, so "in the bottom strip" and "above the
-   * strip" describe a screen that is not there. The row still applies -- the
-   * verb exists -- but its note does not, and a note that points at a region the
-   * player cannot find is worse than none.
-   */
+  /** Wording assumes the old field/strip split (Flatland strip notes). */
   readonly stripNote?: boolean;
+  /** Only show on this profile; absent means both. */
+  readonly profile?: BindingProfile;
 }
 
 export const TOUCH_ACTIONS: readonly TouchAction[] = [
+  // --- Flatland / roll (no strip) ---
   {
     gesture: 'Drag sideways',
     label: 'Move',
     group: 'Move',
-    note: 'In the bottom strip',
-    stripNote: true,
+    note: 'Anywhere',
+    profile: 'roll',
   },
   {
     gesture: 'Drag down',
     label: 'Soft drop',
     group: 'Move',
     note: 'Locks the lane until you ease up',
-    stripNote: true,
+    profile: 'roll',
   },
   {
     gesture: 'Flick down',
     label: 'Hard drop',
     group: 'Move',
-    note: 'In the bottom strip',
-    stripNote: true,
+    note: 'Anywhere',
+    profile: 'roll',
   },
-
   {
     gesture: 'Tap left',
     label: 'Roll back',
     group: 'Rotate',
-    note: 'Above the strip',
-    stripNote: true,
+    note: 'Left of centre',
+    profile: 'roll',
   },
   {
     gesture: 'Tap right',
     label: 'Roll',
     group: 'Rotate',
-    note: 'Above the strip',
-    stripNote: true,
+    note: 'Right of centre',
+    profile: 'roll',
   },
+
+  // --- Full / standard ---
   {
     gesture: 'Swipe left / right',
-    label: 'Yaw',
-    group: 'Rotate',
-    note: 'Above the strip',
-    stripNote: true,
-    needs: 'depthRotation',
+    label: 'Move',
+    group: 'Move',
+    profile: 'full',
   },
   {
     gesture: 'Swipe up / down',
+    label: 'Push / pull',
+    group: 'Depth',
+    note: 'Auto-peeks while dragging',
+    needs: 'depthNudge',
+    profile: 'full',
+  },
+  {
+    gesture: 'Two-finger swipe down',
+    label: 'Soft / hard drop',
+    group: 'Move',
+    note: 'Faster flick hard-drops',
+    profile: 'full',
+  },
+  {
+    gesture: 'Tap corner',
+    label: 'Roll',
+    group: 'Rotate',
+    note: 'Left / right corners',
+    profile: 'full',
+  },
+  {
+    gesture: 'Tap side',
+    label: 'Yaw',
+    group: 'Rotate',
+    note: 'Left / right wedges',
+    needs: 'depthRotation',
+    profile: 'full',
+  },
+  {
+    gesture: 'Tap top / bottom',
     label: 'Pitch',
     group: 'Rotate',
-    note: 'Above the strip',
-    stripNote: true,
+    note: 'Upper / lower wedges',
     needs: 'depthRotation',
+    profile: 'full',
   },
 
-  { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6' },
+  { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6', profile: 'roll' },
+  {
+    gesture: 'Vertical depth swipe',
+    label: 'Peek',
+    group: 'Depth',
+    note: 'Until stage 6',
+    profile: 'full',
+  },
 
   {
     gesture: 'X button',
@@ -287,26 +455,54 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
   },
 ];
 
-/**
- * Whether a mode answers to this row at all.
- *
- * One predicate, read by both panels, so the keyboard map and the touch map
- * cannot disagree about what a mode offers.
- */
 export function appliesToMode(
-  row: { readonly needs?: Capability },
+  row: { readonly needs?: Capability; readonly profile?: BindingProfile },
   mode: {
     readonly rotation: RotationPolicy;
     readonly depthNudge: DepthNudgePolicy;
     readonly spectralCollapse: boolean;
   }
 ): boolean {
+  const profile = profileForMode(mode);
+  if (row.profile !== undefined && row.profile !== profile) return false;
   if (row.needs === 'depthRotation') return mode.rotation === 'all';
   if (row.needs === 'depthNudge') return mode.depthNudge !== 'never';
   if (row.needs === 'spectralCollapse') return mode.spectralCollapse;
   return true;
 }
 
-/** The touch counterpart of `TURN_PROMPT_NOTE`. */
+export function appliesToProfile(
+  row: { readonly needs?: Capability; readonly profile?: BindingProfile },
+  profile: BindingProfile,
+  modeCapabilities: {
+    readonly depthNudge: DepthNudgePolicy;
+    readonly spectralCollapse: boolean;
+  }
+): boolean {
+  if (row.profile !== undefined && row.profile !== profile) return false;
+  if (row.needs === 'depthRotation') return profile === 'full';
+  if (row.needs === 'depthNudge') {
+    return profile === 'full' && modeCapabilities.depthNudge !== 'never';
+  }
+  if (row.needs === 'spectralCollapse') return modeCapabilities.spectralCollapse;
+  return true;
+}
+
+/** Representative mode caps for settings tabs (Flatland vs a full mode). */
+export function capsForProfile(profile: BindingProfile): {
+  readonly rotation: RotationPolicy;
+  readonly depthNudge: DepthNudgePolicy;
+  readonly spectralCollapse: boolean;
+} {
+  if (profile === 'roll') {
+    return { rotation: 'roll', depthNudge: 'never', spectralCollapse: true };
+  }
+  return { rotation: 'all', depthNudge: 'always', spectralCollapse: true };
+}
+
 export const TOUCH_TURN_NOTE =
-  'While the Shift meter is full, dragging left or right in the strip chooses which face comes forward.';
+  'While the Shift meter is full, swiping left or right chooses which face comes forward.';
+
+export function isMouseCode(code: string): code is MouseButtonCode {
+  return code === 'Mouse0' || code === 'Mouse2';
+}

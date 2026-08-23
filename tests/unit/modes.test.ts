@@ -203,7 +203,10 @@ describe('a real game honours its mode', () => {
   });
 
   it('allows depth control from the first piece in Zen', () => {
-    expect(new Game({ seed: 'zen', mode: modeById('zen') }).depthNudgeAllowed).toBe(true);
+    const zen = new Game({ seed: 'zen', mode: modeById('zen') });
+    expect(zen.depthNudgeAllowed).toBe(true);
+    expect(zen.allowsRotation('yaw')).toBe(true);
+    expect(zen.allowsRotation('pitch')).toBe(true);
     expect(new Game({ seed: 'asc', mode: modeById('ascent') }).depthNudgeAllowed).toBe(false);
   });
 

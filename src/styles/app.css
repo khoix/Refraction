@@ -2573,6 +2573,165 @@ input,
   .keymap--touch {
     display: block;
   }
+
+  .control-diagram--keyboard {
+    display: none;
+  }
+
+  .control-diagram--touch {
+    display: block;
+  }
+}
+
+.control-diagram--touch {
+  display: none;
+}
+
+.controls-editor {
+  width: 100%;
+  margin-top: 0.6rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--surface-line);
+  text-align: left;
+}
+
+.controls-editor__tabs {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.controls-editor__tab--on {
+  border-color: var(--accent-beam);
+  color: var(--accent-beam);
+}
+
+.controls-editor__diagrams {
+  margin-bottom: 1rem;
+}
+
+.control-diagram {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1rem;
+  align-items: flex-start;
+  margin-bottom: 0.5rem;
+}
+
+.control-diagram__pad {
+  display: grid;
+  grid-template-columns: repeat(3, 2.2rem);
+  gap: 0.25rem;
+}
+
+.control-diagram__wasd {
+  display: grid;
+  grid-template-columns: repeat(3, 2.2rem);
+  gap: 0.25rem;
+}
+
+.control-diagram__key {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.8rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 0.25rem;
+  font-size: 0.7rem;
+  color: var(--text-primary);
+}
+
+.control-diagram__key--ghost {
+  visibility: hidden;
+}
+
+.control-diagram__cap {
+  margin: 0.35rem 0 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.control-diagram__wedge {
+  width: min(100%, 14rem);
+  height: auto;
+  border: 1px solid var(--surface-line);
+  border-radius: 0.4rem;
+  background: var(--surface-deep);
+}
+
+.wedge {
+  fill: rgba(255, 255, 255, 0.04);
+  stroke: var(--surface-line);
+  stroke-width: 0.4;
+}
+
+.wedge--roll {
+  fill: rgba(120, 200, 255, 0.08);
+}
+
+.wedge--yaw {
+  fill: rgba(180, 255, 160, 0.08);
+}
+
+.wedge--pitch {
+  fill: rgba(255, 200, 120, 0.08);
+}
+
+.wedge-dead {
+  fill: #0a0c14;
+  stroke: var(--accent-beam);
+  stroke-width: 0.5;
+}
+
+.wedge-label {
+  fill: var(--text-primary);
+  font-size: 5px;
+  font-family: inherit;
+}
+
+.wedge-dead-label {
+  fill: var(--text-muted);
+  font-size: 4px;
+}
+
+.control-diagram__phone-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  padding: 1rem;
+  border: 1px solid var(--surface-line);
+  border-radius: 0.5rem;
+  min-height: 8rem;
+  justify-content: center;
+}
+
+.control-diagram__hint {
+  font-size: 0.78rem;
+  color: var(--text-primary);
+}
+
+.controls-editor__remap .keymap__row--rebind {
+  display: grid;
+  grid-template-columns: 4.8rem 1fr auto;
+  gap: 0.5rem;
+  width: 100%;
+  margin: 0.2rem 0;
+  padding: 0.35rem 0.4rem;
+  text-align: left;
+  background: transparent;
+  border: 1px solid transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.controls-editor__remap .keymap__row--listening {
+  border-color: var(--accent-beam);
+}
+
+.keymap__row--rebind .keymap__keys {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem;
 }
 
 /* A gesture is a phrase, not a keycap, so it is set as text rather than boxed. */

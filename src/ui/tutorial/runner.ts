@@ -50,6 +50,11 @@ export class TutorialRunner {
   private lockedPlacement: CardPlacement | null = null;
   /** Pause once the engine leaves turning/resolving. */
   private deferredPause = false;
+  /**
+   * Place-lane reveal: game is held in `resolving` (line lit) while the camera
+   * orbits to a top/side angle, then resumed so the clear plays from that view.
+   */
+  private revealPanPending = false;
   /** Index of the last beat whose `rebuild` was applied. */
   private appliedRebuildIndex = -1;
 
@@ -115,13 +120,38 @@ export class TutorialRunner {
   onEvents(events: readonly GameEvent[]): void {
     if (!this.active || !this.waiting) return;
     if (this.waiting.kind !== 'event') return;
+
+    const beat = TUTORIAL_BEATS[this.index];
+    if (
+      beat?.revealBeforeClear &&
+      this.waiting.type === 'clear' &&
+      !this.revealPanPending &&
+      events.some((event) => event.type === 'lock')
+    ) {
+      this.beginRevealBeforeClear(beat);
+    }
+
     const want = this.waiting.type;
-    if (events.some((event) => event.type === want)) this.advance();
+    if (!events.some((event) => event.type === want)) return;
+
+    // After the lane clear, hold on a looping depth pan until Continue.
+    if (beat?.revealBeforeClear && want === 'clear') {
+      this.holdRevealUntilContinue(beat);
+      return;
+    }
+    this.advance();
   }
 
   tick(): void {
     if (!this.active) return;
     const game = this.host.getGame();
+    if (this.revealPanPending) {
+      const renderer = this.host.getRenderer();
+      if (this.host.reducedMotion() || renderer.tutorialLookOutboundComplete) {
+        this.revealPanPending = false;
+        if (game.status === 'paused') game.resume();
+      }
+    }
     if (this.deferredPause) {
       const busy = game.status === 'turning' || game.status === 'resolving';
       if (!busy) {
@@ -141,7 +171,64 @@ export class TutorialRunner {
     return this.host.isTouchPrimary() || window.innerWidth < 640;
   }
 
+  /**
+   * Freeze the lit clear and orbit so depth behind the line is readable before
+   * the lane vanishes. Reduced motion skips the orbit and clears immediately.
+   */
+  private beginRevealBeforeClear(beat: TutorialBeat): void {
+    const cue = beat.revealBeforeClear;
+    if (!cue) return;
+    const game = this.host.getGame();
+    const renderer = this.host.getRenderer();
+    if (this.host.reducedMotion()) return;
+
+    const base = FACE_YAW[game.face];
+    renderer.startTutorialLook({
+      yawTo: base + cue.yawDelta,
+      elevation: cue.elevation,
+      durationMs: cue.durationMs,
+    });
+    if (game.status !== 'paused') game.pause();
+    this.revealPanPending = true;
+  }
+
+  /**
+   * Keep the top/side pan looping after the clear until the player Continues
+   * into Shift — no snap back to face-on on its own.
+   */
+  private holdRevealUntilContinue(beat: TutorialBeat): void {
+    const cue = beat.revealBeforeClear;
+    const game = this.host.getGame();
+    const renderer = this.host.getRenderer();
+
+    this.waiting = { kind: 'continue' };
+    this.allow = null;
+    this.spotlight.setContinueVisible(true);
+    this.spotlight.setHint(null);
+
+    const busy = game.status === 'turning' || game.status === 'resolving';
+    if (busy) this.deferredPause = true;
+    else if (game.status !== 'paused') game.pause();
+
+    if (!cue || this.host.reducedMotion()) return;
+
+    const base = FACE_YAW[game.face];
+    const durationMs = Math.max(cue.durationMs, 2000);
+    renderer.startTutorialLook({
+      yawTo: base + cue.yawDelta,
+      elevation: cue.elevation,
+      durationMs,
+      returnHome: {
+        yaw: base,
+        elevation: 0,
+        durationMs,
+      },
+      loop: true,
+    });
+  }
+
   private advance(): void {
+    this.revealPanPending = false;
     this.index += 1;
     if (this.index >= TUTORIAL_BEATS.length) {
       this.teardown();
@@ -433,6 +520,7 @@ export class TutorialRunner {
     this.index = -1;
     this.lockedPlacement = null;
     this.appliedRebuildIndex = -1;
+    this.revealPanPending = false;
     this.host.getGame().holdTurnPrompt(false);
     this.host.getRenderer().clearTutorialLook();
     this.host.getRenderer().setPeek(false);

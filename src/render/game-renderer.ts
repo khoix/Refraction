@@ -38,7 +38,6 @@ import {
 import { PiecePreview } from './preview';
 import type { PreviewRect } from './preview';
 import { EdgeLayer, VoxelLayer } from './voxels';
-import { touchPrimary } from '../touch/primary';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
 export const TURN_DURATION_MS = 750;
@@ -514,6 +513,8 @@ export class GameRenderer {
   /** 0 while framed for play, 1 while pushed back as the front door's scenery. */
   private backdrop = 0;
   private backdropHeld = false;
+  /** Brighter well lattice on touch-primary during the tutorial only. */
+  private tutorialBrightGrid = false;
   private bottomReservePx = 0;
   private readonly turnDurationMs: number;
 
@@ -703,6 +704,15 @@ export class GameRenderer {
     return this.peek > 0;
   }
 
+  /** True when an outbound tutorial look has finished (or none is running). */
+  get tutorialLookOutboundComplete(): boolean {
+    if (!this.tutorialLook) return true;
+    return (
+      this.tutorialLook.phase === 'out' &&
+      this.tutorialLook.elapsed >= this.tutorialLook.durationMs
+    );
+  }
+
   /**
    * Orbit for a tutorial beat. Orthographic only — lerps yaw and elevation
    * without starting an engine turn. Cleared when the beat ends or a real
@@ -814,6 +824,11 @@ export class GameRenderer {
    */
   setBackdrop(on: boolean): void {
     this.backdropHeld = on;
+  }
+
+  /** Lift the well grid for the tutorial on phones; gameplay keeps the default. */
+  setTutorialBrightGrid(on: boolean): void {
+    this.tutorialBrightGrid = on;
   }
 
   /**
@@ -1203,7 +1218,7 @@ export class GameRenderer {
     setLightingFlatness(this.lights, flatness);
     // Same ease as bloom: well and column leave together when the front door opens.
     const backdropEase = easeInOutCubic(this.backdrop);
-    setWellFlatness(this.well, flatness, backdropEase, touchPrimary());
+    setWellFlatness(this.well, flatness, backdropEase, this.tutorialBrightGrid);
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.

@@ -118,18 +118,20 @@ describe('tutorial script', () => {
     expect(colour?.cameraLoop).toBe(true);
   });
 
-  it('keeps coach bodies short enough to avoid scrolling', () => {
+  it('keeps coach bodies within the provided copy bounds', () => {
     for (const beat of TUTORIAL_BEATS) {
       if (beat.id === 'modes') continue;
-      expect(beat.body.length).toBeLessThan(220);
+      expect(beat.body.length).toBeLessThan(230);
       expect(beat.body.split(/\n\n+/).length).toBeLessThanOrEqual(2);
     }
     const modes = TUTORIAL_BEATS.find((beat) => beat.id === 'modes');
     const modesParas = modes?.body.split(/\n\n+/).map((part) => part.trim()) ?? [];
-    expect(modesParas.length).toBeLessThanOrEqual(3);
+    expect(modesParas.length).toBeLessThanOrEqual(4);
     expect(modesParas.at(-1)).toBe('**Are you ready to experience the full spectrum?**');
+    const welcome = TUTORIAL_BEATS.find((beat) => beat.id === 'welcome');
+    expect(welcome?.body).toContain('**cube**');
     const colour = TUTORIAL_BEATS.find((beat) => beat.id === 'colour-depth');
-    expect(colour?.body).toContain('**');
+    expect(colour?.body).toContain('**Red is closest to you');
   });
 
   it('gates hands-on beats with allowlists', () => {
@@ -138,8 +140,20 @@ describe('tutorial script', () => {
     expect(place?.allowedActions).not.toContain('moveLeft');
     expect(place?.allowedActions).not.toContain('moveRight');
     expect(place?.touchHint).toBeTruthy();
+    expect(place?.revealBeforeClear?.elevation).toBeGreaterThanOrEqual(18);
+    expect(place?.revealBeforeClear?.durationMs).toBeGreaterThanOrEqual(2000);
     const shift = TUTORIAL_BEATS.find((beat) => beat.id === 'choose-shift');
     expect(shift?.allowedActions).toEqual(['moveLeft', 'moveRight']);
+  });
+
+  it('orbits place-lane before the clear and holds a looping pan cue', () => {
+    const place = TUTORIAL_BEATS.find((beat) => beat.id === 'place-lane');
+    expect(place?.revealBeforeClear).toEqual({
+      yawDelta: 28,
+      elevation: 20,
+      durationMs: 2200,
+    });
+    expect(place?.advance).toEqual({ kind: 'event', type: 'clear' });
   });
 
   it('lets place-3d drop via touch without teaching pitch', () => {

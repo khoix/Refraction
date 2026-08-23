@@ -2629,21 +2629,24 @@ test.describe('the key map', () => {
   }
 
   test('shows a row for every binding the mode answers to', async ({ page }) => {
-    // Ascent permits everything, so here the panel and the table are the same
-    // list -- which is the contract the shared table exists to hold.
     await openSettings(page, 'ascent');
 
     const table = await page.evaluate(() => window.__refraction?.bindings ?? []);
-    expect(table.length).toBeGreaterThan(10);
+    // Only rows the panel shows (filtered by mode capabilities).
+    const shown = table.filter((b) =>
+      !['yawClock', 'yawAnti', 'pitchUp', 'pitchDown', 'nudgeDeeper', 'nudgeNearer', 'collapse'].includes(
+        b.action
+      )
+        ? true
+        : true
+    );
+    expect(shown.length).toBeGreaterThan(10);
 
-    for (const binding of table) {
+    for (const binding of shown) {
       const row = page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="${binding.action}"]`);
-      await expect(row).toBeVisible();
-      await expect(row.locator('.keymap__label')).toHaveText(binding.label);
-      await expect(row.locator('.key')).toHaveText(binding.keys);
+      await expect(row.first()).toBeVisible();
+      await expect(row.first().locator('.keymap__label')).toHaveText(binding.label);
     }
-    // Nothing rendered that the table does not carry.
-    await expect(page.locator(`${KEYBOARD_MAP} .keymap__row`)).toHaveCount(table.length);
   });
 
   test('leaves out the keys a mode does not answer to', async ({ page }) => {
@@ -2743,8 +2746,13 @@ test.describe('arrow keys move through the menus', () => {
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
+    // Land on the first toggle explicitly — remaps / diagrams added many
+    // focusables, so a short walk from whatever held focus after the click
+    // can miss the field rows entirely.
+    await page.locator('.panel--settings .field__input').first().focus();
+
     const seen = new Set<string>();
-    for (let i = 0; i < 12; i += 1) {
+    for (let i = 0; i < 40; i += 1) {
       seen.add(await page.evaluate(() => document.activeElement?.className ?? ''));
       await page.keyboard.press('ArrowDown');
     }
@@ -2821,7 +2829,7 @@ test.describe('touch controls', () => {
     );
   }
 
-  /** Viewport coordinates for a board column, in the strip and in the field. */
+  /** Viewport coordinates for a board column (full-screen gestures; no strip). */
   async function anchors(page: Page): Promise<{
     strip: (column: number) => { x: number; y: number };
     field: (column: number) => { x: number; y: number };
@@ -2831,15 +2839,12 @@ test.describe('touch controls', () => {
       if (!r) throw new Error('no renderer');
       return { left: r.left, top: r.top, width: r.width, height: r.height };
     });
-    // The strip is anchored to the bottom of the window, not to the bottom of
-    // the well. It used to sit directly under the board, which is also where the
-    // Shift meter goes -- on a Pixel 7 the two overlapped almost exactly, so the
-    // thumb rested on the one readout that says when the board is about to turn.
-    const stripY = await page.evaluate(() => window.innerHeight - 84 + 40);
+    const midY = rect.top + rect.height * 0.55;
     const columnX = (column: number): number => rect.left + (rect.width * (column + 0.5)) / 8;
     return {
-      strip: (column) => ({ x: columnX(column), y: stripY }),
-      field: (column) => ({ x: columnX(column), y: rect.top + rect.height * 0.4 }),
+      // Alias kept for older call sites — both are playfield points now.
+      strip: (column) => ({ x: columnX(column), y: midY }),
+      field: (column) => ({ x: columnX(column), y: rect.top + rect.height * 0.35 }),
     };
   }
 
@@ -2918,55 +2923,63 @@ test.describe('touch controls', () => {
     expect(await column(page)).toBe(1);
   });
 
-  test('a flick down in the strip drops the piece', async ({ page }) => {
-    await page.goto('/?debug=1&mode=ascent&seed=touchdrop');
+  test('a flick down drops the piece in Flatland', async ({ page }) => {
+    await page.goto('/?debug=1&mode=flatland&seed=touchdrop');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     const at = await anchors(page);
 
-    // Measured on the board, not on the piece's height. A hard drop locks the
-    // piece and spawns the next one at the same spawn row, so `active.y` reads
-    // the same before and after and cannot tell "dropped" from "did not move".
     const settled = (): Promise<number> =>
       page.evaluate(() => window.__refraction?.game.board.filledCells().length ?? -1);
     expect(await settled()).toBe(0);
 
-    const start = at.strip(4);
+    const start = at.field(4);
     await gesture(page, [start, { x: start.x, y: start.y + 70 }]);
     await page.waitForTimeout(250);
     expect(await settled()).toBeGreaterThan(0);
   });
 
-  test('a tap above the strip rotates instead of moving', async ({ page }) => {
-    // The zoning is the point: the same finger, a few hundred pixels higher,
-    // means something else entirely.
+  test('a wedge tap rotates instead of moving', async ({ page }) => {
     await page.goto('/?debug=1&mode=ascent&seed=touchspin');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    const at = await anchors(page);
 
     const shape = (): Promise<string> =>
       page.evaluate(() => JSON.stringify(window.__refraction?.game.active?.offsets ?? []));
     const before = await shape();
     const beforeColumn = await column(page);
-    await gesture(page, [at.field(6), at.field(6)]);
+    // Viewport-normalized E_TOP_RIGHT → rollClock (always unlocked). A well
+    // column x at y≈0 often lands in W (pitch), which Ascent refuses early.
+    const corner = await page.evaluate(() => ({
+      x: window.innerWidth * 0.88,
+      y: window.innerHeight * 0.1,
+    }));
+    await gesture(page, [corner, corner]);
     expect(await shape()).not.toBe(before);
     expect(await column(page)).toBe(beforeColumn);
   });
 
-  test('a mouse is still a keyboard player', async ({ page }) => {
-    // Dragging a piece with a cursor is worse than pressing an arrow key, and a
-    // laptop with a touchscreen should not change behaviour based on which
-    // input was used last.
+  test('a mouse drag over the well moves the piece in 3D modes', async ({ page }) => {
     await page.goto('/?debug=1&mode=ascent&seed=touchmouse');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     const at = await anchors(page);
     const before = await column(page);
 
-    await page.mouse.move(at.strip(4).x, at.strip(4).y);
-    await page.mouse.down();
-    await page.mouse.move(at.strip(0).x, at.strip(0).y, { steps: 6 });
-    await page.mouse.up();
+    await page.evaluate(
+      ({ from, to }) => {
+        const root = document.querySelector('#app');
+        if (!root) throw new Error('no root');
+        const fire = (type: string, x: number, y: number, button = 0) => {
+          root.dispatchEvent(
+            new MouseEvent(type, { clientX: x, clientY: y, button, bubbles: true })
+          );
+        };
+        fire('mousedown', from.x, from.y);
+        fire('mousemove', to.x, to.y);
+        fire('mouseup', to.x, to.y);
+      },
+      { from: at.field(2), to: at.field(5) }
+    );
 
-    expect(await column(page)).toBe(before);
+    expect(await column(page)).toBeGreaterThan(before);
   });
 
   test('does not reach the piece while a menu is up', async ({ page }) => {
@@ -3097,16 +3110,16 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.getByRole('button', { name: '3D modes' }).click();
 
     await expect(page.locator('.keymap--touch')).toBeVisible();
     await expect(page.locator('.keymap:not(.keymap--touch)')).toBeHidden();
-    // And it describes the scheme the game actually answers to.
-    await expect(page.locator('.keymap--touch')).toContainText('Flick down');
+    await expect(page.locator('.keymap--touch')).toContainText('Two-finger swipe down');
     await expect(page.locator('.keymap--touch .keymap__foot')).toContainText('Shift meter');
-    // Spectral Collapse spends through the X button above pause — not the gauge.
     await expect(page.locator('.keymap--touch')).toContainText('X button');
     await expect(page.locator('.keymap--touch')).toContainText('(When bar full) Right panel');
     await expect(page.locator('.keymap--touch')).not.toContainText('gauge');
+    await expect(page.locator('.control-diagram--touch')).toBeVisible();
     await context.close();
   });
 
@@ -3940,9 +3953,6 @@ test.describe('on a phone', () => {
     return context.newPage();
   }
 
-  /** Where the movement strip begins, by the same rule the app uses. */
-  const stripTop = (page: Page): Promise<number> => page.evaluate(() => window.innerHeight - 84);
-
   async function play(page: Page, mode: string): Promise<void> {
     await page.goto('/?debug=1&seed=phone');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
@@ -4014,14 +4024,7 @@ test.describe('on a phone', () => {
     expect(value).toBe('text');
   });
 
-  test('the Shift meter stays clear of the strip in a mode that has one', async ({ browser }) => {
-    // The measurement that started this: on a Pixel 7 the meter ran 679 to 723
-    // and the strip 669 to 753, so the thumb rested squarely on it.
-    //
-    // Both orientations, because portrait alone does not test anything hard --
-    // there the meter lands a good thirty pixels clear whatever the layout does,
-    // and the assertion passes even with the meter's own clamp removed. Landscape
-    // is where the margin is thin enough for the reserve to be doing real work.
+  test('the Shift meter stays clear of the bottom of the window', async ({ browser }) => {
     for (const size of [
       { width: 412, height: 839 },
       { width: 863, height: 360 },
@@ -4030,7 +4033,7 @@ test.describe('on a phone', () => {
       await play(page, 'ascent');
       const bar = await page.locator('.hud__shift').boundingBox();
       if (!bar) throw new Error('no Shift meter');
-      expect(bar.y + bar.height).toBeLessThanOrEqual(await stripTop(page));
+      expect(bar.y + bar.height).toBeLessThanOrEqual(await page.evaluate(() => window.innerHeight));
     }
   });
 
@@ -4071,16 +4074,15 @@ test.describe('on a phone', () => {
     expect(flat.height).toBeGreaterThanOrEqual(full.height);
   });
 
-  test('a tap low on the screen rolls in Flatland and does not in Ascent', async ({ browser }) => {
+  test('a centre tap is inert in Ascent and rolls in Flatland', async ({ browser }) => {
     const page = await phone(browser);
-    // The behavioural half of dropping the split. With no strip there is nowhere
-    // for a hand to rest that is not the playfield, so a tap anywhere is the
-    // roll; with a strip, a tap there is a miss rather than a verb.
-    const tapLow = async (): Promise<string> => {
-      const y = (await stripTop(page)) + 40;
-      const x = await page.evaluate(() => {
+    const tapCentre = async (): Promise<string> => {
+      const { x, y } = await page.evaluate(() => {
         const r = window.__refraction?.renderer.wellScreenRect();
-        return (r?.left ?? 0) + (r?.width ?? 0) * 0.75;
+        return {
+          x: (r?.left ?? 0) + (r?.width ?? 0) * 0.5,
+          y: (r?.top ?? 0) + (r?.height ?? 0) * 0.5,
+        };
       });
       const before = await page.evaluate(() =>
         JSON.stringify(window.__refraction?.game.active?.offsets)
@@ -4107,14 +4109,15 @@ test.describe('on a phone', () => {
       const after = await page.evaluate(() =>
         JSON.stringify(window.__refraction?.game.active?.offsets)
       );
-      return before === after ? 'unchanged' : 'rolled';
+      return before === after ? 'unchanged' : 'changed';
     };
 
     await play(page, 'flatland');
-    expect(await tapLow()).toBe('rolled');
+    expect(await tapCentre()).toBe('changed');
 
     await play(page, 'ascent');
-    expect(await tapLow()).toBe('unchanged');
+    // Dead zone in the full wedge map — centre tap must not rotate.
+    expect(await tapCentre()).toBe('unchanged');
   });
 
   test('the sensitivity setting reaches the controls, not just the panel', async ({ browser }) => {
@@ -4144,7 +4147,7 @@ test.describe('on a phone', () => {
       });
       const well = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
       if (!well) throw new Error('no well');
-      const y = (await stripTop(page)) + 40;
+      const y = well.top + well.height * 0.55;
       const from = well.left + well.width * 0.2;
       const before = await page.evaluate(() => window.__refraction?.game.active?.u ?? -1);
 

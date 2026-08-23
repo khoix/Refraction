@@ -148,8 +148,8 @@ export interface SceneBundle {
 }
 
 const WELL_GRID_DESKTOP = { color: 0x1e263c, opacity: 0.35, faceFloor: 0.28 } as const;
-/** Phones crush thin additive lines; a brighter lattice still reads as structure. */
-const WELL_GRID_MOBILE = { color: 0x6a7eb0, opacity: 0.78, faceFloor: 0.62 } as const;
+/** Phones crush thin additive lines; tutorial-only so gameplay stays subtle. */
+const WELL_GRID_TUTORIAL = { color: 0x6a7eb0, opacity: 0.78, faceFloor: 0.62 } as const;
 
 /** Light positions at yaw 0, rotated with the camera by `orientLights`. */
 const KEY_LIGHT_BASE: readonly [number, number, number] = [7, 14, 16];
@@ -475,7 +475,7 @@ export function setWellFlatness(
 
   // Grid rides with the volume: faint face-on so the far wall still reads as a
   // cell lattice, full strength once the box opens mid-turn / mid-orbit.
-  const gridLook = brightGrid ? WELL_GRID_MOBILE : WELL_GRID_DESKTOP;
+  const gridLook = brightGrid ? WELL_GRID_TUTORIAL : WELL_GRID_DESKTOP;
   const grid = well.grid.material as THREE.LineBasicMaterial;
   grid.color.setHex(gridLook.color);
   const gridDim = gridLook.faceFloor + (1 - gridLook.faceFloor) * dimensional;

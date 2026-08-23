@@ -20,8 +20,16 @@
 import { DEFAULT_MODE_ID, MODES } from './modes';
 import type { ModeId } from './modes';
 
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 export const SAVE_KEY = 'refraction.save.v1';
+
+/** Per-action code lists; validated against the keymap when resolved. */
+export type SavedRemapTable = Readonly<Record<string, readonly string[]>>;
+
+export interface SavedBindings {
+  readonly roll: SavedRemapTable;
+  readonly full: SavedRemapTable;
+}
 
 export interface Settings {
   readonly muted: boolean;
@@ -33,15 +41,14 @@ export interface Settings {
   /** Turn the next-piece preview. Off is the harder option. */
   readonly spinPreview: boolean;
   /**
-   * How far a touch drag has to travel to move the piece one column, as a
+   * How far a drag has to travel to move the piece one column, as a
    * multiplier on the well's own column width. Higher is more sensitive.
    *
-   * 1 means the piece keeps pace with the thumb: a drag one cube wide moves the
-   * piece one cube. It is a setting because the right distance depends on the
-   * hand and the phone -- a comfortable thumb arc is four columns at 1:1 on a
-   * small screen and the whole board at twice that.
+   * Shared by touch and mouse relative translate.
    */
   readonly touchSensitivity: number;
+  /** Per-profile key/mouse remaps. Missing actions use profile defaults. */
+  readonly bindings: SavedBindings;
 }
 
 /** The range the sensitivity slider offers, and its default. */
@@ -102,6 +109,7 @@ export const DEFAULT_SETTINGS: Settings = {
   bloom: true,
   spinPreview: true,
   touchSensitivity: 1,
+  bindings: { roll: {}, full: {} },
 };
 
 const EMPTY_RECORD: ModeRecord = { bestScore: 0, bestLines: 0, bestStage: 0, runs: 0 };
@@ -140,6 +148,25 @@ function bool(value: unknown, fallback: boolean): boolean {
   return typeof value === 'boolean' ? value : fallback;
 }
 
+function readRemapTable(raw: unknown): SavedRemapTable {
+  if (!isObject(raw)) return {};
+  const table: Record<string, readonly string[]> = {};
+  for (const [key, entry] of Object.entries(raw)) {
+    if (!Array.isArray(entry)) continue;
+    const codes = entry.filter((c): c is string => typeof c === 'string' && c.length > 0);
+    if (codes.length > 0) table[key] = codes;
+  }
+  return table;
+}
+
+function readBindings(raw: unknown): SavedBindings {
+  if (!isObject(raw)) return DEFAULT_SETTINGS.bindings;
+  return {
+    roll: readRemapTable(raw['roll']),
+    full: readRemapTable(raw['full']),
+  };
+}
+
 function readSettings(raw: unknown): Settings {
   if (!isObject(raw)) return DEFAULT_SETTINGS;
   return {
@@ -155,6 +182,7 @@ function readSettings(raw: unknown): Settings {
       TOUCH_SENSITIVITY_MIN,
       TOUCH_SENSITIVITY_MAX
     ),
+    bindings: readBindings(raw['bindings']),
   };
 }
 
