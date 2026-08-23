@@ -55,7 +55,7 @@ describe('page icons', () => {
   });
 
   it('is declared on both shells, with a 180px apple-touch PNG', () => {
-    for (const page of ['index.html', 'effects.html']) {
+    for (const page of ['index.html', 'preview.html']) {
       const html = read(page);
       expect(html).toContain('rel="icon" type="image/svg+xml" href="/favicon.svg"');
       expect(html).toContain('rel="apple-touch-icon" href="/apple-touch-icon.png"');

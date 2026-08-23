@@ -1,0 +1,373 @@
+/*
+ * Preview lab — gated playground for visual proof-of-concepts.
+ * Not linked from the game; reached only via /preview.html.
+ */
+
+@import './app.css';
+
+html,
+body,
+#lab {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+  background: var(--surface-void);
+  color: var(--accent-ui);
+  font-family: Oxanium, system-ui, sans-serif;
+}
+
+.lab-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  background: rgb(5 6 10 / 0.92);
+  backdrop-filter: blur(8px);
+}
+
+.lab-gate__card {
+  width: min(22rem, calc(100vw - 2rem));
+  padding: 1.75rem 1.5rem 1.5rem;
+  border: 1px solid var(--surface-line);
+  background: var(--surface-raised);
+  display: flex;
+  flex-direction: column;
+  gap: 0.85rem;
+}
+
+.lab-gate__card h1 {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 500;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.lab-gate__card p {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  opacity: 0.7;
+  line-height: 1.45;
+}
+
+.lab-gate__card input[type='password'] {
+  appearance: none;
+  border: 1px solid var(--surface-line);
+  background: var(--surface-deep);
+  color: var(--accent-ui);
+  padding: 0.7rem 0.85rem;
+  font: inherit;
+  letter-spacing: 0.2em;
+}
+
+.lab-gate__card input[type='password']:focus {
+  outline: none;
+  border-color: rgb(var(--accent-ui-glow) / 0.55);
+  box-shadow: 0 0 0 1px rgb(var(--accent-ui-glow) / 0.2);
+}
+
+.lab-gate__card button,
+.lab-panel button {
+  appearance: none;
+  border: 1px solid var(--surface-line);
+  background: rgb(10 12 20 / 0.55);
+  color: var(--accent-ui);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 500;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  padding: 0.65rem 0.8rem;
+  cursor: pointer;
+  transition:
+    border-color 120ms var(--ease-snap),
+    background 120ms var(--ease-snap),
+    box-shadow 120ms var(--ease-snap);
+}
+
+.lab-gate__card button:hover,
+.lab-panel button:hover,
+.lab-tabs__btn:hover,
+.lab-card:hover {
+  border-color: rgb(var(--accent-ui-glow) / 0.5);
+  background: rgb(var(--accent-ui-glow) / 0.06);
+  box-shadow: 0 0 14px rgb(var(--accent-ui-glow) / 0.12);
+}
+
+.lab-gate__error {
+  min-height: 1.1em;
+  margin: 0;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  color: #ff8e8e;
+}
+
+.lab-stage {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.lab-stage canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.lab-panel {
+  position: absolute;
+  z-index: 5;
+  top: max(0.85rem, env(safe-area-inset-top));
+  left: max(0.85rem, env(safe-area-inset-left));
+  width: min(19rem, calc(100vw - 1.7rem));
+  max-height: calc(100vh - 1.7rem);
+  overflow: auto;
+  padding: 1rem 0.9rem 0.95rem;
+  border: 1px solid var(--surface-line);
+  background: rgb(10 12 20 / 0.82);
+  backdrop-filter: blur(10px);
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.lab-panel__title {
+  margin: 0 0 0.15rem;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+}
+
+.lab-panel__body.is-hidden {
+  display: none;
+}
+
+.lab-tabs {
+  display: flex;
+  gap: 0.3rem;
+  flex-wrap: wrap;
+}
+
+.lab-tabs__btn {
+  flex: 1 1 auto;
+  min-width: 4.5rem;
+  font-size: 0.62rem !important;
+  letter-spacing: 0.18em !important;
+  padding: 0.5rem 0.45rem !important;
+}
+
+.lab-tabs__btn.is-active {
+  border-color: rgb(var(--accent-ui-glow) / 0.65);
+  background: rgb(var(--accent-ui-glow) / 0.1);
+  box-shadow: 0 0 18px rgb(var(--accent-ui-glow) / 0.15);
+}
+
+.lab-panel__note {
+  margin: 0 0 0.35rem;
+  font-size: 0.68rem;
+  font-weight: 300;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+  opacity: 0.65;
+}
+
+.lab-panel__group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.lab-panel__label {
+  margin: 0.35rem 0 0;
+  font-size: 0.62rem;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  opacity: 0.5;
+}
+
+.lab-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin: 0.15rem 0;
+}
+
+.lab-slider label {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  opacity: 0.72;
+}
+
+.lab-slider input[type='range'] {
+  width: 100%;
+  accent-color: rgb(var(--accent-ui-glow) / 0.85);
+}
+
+.lab-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-top: 0.25rem;
+}
+
+.lab-card {
+  appearance: none;
+  border: 1px solid var(--surface-line);
+  background: rgb(10 12 20 / 0.45);
+  color: var(--accent-ui);
+  font: inherit;
+  text-align: left;
+  padding: 0.55rem 0.65rem;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  transition:
+    border-color 120ms var(--ease-snap),
+    background 120ms var(--ease-snap),
+    box-shadow 120ms var(--ease-snap);
+}
+
+.lab-card.is-active {
+  border-color: rgb(var(--accent-ui-glow) / 0.7);
+  background: rgb(var(--accent-ui-glow) / 0.08);
+  box-shadow: 0 0 20px rgb(var(--accent-ui-glow) / 0.14);
+}
+
+.lab-card__name {
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.lab-card__blurb {
+  font-size: 0.62rem;
+  font-weight: 300;
+  letter-spacing: 0.03em;
+  line-height: 1.35;
+  opacity: 0.68;
+  text-transform: none;
+}
+
+.lab-labels {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  pointer-events: none;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  padding: 12vh 8vw 8vh;
+}
+
+.lab-label {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: 0.5rem;
+  font-size: clamp(0.62rem, 1.4vw, 0.78rem);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-shadow: 0 0 12px rgb(5 6 10 / 0.9);
+  opacity: 0.55;
+}
+
+.lab-flash {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: radial-gradient(circle at 50% 42%, rgb(255 255 255 / 0.95), rgb(255 255 255 / 0.35) 42%, transparent 72%);
+  opacity: 0;
+  transition: opacity 60ms linear;
+  mix-blend-mode: screen;
+}
+
+.lab-banner {
+  position: absolute;
+  isolation: isolate;
+  z-index: 4;
+  left: 0;
+  right: 0;
+  top: 14vh;
+  width: max-content;
+  max-width: min(92vw, 100%);
+  margin-inline: auto;
+  padding: 0.35em 0.4em 0.45em;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.4em;
+  font-size: clamp(1.2rem, 4vw, 2.4rem);
+  font-weight: 200;
+  letter-spacing: 0.2em;
+  text-align: center;
+  color: var(--accent-ui);
+  text-shadow: 0 0 26px rgb(var(--accent-ui-glow) / 0.4);
+  opacity: 0;
+  --wash-pad: -0.45em -1.35em;
+  --wash-void: rgb(5 6 10 / 0.76);
+}
+
+.lab-banner::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
+}
+
+.lab-banner.is-on {
+  animation: lab-banner-pulse 1800ms var(--ease-snap) forwards;
+}
+
+.lab-banner__hint {
+  font-size: 0.38em;
+  font-weight: 500;
+  letter-spacing: 0.32em;
+  opacity: 0.72;
+}
+
+@keyframes lab-banner-pulse {
+  0% {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  14% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  78% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+@media (max-width: 720px) {
+  .lab-labels {
+    display: none;
+  }
+
+  .lab-panel {
+    width: min(17.5rem, calc(100vw - 1.2rem));
+    max-height: 42vh;
+  }
+}

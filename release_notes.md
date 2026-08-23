@@ -7,6 +7,29 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Settings layout + panel navigation
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Desktop settings split into preferences and a wider controls column. Flatland /
+3D are underline tabs; bindings live in a 3×2 table (piece diagram | move /
+rotate | depth / game) with rebind rows in each cell and Reset profile in the
+panel head. The profile stack keeps its height when switching tabs so the panel
+does not jump.
+
+Mobile moves the controls editor behind a **Controls** preferences row into a
+dedicated screen. Masthead ← back replaces the bottom BACK row on Settings,
+Controls, Choose Mode, and Challenge. `settingsReturn` is preserved when backing
+out of Controls into Settings so a second back reaches the screen that opened
+Settings, not Controls again.
+
+### Tested
+
+Typecheck, lint. E2e: desktop controls table, touch vs keyboard panels, mobile
+Controls nav round-trip (Settings → Controls → Settings → title).
+
+---
+
 ## Touch control diagrams + Flatland peek
 
 **Branch:** `main`

@@ -1175,7 +1175,7 @@ test.describe('persistence', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await endRun(page);
     await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
-    await page.getByRole('button', { name: 'BACK' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
     await page.getByRole('button', { name: 'SCORES' }).click();
     await expect(page.locator('.scores__row').first()).toContainText('Flatland');
   });
@@ -2756,9 +2756,10 @@ test.describe('arrow keys move through the menus', () => {
       seen.add(await page.evaluate(() => document.activeElement?.className ?? ''));
       await page.keyboard.press('ArrowDown');
     }
-    // It travels the checkboxes and the slider, and gets to BACK.
+    // It travels the preference rows and the masthead back control.
     expect([...seen].some((name) => name.includes('field__input'))).toBe(true);
     expect([...seen].some((name) => name.includes('field__range'))).toBe(true);
+    expect([...seen].some((name) => name.includes('panel__back'))).toBe(true);
   });
 
   test('leaves the arrows alone where a control needs them', async ({ page }) => {
@@ -3110,6 +3111,7 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.getByRole('button', { name: 'Controls' }).click();
     await page.getByRole('tab', { name: '3D modes' }).click();
 
     await expect(page.locator('.keymap--touch')).toBeVisible();
@@ -3120,10 +3122,40 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('.keymap--touch')).toContainText('(When bar full) Right panel');
     await expect(page.locator('.keymap--touch')).not.toContainText('gauge');
     await expect(page.locator('.control-diagram--touch')).toBeVisible();
-    await expect(page.locator('.controls-editor__remap')).toBeHidden();
+    await expect(page.locator('.controls-editor__table')).toBeHidden();
     await expect(page.locator('.control-diagram__title')).toContainText('Tap Zones');
     await expect(page.locator('.phone-bezel')).toBeVisible();
     await expect(page.locator('.control-diagram--touch .wedge--roll').first()).toBeVisible();
+    await context.close();
+  });
+
+  test('mobile Controls returns to Settings then the title', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+      ],
+    });
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
+    await expect(page.locator('.settings-nav-controls')).toBeVisible();
+    await expect(page.locator('.settings-controls')).toBeHidden();
+    await page.getByRole('button', { name: 'Controls' }).click();
+    await expect(page.locator('.panel[data-screen="settings-controls"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
     await context.close();
   });
 
@@ -3145,6 +3177,7 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.getByRole('button', { name: 'Controls' }).click();
     await page.getByRole('tab', { name: 'Flatland' }).click();
 
     await expect(page.locator('.control-diagram__wedge--flatland')).toBeVisible();
@@ -3161,7 +3194,9 @@ test.describe('the controls panel follows the input method', () => {
 
     await expect(page.locator('.keymap:not(.keymap--touch)')).toBeVisible();
     await expect(page.locator('.keymap--touch')).toBeHidden();
-    await expect(page.locator('.controls-editor__remap')).toBeVisible();
+    await expect(page.locator('.control-diagram--touch')).toBeHidden();
+    await expect(page.locator('.control-diagram--keyboard')).toBeVisible();
+    await expect(page.locator('.controls-editor__table')).toBeVisible();
   });
 });
 

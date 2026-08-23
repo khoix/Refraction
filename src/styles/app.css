@@ -1250,6 +1250,56 @@ input,
   color: var(--text-secondary);
 }
 
+.panel__masthead {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  min-height: 2.35rem;
+}
+
+.panel__masthead-inner {
+  display: flex;
+  align-items: center;
+  gap: 0.55rem;
+  max-width: 100%;
+}
+
+.panel__masthead .panel__title {
+  margin: 0;
+  text-align: center;
+}
+
+.panel__back {
+  appearance: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 2.25rem;
+  height: 2.25rem;
+  padding: 0;
+  border: 1px solid var(--surface-line);
+  border-radius: 999px;
+  background: rgb(18 21 34 / 0.85);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+  font-size: 1.15rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 160ms var(--ease-snap),
+    border-color 160ms var(--ease-snap),
+    background 160ms var(--ease-snap);
+}
+
+.panel__back:hover,
+.panel__back:focus-visible {
+  color: var(--accent-ui);
+  border-color: var(--text-dim);
+  background: var(--surface-raised);
+}
+
 .panel__actions {
   display: flex;
   flex-wrap: wrap;
@@ -2069,6 +2119,444 @@ input,
   color: var(--text-dim);
 }
 
+/* Mobile settings — Controls opens its own screen. */
+.settings-nav-controls {
+  display: none;
+}
+
+.field--nav {
+  appearance: none;
+  width: 100%;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-rows: auto auto;
+  align-items: center;
+  column-gap: 0.75rem;
+  cursor: pointer;
+}
+
+.field--nav .field__label {
+  grid-column: 1;
+  grid-row: 1;
+}
+
+.field--nav .field__hint {
+  grid-column: 1;
+  grid-row: 2;
+}
+
+.field--nav::after {
+  content: '>';
+  grid-column: 2;
+  grid-row: 1 / span 2;
+  align-self: center;
+  justify-self: end;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1;
+}
+
+.settings-controls-page__body {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  padding: 1.15rem 1.25rem 1.35rem;
+  --wash-pad: -1.15rem -1.25rem;
+}
+
+.settings-controls-page__body::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
+}
+
+.panel--settings-controls {
+  width: min(58rem, 100%);
+  align-items: stretch;
+}
+
+.settings-controls-page__editor {
+  width: 100%;
+}
+
+/*
+ * Settings — web layout uses the width; mobile stays a single column.
+ *
+ * The wash matches the title-screen scores ledger: achromatic void, masked on
+ * every edge so type holds without reading as a card over the board.
+ */
+.panel--settings {
+  width: min(58rem, 100%);
+  align-items: stretch;
+}
+
+.settings-body {
+  position: relative;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  width: 100%;
+  padding: 1.15rem 1.25rem 1.35rem;
+  --wash-pad: -1.15rem -1.25rem;
+}
+
+.settings-body::before {
+  content: '';
+  position: absolute;
+  inset: var(--wash-pad);
+  z-index: -1;
+  pointer-events: none;
+  background: var(--wash-void);
+  mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  mask-composite: intersect;
+  -webkit-mask-image: var(--wash-mask-x), var(--wash-mask-y);
+  -webkit-mask-composite: source-in;
+}
+
+.settings-section__title {
+  margin: 0 0 0.7rem;
+  color: var(--text-dim);
+  font-size: 0.7rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-align: left;
+}
+
+.settings-preferences,
+.settings-controls {
+  width: 100%;
+  text-align: left;
+}
+
+.settings-controls__stack {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+}
+
+.controls-editor__profile-pane {
+  display: flex;
+  flex-direction: column;
+}
+
+.controls-editor__touch {
+  display: none;
+  width: 100%;
+}
+
+.controls-editor__panel {
+  width: 100%;
+}
+
+/* Stack profile panes — grid cell sizes to the taller profile so the centered panel does not jump. */
+.controls-editor__stack {
+  display: grid;
+  grid-template-areas: 'pane';
+}
+
+.controls-editor__stack > .controls-editor__profile-pane {
+  grid-area: pane;
+}
+
+.controls-profile-pane--off {
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.settings-keymaps {
+  width: 100%;
+}
+
+.settings-keymaps > .keymap.keymap--touch {
+  display: none;
+}
+
+.controls-editor__cell-title {
+  margin: 0 0 0.55rem;
+  color: var(--text-dim);
+  font-size: 0.62rem;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-align: left;
+}
+
+.controls-editor__piece .controls-editor__cell-title {
+  text-align: center;
+  width: 100%;
+}
+
+@media (hover: hover), (pointer: fine) {
+  .panel--settings {
+    /* Prefs stay 20rem; controls column grows ~20% (was ~42rem → ~50.4rem). */
+    width: min(76.4rem, 100%);
+    font-size: 1.05rem;
+  }
+
+  .panel--settings .field {
+    padding: 0.82rem 1rem;
+    gap: 0.25rem 1rem;
+  }
+
+  .panel--settings .field__label {
+    font-size: 0.92rem;
+  }
+
+  .panel--settings .field__hint {
+    font-size: 0.78rem;
+  }
+
+  .settings-section__title {
+    font-size: 0.76rem;
+    margin-bottom: 0.85rem;
+  }
+
+  .panel--settings .fields {
+    max-width: none;
+  }
+
+  .settings-body {
+    display: grid;
+    grid-template-columns: minmax(0, 20rem) minmax(0, 1fr);
+    grid-template-areas: 'prefs controls';
+    gap: 1.85rem 2.5rem;
+    align-items: start;
+    padding: 1.45rem 1.75rem 1.6rem;
+    --wash-pad: -1.45rem -1.75rem;
+  }
+
+  .settings-preferences {
+    grid-area: prefs;
+  }
+
+  .settings-controls {
+    grid-area: controls;
+  }
+
+  .settings-controls .controls-editor {
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+  }
+
+  .controls-editor__stack {
+    padding-top: 1rem;
+  }
+
+  .controls-editor__tabs {
+    margin-bottom: 0;
+  }
+
+  .controls-editor__tab {
+    flex: 0 1 auto;
+    min-width: 7.5rem;
+    padding: 0.65rem 1.35rem;
+    font-size: 0.84rem;
+    letter-spacing: 0.08em;
+  }
+
+  .controls-editor__panel {
+    border: 1px solid rgb(var(--accent-beam-glow) / 0.14);
+    border-radius: 0.35rem;
+    overflow: hidden;
+    background: rgb(8 10 16 / 0.38);
+  }
+
+  .controls-editor__panel-head {
+    display: flex;
+    justify-content: flex-end;
+    padding: 0.55rem 1rem;
+    border-bottom: 1px solid rgb(var(--accent-beam-glow) / 0.1);
+    background: rgb(5 6 10 / 0.32);
+  }
+
+  .controls-editor__table {
+    display: grid;
+    /* Kill `.keymap { columns: 2 }` — that multi-column flow was skewing the grid tracks. */
+    columns: auto;
+    column-gap: 0;
+    margin-top: 0;
+    padding-top: 0;
+    border-top: none;
+    /* Piece stays fixed; depth/game column gets the wider share. */
+    grid-template-columns: 14rem minmax(0, 1fr) minmax(0, 1.35fr);
+    grid-template-rows: auto auto;
+    grid-template-areas:
+      'piece move depth'
+      'piece rotate game';
+  }
+
+  .controls-editor__piece {
+    grid-area: piece;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 1rem 0.85rem;
+    border-right: 1px solid rgb(var(--accent-beam-glow) / 0.1);
+    background: rgb(5 6 10 / 0.42);
+  }
+
+  .controls-editor__cell--move {
+    grid-area: move;
+    border-bottom: 1px solid rgb(var(--accent-beam-glow) / 0.1);
+  }
+
+  .controls-editor__cell--depth {
+    grid-area: depth;
+    border-left: 1px solid rgb(var(--accent-beam-glow) / 0.1);
+    border-bottom: 1px solid rgb(var(--accent-beam-glow) / 0.1);
+  }
+
+  .controls-editor__cell--rotate {
+    grid-area: rotate;
+  }
+
+  .controls-editor__cell--game {
+    grid-area: game;
+    border-left: 1px solid rgb(var(--accent-beam-glow) / 0.1);
+  }
+
+  .controls-editor__cell {
+    padding: 0.75rem 1rem;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .controls-editor__diagrams {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    margin-bottom: 0;
+    padding: 0;
+    border: none;
+    background: transparent;
+  }
+
+  .controls-editor__reset {
+    appearance: none;
+    padding: 0.15rem 0;
+    border: none;
+    border-radius: 0;
+    background: none;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 0.68rem;
+    font-weight: 500;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: color 160ms var(--ease-snap);
+  }
+
+  .controls-editor__reset:hover,
+  .controls-editor__reset:focus-visible {
+    color: var(--accent-beam);
+    background: none;
+    border-color: transparent;
+  }
+
+  .controls-editor__table .keymap__row--rebind {
+    grid-template-columns: 5.5rem 1fr;
+    gap: 0.5rem 0.85rem;
+    margin: 0;
+    padding: 0.4rem 0.35rem;
+    border-radius: 0.22rem;
+  }
+
+  .controls-editor__table .keymap__row--rebind:has(.keymap__note) {
+    grid-template-rows: auto auto;
+    align-items: start;
+  }
+
+  .controls-editor__table .keymap__row--rebind:has(.keymap__note) .keymap__keys {
+    grid-row: 1 / span 2;
+    align-self: center;
+  }
+
+  .controls-editor__table .keymap__row--rebind:has(.keymap__note) .keymap__note {
+    grid-column: 2;
+    grid-row: 2;
+    margin-top: 0.05rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .controls-editor__table .keymap__foot {
+    margin-top: 0.65rem;
+  }
+
+  .panel--settings .control-diagram__title {
+    font-size: 0.76rem;
+  }
+
+  .panel--settings .control-diagram--keyboard {
+    flex-direction: column;
+    align-items: center;
+    gap: 1.15rem;
+    margin-bottom: 0;
+  }
+
+  .controls-editor__profile-pane[data-controls-profile='full'] .controls-editor__piece .control-diagram--keyboard {
+    align-items: center;
+    width: 100%;
+  }
+
+  .controls-editor__profile-pane[data-controls-profile='full'] .control-diagram__cluster {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+
+  .controls-editor__profile-pane[data-controls-profile='full'] .control-diagram__cap {
+    max-width: none;
+    text-align: center;
+  }
+
+  .panel--settings .control-diagram__pad {
+    grid-template-columns: repeat(3, 2.55rem);
+  }
+
+  .panel--settings .control-diagram__wasd {
+    grid-template-columns: repeat(3, 2.55rem);
+  }
+
+  .panel--settings .control-diagram__key {
+    min-height: 2rem;
+    font-size: 0.78rem;
+  }
+
+  .panel--settings .control-diagram__cap {
+    font-size: 0.76rem;
+  }
+
+  .panel--settings .keymap__row {
+    font-size: 0.86rem;
+  }
+
+  .panel--settings .key {
+    font-size: 0.78rem;
+    min-width: 1.65rem;
+    padding: 0.14rem 0.38rem;
+  }
+
+  .panel--settings .keymap__note,
+  .panel--settings .keymap__foot {
+    font-size: 0.76rem;
+  }
+}
+
 @media (max-width: 34rem) {
   .panel {
     gap: 0.85rem;
@@ -2555,18 +3043,19 @@ input,
  * answer to is worse than one that says nothing.
  */
 /*
- * Only one of the two is ever shown, and touch is the exception rather than the
- * default. This has to come *before* the media block: both selectors are a
- * single class, so at equal specificity the later rule wins, and declaring the
- * default afterwards silently overrode the query -- the touch panel stayed
- * hidden on a phone and the failure looked exactly like broken emulation.
+ * Only one of the two is ever shown. Touch variants use two-class selectors so
+ * a later `.control-diagram { … }` layout rule cannot override `display: none`.
  */
-.keymap--touch {
+.keymap.keymap--touch {
   display: none;
 }
 
-.control-diagram--touch {
+.control-diagram.control-diagram--touch {
   display: none;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  align-items: center;
+  width: 100%;
 }
 
 .controls-editor {
@@ -2579,16 +3068,45 @@ input,
 
 .controls-editor__tabs {
   display: flex;
-  gap: 0.5rem;
-  margin-bottom: 0.75rem;
+  gap: 0;
+  margin-bottom: 0;
+  border-bottom: 1px solid var(--surface-line);
 }
 
 .controls-editor__tab {
+  appearance: none;
   flex: 1 1 0;
+  margin: 0;
+  margin-bottom: -1px;
+  padding: 0.7rem 0.85rem;
+  border: none;
+  border-radius: 0;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--text-dim);
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    color 160ms var(--ease-snap),
+    border-color 160ms var(--ease-snap);
+}
+
+.controls-editor__tab:hover,
+.controls-editor__tab:focus-visible {
+  color: var(--text-secondary);
 }
 
 .controls-editor__tab--on {
-  border-color: var(--accent-beam);
+  border-bottom-color: var(--accent-beam);
+  color: var(--accent-beam);
+}
+
+.controls-editor__tab--on:hover,
+.controls-editor__tab--on:focus-visible {
   color: var(--accent-beam);
 }
 
@@ -2608,18 +3126,14 @@ input,
 }
 
 .control-diagram {
-  display: flex;
   flex-wrap: wrap;
   gap: 1rem;
   align-items: flex-start;
   margin-bottom: 0.5rem;
 }
 
-.control-diagram.control-diagram--touch {
-  flex-direction: column;
-  flex-wrap: nowrap;
-  align-items: center;
-  width: 100%;
+.control-diagram--keyboard {
+  display: flex;
 }
 
 .control-diagram__pad {
@@ -2832,7 +3346,7 @@ text.diagram-finger-emoji {
 }
 
 
-.controls-editor__remap .keymap__row--rebind {
+.controls-editor__table .keymap__row--rebind {
   display: grid;
   grid-template-columns: 4.8rem 1fr auto;
   gap: 0.5rem;
@@ -2846,7 +3360,7 @@ text.diagram-finger-emoji {
   cursor: pointer;
 }
 
-.controls-editor__remap .keymap__row--listening {
+.controls-editor__table .keymap__row--listening {
   border-color: var(--accent-beam);
 }
 
@@ -2877,7 +3391,7 @@ text.diagram-finger-emoji {
     display: none;
   }
 
-  .keymap--touch {
+  .keymap.keymap--touch {
     display: block;
   }
 
@@ -2889,8 +3403,21 @@ text.diagram-finger-emoji {
     display: flex;
   }
 
-  .controls-editor__remap {
+  .controls-editor__panel-head,
+  .controls-editor__table {
     display: none;
+  }
+
+  .settings-controls {
+    display: none;
+  }
+
+  .settings-nav-controls {
+    display: grid;
+  }
+
+  .controls-editor__touch {
+    display: block;
   }
 
   .controls-editor__tabs {
@@ -2898,25 +3425,18 @@ text.diagram-finger-emoji {
     grid-template-columns: 1fr 1fr;
     gap: 0;
     margin-bottom: 0;
-    border-bottom: 1px solid var(--surface-line);
   }
 
   .controls-editor__tab {
-    border: none;
-    border-radius: 0;
-    margin-bottom: -1px;
+    flex: unset;
+    min-width: 0;
     padding: 0.7rem 0.5rem;
-    background: transparent;
-    color: var(--text-dim);
     font-size: 0.82rem;
-    font-weight: 500;
     letter-spacing: 0.04em;
-    text-align: center;
   }
 
-  .controls-editor__tab--on {
-    border-bottom: 2px solid var(--accent-beam);
-    color: var(--accent-beam);
+  .controls-editor__stack {
+    padding-top: 0;
   }
 
   .controls-editor__diagrams {

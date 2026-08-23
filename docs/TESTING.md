@@ -35,6 +35,12 @@ so it catches bundling and asset problems that unit tests cannot.
 Uses a pre-provisioned Chromium at `/opt/pw-browsers/chromium` when present, so
 `playwright install` is never needed in CI.
 
+**Settings and controls.** Desktop e2e expects `.controls-editor__table` beside
+the preferences column; touch-primary contexts hide it and open Controls through
+the mobile nav row (`.settings-nav-controls`) into `settings-controls`. Panel
+back is the masthead button (`aria-label="Back"`), not a bottom BACK row — tests
+that walk keyboard focus or leave Settings should target that control.
+
 ### Visual regression — from M2
 
 Playwright screenshots with a 2% perceptual tolerance: each of the four faces,
