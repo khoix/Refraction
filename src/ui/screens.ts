@@ -16,14 +16,20 @@ import type { Challenge } from '@core/challenge';
 import { TOUCH_SENSITIVITY_MAX, TOUCH_SENSITIVITY_MIN } from '@core/save';
 import type { SaveData, Settings } from '@core/save';
 import {
-  BINDINGS,
   BINDING_GROUPS,
   TOUCH_ACTIONS,
   TOUCH_TURN_NOTE,
   TURN_PROMPT_NOTE,
   appliesToMode,
+  capsForProfile,
   keyLabel,
+  profileForMode,
+  rebindAction,
+  remapFromSave,
+  resolveBindings,
 } from '../keymap';
+import type { Action, Binding, BindingProfile } from '../keymap';
+import { buildKeyboardDiagram, buildTouchDiagram } from './control-diagram';
 
 export type ScreenName =
   'boot' | 'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
@@ -220,18 +226,11 @@ function nextInDirection(
  * The same panel for touch.
  *
  * Built from `TOUCH_ACTIONS` for the same reason the key map is built from
- * `BINDINGS`: a panel that carries its own copy of the controls is right on the
- * day it is written and wrong by the next change. Which of the two is shown is
- * decided in CSS by input method, not here -- a narrow window on a laptop still
- * has a keyboard, and a tablet with one attached reports a fine pointer.
+ * resolved bindings.
  */
 function buildTouchMap(mode: ModeConfig): HTMLElement {
   const list = element('div', 'keymap keymap--touch');
   list.append(element('h3', 'keymap__title', 'CONTROLS'));
-
-  // A roll-only mode has no field/strip split, so the notes that place a
-  // gesture relative to the strip are describing a screen that is not there.
-  const split = mode.rotation === 'all';
 
   for (const group of BINDING_GROUPS) {
     const rows = TOUCH_ACTIONS.filter(
@@ -246,8 +245,7 @@ function buildTouchMap(mode: ModeConfig): HTMLElement {
       const keys = element('span', 'keymap__keys');
       keys.append(element('span', 'gesture', action.gesture));
       row.append(keys, element('span', 'keymap__label', action.label));
-      const note = action.stripNote && !split ? undefined : action.note;
-      if (note) row.append(element('span', 'keymap__note', note));
+      if (action.note) row.append(element('span', 'keymap__note', action.note));
       section.append(row);
     }
     list.append(section);
@@ -258,22 +256,14 @@ function buildTouchMap(mode: ModeConfig): HTMLElement {
 }
 
 /**
- * The key map.
- *
- * Built from `BINDINGS`, so it cannot describe a key the engine does not answer
- * to. The game had never told the player its controls anywhere but the README,
- * and it has enough of them now -- move, three rotation axes, a depth nudge,
- * hold, hard drop, face choice, pause, mute, restart -- that it has to.
+ * The key map — from resolved bindings for the mode's profile.
  */
-function buildKeyMap(mode: ModeConfig): HTMLElement {
+function buildKeyMap(mode: ModeConfig, bindings: readonly Binding[]): HTMLElement {
   const list = element('div', 'keymap');
   list.append(element('h3', 'keymap__title', 'CONTROLS'));
 
-  // A group is one block, so the two-column flow moves it whole. Left to break
-  // where it liked, the column split landed mid-group and stranded "Pitch back"
-  // at the top of the second column with no heading over it.
   for (const group of BINDING_GROUPS) {
-    const rows = BINDINGS.filter(
+    const rows = bindings.filter(
       (binding) => binding.group === group && appliesToMode(binding, mode)
     );
     if (rows.length === 0) continue;
@@ -321,6 +311,11 @@ export class Screens {
    */
   private readonly controls = element('div', 'keymap__pair');
   private mode: ModeConfig = modeById(DEFAULT_MODE_ID);
+  /** Settings tab: which binding profile is being edited. */
+  private settingsProfile: BindingProfile = 'roll';
+  private rebindTarget: Action | null = null;
+  private readonly onRebindKey = (event: KeyboardEvent): void => this.captureRebind(event);
+  private readonly onRebindMouse = (event: MouseEvent): void => this.captureRebindMouse(event);
   private readonly overBest = element('p', 'panel__best over__best', '');
   private readonly statsLine = element('p', 'scores__stats', '');
   private readonly sessionLog = element('ol', 'scores__log');
@@ -815,15 +810,152 @@ export class Screens {
   }
 
   /**
-   * Tell the panels which mode's controls to describe.
-   *
-   * Called when a run starts and at boot. Cheap enough to rebuild outright --
-   * two short lists -- and rebuilding is what keeps the panels a projection of
-   * the tables rather than a thing with state of its own.
+   * Tell the panels which mode's controls to describe, and rebuild the
+   * settings remap UI for the matching profile.
    */
   setMode(mode: ModeConfig): void {
     this.mode = mode;
-    this.controls.replaceChildren(buildKeyMap(mode), buildTouchMap(mode));
+    this.settingsProfile = profileForMode(mode);
+    this.rebuildControls();
+  }
+
+  private profileBindings(profile: BindingProfile): readonly Binding[] {
+    return resolveBindings(profile, remapFromSave(this.save.settings.bindings[profile]));
+  }
+
+  private rebuildControls(): void {
+    const profile = this.settingsProfile;
+    const bindings = this.profileBindings(profile);
+    const caps = capsForProfile(profile);
+
+    const editor = element('div', 'controls-editor');
+    const tabs = element('div', 'controls-editor__tabs');
+    const flatTab = button('Flatland', 'button controls-editor__tab', () => {
+      this.settingsProfile = 'roll';
+      this.rebuildControls();
+    });
+    const fullTab = button('3D modes', 'button controls-editor__tab', () => {
+      this.settingsProfile = 'full';
+      this.rebuildControls();
+    });
+    flatTab.classList.toggle('controls-editor__tab--on', profile === 'roll');
+    fullTab.classList.toggle('controls-editor__tab--on', profile === 'full');
+    tabs.append(flatTab, fullTab);
+    editor.append(tabs);
+
+    const diagrams = element('div', 'controls-editor__diagrams');
+    diagrams.append(buildKeyboardDiagram(profile, bindings), buildTouchDiagram(profile, bindings));
+    editor.append(diagrams);
+
+    const remap = element('div', 'controls-editor__remap');
+    remap.append(element('h3', 'keymap__title', 'REBIND'));
+    for (const group of BINDING_GROUPS) {
+      const rows = bindings.filter(
+        (binding) =>
+          binding.group === group &&
+          appliesToMode(binding, {
+            rotation: caps.rotation,
+            depthNudge: caps.depthNudge,
+            spectralCollapse: caps.spectralCollapse,
+          })
+      );
+      if (rows.length === 0) continue;
+      const section = element('section', 'keymap__section');
+      section.append(element('h4', 'keymap__group', group.toUpperCase()));
+      for (const binding of rows) {
+        const row = button('', 'keymap__row keymap__row--rebind', () =>
+          this.startRebind(binding.action)
+        );
+        row.dataset['action'] = binding.action;
+        if (this.rebindTarget === binding.action) {
+          row.classList.add('keymap__row--listening');
+        }
+        const keys = element('span', 'keymap__keys');
+        for (const code of binding.codes) {
+          keys.append(element('kbd', 'key', keyLabel(code)));
+        }
+        row.append(keys, element('span', 'keymap__label', binding.label));
+        if (binding.note) row.append(element('span', 'keymap__note', binding.note));
+        section.append(row);
+      }
+      remap.append(section);
+    }
+    const reset = button('Reset profile', 'button', () => {
+      this.handlers.onSettings({
+        bindings: {
+          ...this.save.settings.bindings,
+          [profile]: {},
+        },
+      });
+      this.rebuildControls();
+    });
+    remap.append(reset);
+    editor.append(remap);
+
+    const runBindings = bindings;
+    const displayMode = profile === 'roll' ? modeById('flatland') : modeById('ascent');
+    this.controls.replaceChildren(
+      editor,
+      buildKeyMap(displayMode, runBindings),
+      buildTouchMap(displayMode)
+    );
+  }
+
+  private startRebind(action: Action): void {
+    this.stopRebind();
+    this.rebindTarget = action;
+    this.rebuildControls();
+    window.addEventListener('keydown', this.onRebindKey, true);
+    window.addEventListener('mousedown', this.onRebindMouse, true);
+  }
+
+  private stopRebind(): void {
+    this.rebindTarget = null;
+    window.removeEventListener('keydown', this.onRebindKey, true);
+    window.removeEventListener('mousedown', this.onRebindMouse, true);
+  }
+
+  private captureRebind(event: KeyboardEvent): void {
+    if (!this.rebindTarget) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.code === 'Escape') {
+      this.stopRebind();
+      this.rebuildControls();
+      return;
+    }
+    this.applyRebind([event.code]);
+  }
+
+  private captureRebindMouse(event: MouseEvent): void {
+    if (!this.rebindTarget) return;
+    // Only capture mouse buttons when rebinding soft/hard drop style actions,
+    // or always allow Mouse0/Mouse2 as bindable codes.
+    if (event.button !== 0 && event.button !== 2) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const code = event.button === 0 ? 'Mouse0' : 'Mouse2';
+    this.applyRebind([code]);
+  }
+
+  private applyRebind(codes: readonly string[]): void {
+    const action = this.rebindTarget;
+    if (!action) return;
+    const profile = this.settingsProfile;
+    const current = remapFromSave(this.save.settings.bindings[profile]);
+    const next = rebindAction(profile, current, action, codes);
+    this.stopRebind();
+    if (!next) {
+      this.rebuildControls();
+      return;
+    }
+    this.handlers.onSettings({
+      bindings: {
+        ...this.save.settings.bindings,
+        [profile]: next,
+      },
+    });
+    this.rebuildControls();
   }
 
   /**
@@ -911,6 +1043,8 @@ export class Screens {
   setSave(save: SaveData): void {
     this.save = save;
     this.sync();
+    // Remaps live in settings; keep the editor in step when commit() updates save.
+    if (this.current === 'settings') this.rebuildControls();
   }
 
   /** Fill in the game-over panel from a finished run. */

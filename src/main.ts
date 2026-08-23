@@ -30,8 +30,8 @@ import type { Challenge } from '@core/challenge';
 import { isPersonalBest, recordRun, withSettings } from '@core/save';
 import type { SaveData, Settings } from '@core/save';
 import { loadSave, persistSave, storageAvailable } from '@ui/storage';
-import { BINDINGS, keyLabel } from './keymap';
-import { STRIP_HEIGHT_PX, TouchController, stripTopPx } from './touch/controller';
+import { actionByCodeMap, keyLabel, profileForMode, remapFromSave, resolveBindings } from './keymap';
+import { TouchController } from './touch/controller';
 import { touchPrimary } from './touch/primary';
 
 /** Simulation step. Fixed, so replays are exact regardless of frame rate. */
@@ -256,21 +256,19 @@ function boot(root: HTMLElement): void {
   };
 
   /**
-   * Keep the board clear of everything below it.
+   * Keep the board clear of the Shift meter under it.
    *
-   * The Shift meter and the touch strip both live under the board, and neither
-   * is laid out by the document -- the meter is absolutely positioned and the
-   * strip is a region of the window rather than an element -- so the board has
-   * to be told how much room to leave. The strip's share is zero in a roll-only
-   * mode, which has no strip, and on any device that is not touch-primary.
-   *
-   * A floor rather than an addition: the fit only pushes the board up when the
-   * framing does not already leave this much, so a desktop loses nothing.
+   * The touch strip is gone for all modes (full profile uses whole-screen
+   * gestures; Flatland never had a strip). Only the meter needs reserve.
    */
   const applyStripReserve = (): void => {
-    const strip = touchPrimary() && !game.rollOnly ? STRIP_HEIGHT_PX : 0;
-    renderer.setBottomReserve(hud.shiftReservePx + strip);
+    renderer.setBottomReserve(hud.shiftReservePx);
   };
+
+  const resolvedBindings = () =>
+    resolveBindings(profileForMode(mode), remapFromSave(save.settings.bindings[profileForMode(mode)]));
+
+  const liveActionMap = () => actionByCodeMap(resolvedBindings());
 
   const startRun = (id: ModeId, pinned: Challenge | null = null): void => {
     mode = pinned ? pinned.mode : modeById(id);
@@ -533,7 +531,7 @@ function boot(root: HTMLElement): void {
         source: playableSource(THEME)?.mime ?? null,
         track: audio.musicTrackId,
       }),
-      bindings: BINDINGS.map((binding) => ({
+      bindings: resolvedBindings().map((binding) => ({
         action: binding.action,
         label: binding.label,
         keys: binding.codes.map(keyLabel),
@@ -542,60 +540,63 @@ function boot(root: HTMLElement): void {
     window.__refraction = handle;
   }
 
-  const input = new InputController(() => game, {
-    accepts: playing,
-    allowsAction: (action) => !tutorial.running || tutorial.allows(action),
-    onPause: () => {
-      if (tutorial.onEscape()) {
+  const input = new InputController(
+    () => game,
+    {
+      accepts: playing,
+      allowsAction: (action) => !tutorial.running || tutorial.allows(action),
+      onPause: () => {
+        if (tutorial.onEscape()) {
+          touch.cancel();
+          return;
+        }
+        if (screens.screen === 'playing') {
+          game.pause();
+          screens.show('paused');
+        } else if (screens.screen === 'paused') {
+          game.resume();
+          screens.show('playing');
+        } else if (screens.screen === 'settings') {
+          screens.show(settingsReturn);
+        }
         touch.cancel();
-        return;
-      }
-      // Esc toggles between the board and the pause panel, and backs out of
-      // settings to wherever it was opened from.
-      if (screens.screen === 'playing') {
-        game.pause();
-        screens.show('paused');
-      } else if (screens.screen === 'paused') {
-        game.resume();
-        screens.show('playing');
-      } else if (screens.screen === 'settings') {
-        screens.show(settingsReturn);
-      }
-      // A gesture half-made when the menu opened must not land on the board
-      // when it closes.
-      touch.cancel();
+      },
+      onRestart: () => {
+        if (screens.screen === 'over') startRun(mode.id, challenge);
+      },
+      onTurn: (direction: TurnDirection) => {
+        game.chooseTurn(direction);
+      },
+      onInteract: () => audio.resume(),
+      onToggleMute: () => commit(withSettings(save, { muted: !save.settings.muted })),
+      onPeek: (held: boolean) => renderer.setPeek(held && game.peekAllowed),
+      actionMap: liveActionMap,
+      pxPerStep: () => {
+        const well = renderer.wellScreenRect();
+        return Math.max(1, well.width / 8 / Math.max(0.1, save.settings.touchSensitivity));
+      },
+      playfieldHit: (clientX, clientY) => {
+        const well = renderer.wellScreenRect();
+        return (
+          clientX >= well.left &&
+          clientX <= well.left + well.width &&
+          clientY >= well.top &&
+          clientY <= well.top + well.height
+        );
+      },
     },
-    onRestart: () => {
-      if (screens.screen === 'over') startRun(mode.id, challenge);
-    },
-    // The camera is driven by the engine's 'turn' event alone. Starting it here
-    // as well would begin the rotation twice and overshoot the 90 degrees.
-    onTurn: (direction: TurnDirection) => {
-      game.chooseTurn(direction);
-    },
-    // An AudioContext cannot start outside a user gesture, so the first key
-    // press is what brings the sound up.
-    onInteract: () => audio.resume(),
-    onToggleMute: () => commit(withSettings(save, { muted: !save.settings.muted })),
-    // Gated in the engine, not here: when Peek is available is a rule about the
-    // mode and the stage, and rules live in core.
-    onPeek: (held: boolean) => renderer.setPeek(held && game.peekAllowed),
-  });
+    root
+  );
 
-  // Touch and pen only. A mouse keeps the keyboard game: dragging a piece with
-  // a cursor is worse than pressing an arrow key, and a laptop with a
-  // touchscreen should not change behaviour based on which input was used last.
   const touch = new TouchController(root, () => game, {
     accepts: playing,
     allowsAction: (action) => !tutorial.running || tutorial.allows(action),
     onInteract: () => audio.resume(),
     onTurn: (direction: TurnDirection) => game.chooseTurn(direction),
     wellRect: () => renderer.wellScreenRect(),
-    // The engine answers this, not the interface: which rotations a mode permits
-    // is a rule, and a gesture layer that decided for itself could hide a verb
-    // the keyboard still had.
-    hasStrip: () => !game.rollOnly,
+    scheme: () => (game.rollOnly ? 'roll' : 'full'),
     sensitivity: () => save.settings.touchSensitivity,
+    onPeek: (held: boolean) => renderer.setPeek(held && game.peekAllowed),
   });
 
   applyStripReserve();
@@ -800,7 +801,7 @@ function boot(root: HTMLElement): void {
     // Pause lives on the phone; Esc covers everything else.
     hud.setPauseVisible(touchPrimary() && screen === 'playing');
     hud.setPauseExits(tutorial.running);
-    hud.setStripReserve(touchPrimary() && !game.rollOnly);
+    hud.setStripReserve(false);
     const nowPlaying = trackById(audio.musicTrackId ?? '');
     hud.setMusicDeck(
       screen === 'playing' && nowPlaying
@@ -815,10 +816,7 @@ function boot(root: HTMLElement): void {
     hud.setTurnPromptAllowed(!tutorial.running || tutorial.showsTurnPrompt());
     renderer.setTutorialBrightGrid(tutorial.running && touchPrimary());
     hud.update(game, elapsed);
-    hud.layoutWell(
-      renderer.wellScreenRect(),
-      touchPrimary() && !game.rollOnly ? stripTopPx(window.innerHeight) : null
-    );
+    hud.layoutWell(renderer.wellScreenRect(), null);
     const next = game.preview[0];
     renderer.setPreview(
       save.settings.spinPreview && next && screens.screen === 'playing' ? hud.nextSlotRect() : null,

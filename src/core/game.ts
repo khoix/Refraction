@@ -675,8 +675,12 @@ export class Game {
   // ------------------------------------------------------------------ internals
 
   private stageAllowsRotation(kind: RotationKind): boolean {
-    if (kind === 'yaw') return this.stage.index >= 4 || this.options.forceDepthNudge === true;
-    return this.stage.index >= 6 || this.options.forceDepthNudge === true;
+    // Modes that force depth control early (Zen, Endless, …) unlock yaw/pitch
+    // with the nudge. Ascent still reveals them on the stage schedule.
+    const forced =
+      this.options.forceDepthNudge === true || this.mode.depthNudge === 'always';
+    if (kind === 'yaw') return this.stage.index >= 4 || forced;
+    return this.stage.index >= 6 || forced;
   }
 
   private worldCells(piece: ActivePiece): Cell[] {

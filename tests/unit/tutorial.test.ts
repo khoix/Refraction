@@ -140,8 +140,20 @@ describe('tutorial script', () => {
     expect(place?.allowedActions).not.toContain('moveLeft');
     expect(place?.allowedActions).not.toContain('moveRight');
     expect(place?.touchHint).toBeTruthy();
+    expect(place?.revealBeforeClear?.elevation).toBeGreaterThanOrEqual(18);
+    expect(place?.revealBeforeClear?.durationMs).toBeGreaterThanOrEqual(2000);
     const shift = TUTORIAL_BEATS.find((beat) => beat.id === 'choose-shift');
     expect(shift?.allowedActions).toEqual(['moveLeft', 'moveRight']);
+  });
+
+  it('orbits place-lane before the clear and holds a looping pan cue', () => {
+    const place = TUTORIAL_BEATS.find((beat) => beat.id === 'place-lane');
+    expect(place?.revealBeforeClear).toEqual({
+      yawDelta: 28,
+      elevation: 20,
+      durationMs: 2200,
+    });
+    expect(place?.advance).toEqual({ kind: 'event', type: 'clear' });
   });
 
   it('lets place-3d drop via touch without teaching pitch', () => {

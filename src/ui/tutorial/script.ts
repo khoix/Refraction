@@ -74,6 +74,11 @@ export interface TutorialBeat {
   readonly cardPlacement?: CardPlacement;
   /** Spotlight focus; defaults from `target`. */
   readonly focus?: TutorialFocus;
+  /**
+   * Hands-on clear beats: after lock, orbit to a top/side angle while the
+   * completed line stays lit, then let the clear resolve from that view.
+   */
+  readonly revealBeforeClear?: TutorialCameraCue;
 }
 
 export const TUTORIAL_BEATS: readonly TutorialBeat[] = [
@@ -159,6 +164,11 @@ export const TUTORIAL_BEATS: readonly TutorialBeat[] = [
     touchHint: 'Swipe down to drop',
     softScrim: true,
     radius: 130,
+    revealBeforeClear: {
+      yawDelta: 28,
+      elevation: 20,
+      durationMs: 2200,
+    },
   },
   {
     id: 'shift-meter',

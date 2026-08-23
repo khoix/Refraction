@@ -48,11 +48,12 @@ Stages are numbered, not named, and the only hue on screen belongs to a cube.
 The room is light and the HUD is ink; neither makes a colour claim, so any
 colour you see is a depth claim and can be trusted as one.
 
-Controls: arrows or WASD to move, `Z`/`X`, `Q`/`E` and `R`/`F` to rotate on the
-three axes, `T`/`G` to nudge the piece deeper or nearer from Stage 4, `Space` to
-hard drop, `C` to hold, `←`/`→` to choose a face when the Shift meter fills,
-`Esc` to pause, `M` to mute, `Enter` to restart after a game over. The full key
-map is in Settings, and the arrow keys move through the menus.
+Controls (Flatland): arrows or WASD to move, `Z`/`X` to roll, `Space` to hard
+drop, `C` to hold. Other modes use arrows for move and depth (`↑`/`↓` push/pull),
+`Q`/`E` roll, `A`/`D` yaw, `W`/`S` pitch, mouse drag to translate, left-click soft
+drop, right-click or `Space` hard drop. Remap either profile in Settings; spatial
+diagrams show the layout for keyboard and touch. `←`/`→` choose a face when the
+Shift meter fills, `Esc` pauses, `M` mutes, `Enter` restarts after a game over.
 
 Flags: `?mode=prism` and `?challenge=CODE` open a run directly, both still
 respecting the unlock; `?pieces=experimental` deals the M6.5 playtest vocabulary (screws from

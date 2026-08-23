@@ -948,6 +948,8 @@ design is a lovely goal and this game has one idea too strange to leave to it.
   auto-offer (differs from the original "offered once" line below).
 - ✅ **Skippable.** Skip / Esc on desktop; on phones the pause control is ×
   (leave). Tutorial runs are never saved.
+- ✅ **Lane-clear reveal.** Finish-this-lane pans to a top/side angle before the
+  clear, then loops that orbit until Continue (depth behind the line is visible).
 
 **Exit criteria:** a player who has never seen the game completes the tutorial
 and can then say, unprompted, what the colours mean and what turning does.

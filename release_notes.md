@@ -7,6 +7,26 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Dual-profile controls + remapping
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Two binding profiles: **Flatland** keeps the classic roll map; every other mode
+uses arrows for move/depth, `Q`/`E`/`A`/`D`/`W`/`S` for roll/yaw/pitch, mouse
+drag to translate, LMB soft drop, RMB + `Space` hard drop. Touch drops the strip
+in 3D modes — swipe to move/depth (auto-peek), wedge taps to rotate, two-finger
+down to drop. Settings remaps each profile, shows spatial diagrams (keyboard and
+mobile wedge map), and persists under save version 4. Modes with
+`depthNudge: 'always'` unlock yaw and pitch immediately.
+
+### Tested
+
+Unit: dual defaults, resolve/rebind, Zen yaw/pitch, wedge hits, full-scheme
+gestures, Flatland regression. E2e: key map / touch copy / diagrams (update
+pass with the suite).
+
+---
+
 ## M13 — Teaching
 
 **Branch:** `cursor/refraction-kendega-desktop`
@@ -20,16 +40,19 @@ multi-lane pieces → Spectral Collapse + modes coda. No auto-launch.
 Desktop leaves via Skip / Esc. On phones the pause control becomes **×** (leave
 tutorial) and Skip is hidden from coach copy; ← / → sit on a row under the card
 text. Place-it maps a downward field swipe to hard drop when pitch is gated.
-Modes closes with “Are you ready…” on its own line. Touch-primary well grid
-lines are brighter during the tutorial so the lattice still reads on a small
-screen.
+**Finish this lane** orbits to a top/side angle while the completed line is
+lit, clears from that view, then keeps the pan looping until Continue before
+Shift. Modes closes with “Are you ready…” on its own line. Touch-primary well
+grid lines are brighter during the tutorial so the lattice still reads on a
+small screen.
 
 ### Tested
 
 Unit: fixtures (spectrum, x-ray, lane gap, refraction line), script order /
-allowlists (place-lane drop-only; place-3d swipe-down hint), modes tagline
-paragraph, act mode configs and `armPiece`. E2e: title → Tutorial → Continue;
-desktop Skip and phone × both return to title without incrementing run stats.
+allowlists (place-lane drop-only + `revealBeforeClear` orbit; place-3d
+swipe-down hint), modes tagline paragraph, act mode configs and `armPiece`.
+E2e: title → Tutorial → Continue; desktop Skip and phone × both return to
+title without incrementing run stats.
 
 ---
 

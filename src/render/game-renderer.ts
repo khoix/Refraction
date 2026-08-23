@@ -704,6 +704,15 @@ export class GameRenderer {
     return this.peek > 0;
   }
 
+  /** True when an outbound tutorial look has finished (or none is running). */
+  get tutorialLookOutboundComplete(): boolean {
+    if (!this.tutorialLook) return true;
+    return (
+      this.tutorialLook.phase === 'out' &&
+      this.tutorialLook.elapsed >= this.tutorialLook.durationMs
+    );
+  }
+
   /**
    * Orbit for a tutorial beat. Orthographic only — lerps yaw and elevation
    * without starting an engine turn. Cleared when the beat ends or a real
