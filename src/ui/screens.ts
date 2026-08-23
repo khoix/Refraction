@@ -279,7 +279,11 @@ function buildKeyMap(mode: ModeConfig, bindings: readonly Binding[]): HTMLElemen
       }
       const label = element('span', 'keymap__label', binding.label);
       row.append(keys, label);
-      if (binding.note) row.append(element('span', 'keymap__note', binding.note));
+      const note =
+        binding.action === 'peek' && mode.peekPolicy === 'byStage'
+          ? 'Until stage 6'
+          : binding.note;
+      if (note) row.append(element('span', 'keymap__note', note));
       section.append(row);
     }
     list.append(section);
@@ -830,20 +834,35 @@ export class Screens {
 
     const editor = element('div', 'controls-editor');
     const tabs = element('div', 'controls-editor__tabs');
+    tabs.setAttribute('role', 'tablist');
+    tabs.setAttribute('aria-label', 'Control profile');
     const flatTab = button('Flatland', 'button controls-editor__tab', () => {
       this.settingsProfile = 'roll';
       this.rebuildControls();
     });
+    flatTab.id = 'controls-tab-roll';
+    flatTab.setAttribute('role', 'tab');
+    flatTab.setAttribute('aria-selected', profile === 'roll' ? 'true' : 'false');
+    flatTab.setAttribute('aria-controls', 'controls-panel-profile');
+    flatTab.tabIndex = profile === 'roll' ? 0 : -1;
     const fullTab = button('3D modes', 'button controls-editor__tab', () => {
       this.settingsProfile = 'full';
       this.rebuildControls();
     });
+    fullTab.id = 'controls-tab-full';
+    fullTab.setAttribute('role', 'tab');
+    fullTab.setAttribute('aria-selected', profile === 'full' ? 'true' : 'false');
+    fullTab.setAttribute('aria-controls', 'controls-panel-profile');
+    fullTab.tabIndex = profile === 'full' ? 0 : -1;
     flatTab.classList.toggle('controls-editor__tab--on', profile === 'roll');
     fullTab.classList.toggle('controls-editor__tab--on', profile === 'full');
     tabs.append(flatTab, fullTab);
     editor.append(tabs);
 
     const diagrams = element('div', 'controls-editor__diagrams');
+    diagrams.id = 'controls-panel-profile';
+    diagrams.setAttribute('role', 'tabpanel');
+    diagrams.setAttribute('aria-labelledby', profile === 'roll' ? 'controls-tab-roll' : 'controls-tab-full');
     diagrams.append(buildKeyboardDiagram(profile, bindings), buildTouchDiagram(profile, bindings));
     editor.append(diagrams);
 
@@ -857,6 +876,7 @@ export class Screens {
             rotation: caps.rotation,
             depthNudge: caps.depthNudge,
             spectralCollapse: caps.spectralCollapse,
+            peekPolicy: caps.peekPolicy,
           })
       );
       if (rows.length === 0) continue;

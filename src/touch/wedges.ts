@@ -212,7 +212,15 @@ export const ZONE_LABEL_AT: Readonly<Partial<Record<ZoneId, Point>>> = {
   E_BOTTOM_RIGHT: [0.88, 0.9],
 };
 
-/** SVG polygon `points` attribute for a zone in a 0..100 viewBox. */
-export function zoneSvgPoints(id: ZoneId): string {
-  return ZONE_POLYGONS[id].map(([x, y]) => `${x * 100},${y * 100}`).join(' ');
+/** Settings diagram viewBox — typical phone width:height (~390×844). */
+export const DIAGRAM_VIEW_W = 100;
+export const DIAGRAM_VIEW_H = 216;
+
+/** SVG polygon `points` for a zone in the diagram viewBox. */
+export function zoneSvgPoints(
+  id: ZoneId,
+  viewW = DIAGRAM_VIEW_W,
+  viewH = DIAGRAM_VIEW_H
+): string {
+  return ZONE_POLYGONS[id].map(([x, y]) => `${x * viewW},${y * viewH}`).join(' ');
 }

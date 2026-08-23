@@ -54,6 +54,15 @@ export type RotationPolicy = 'roll' | 'all';
 export type DepthNudgePolicy = 'never' | 'byStage' | 'always';
 
 /**
+ * When Peek withdraws.
+ *
+ * `byStage` turns it off from Stage 6, where the spectrum has to carry depth
+ * alone. `always` keeps it available for the whole run — Flatland, where reading
+ * projection never stops needing a parallax assist.
+ */
+export type PeekPolicy = 'always' | 'byStage';
+
+/**
  * What a player has to do to open a mode.
  *
  * Kept as data rather than a predicate so it can be *shown* to the player on
@@ -125,6 +134,8 @@ export interface ModeConfig {
   readonly canFail: boolean;
   /** Whether cubes are drawn in depth colour at all. False for Blind Spectrum. */
   readonly depthColour: boolean;
+  /** When Peek is available. Off entirely when `depthColour` is false. */
+  readonly peekPolicy: PeekPolicy;
   /** Extra multiplier on clears the turn itself made eligible. */
   readonly refractionScale: number;
   /**
@@ -153,6 +164,7 @@ const base = {
   spectralCollapse: true,
   canFail: true,
   depthColour: true,
+  peekPolicy: 'byStage',
   refractionScale: 1,
   scoreScale: 1,
   unlock: null,
@@ -175,7 +187,7 @@ export const MODES: readonly ModeConfig[] = [
     // Nothing but planar pieces, so every cube of a piece shares one lane and
     // depth is purely a property of where you put it. Pure projection reading.
     maxTier: 1,
-    startStage: 2,
+    peekPolicy: 'always',
     // Roll alone, and no depth nudge ever. Both follow from the mode's own
     // promise: the piece never leaves the screen plane, so its lane changes only
     // when the board turns. Yaw and the nudge are the two ways a player could

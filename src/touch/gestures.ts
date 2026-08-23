@@ -4,7 +4,7 @@
  * Pure: pointer samples + layout → intents. Two schemes:
  *
  * **roll** (Flatland): no strip — drag anywhere to move, fling to hard-drop,
- * tap left/right of centre to roll.
+ * tap left/right of centre to roll, two-finger vertical swipe to peek.
  *
  * **full** (every other mode): single-finger swipe translates (columns + depth);
  * tap hits the wedge map for rotate; two-finger vertical swipe soft/hard drops.
@@ -76,9 +76,13 @@ interface Active {
   softDropAnchor: number;
   laneLocked: boolean;
   moved: boolean;
-  /** Full scheme: this finger is part of a two-finger drop. */
+  /** Full scheme: two-finger drop. Roll scheme: two-finger peek. */
   twoFinger: boolean;
   peeking: boolean;
+  /** Roll two-finger peek: centroid at promotion. */
+  peekAnchorY: number;
+  primaryY: number;
+  secondaryY: number;
 }
 
 export class GestureRecogniser {
@@ -87,17 +91,27 @@ export class GestureRecogniser {
   private secondary: Sample | null = null;
 
   begin(sample: Sample, layout: TouchLayout): TouchIntent[] {
-    if (layout.scheme === 'full' && this.active && !this.active.twoFinger) {
-      // Second finger down while first is active → promote to two-finger drop.
-      this.secondary = sample;
-      this.active.twoFinger = true;
-      this.active.softDropAnchor = Math.min(this.active.start.y, sample.y);
-      const intents: TouchIntent[] = [];
-      if (this.active.peeking) {
-        this.active.peeking = false;
-        intents.push({ kind: 'peek', held: false });
+    if (this.active && !this.active.twoFinger) {
+      if (layout.scheme === 'full') {
+        // Second finger down while first is active → promote to two-finger drop.
+        this.secondary = sample;
+        this.active.twoFinger = true;
+        this.active.softDropAnchor = Math.min(this.active.start.y, sample.y);
+        const intents: TouchIntent[] = [];
+        if (this.active.peeking) {
+          this.active.peeking = false;
+          intents.push({ kind: 'peek', held: false });
+        }
+        return intents;
       }
-      return intents;
+      if (layout.scheme === 'roll') {
+        this.secondary = sample;
+        this.active.twoFinger = true;
+        this.active.peekAnchorY = (this.active.start.y + sample.y) / 2;
+        this.active.primaryY = this.active.start.y;
+        this.active.secondaryY = sample.y;
+        return [];
+      }
     }
 
     const zone: Zone =
@@ -116,6 +130,9 @@ export class GestureRecogniser {
       moved: false,
       twoFinger: false,
       peeking: false,
+      peekAnchorY: 0,
+      primaryY: sample.y,
+      secondaryY: sample.y,
     };
     this.secondary = null;
     return [];
@@ -146,6 +163,22 @@ export class GestureRecogniser {
   // ------------------------------------------------------------------- roll
 
   private moveRoll(sample: Sample, layout: TouchLayout, active: Active): TouchIntent[] {
+    if (active.twoFinger) {
+      if (sample.id === active.start.id) active.primaryY = sample.y;
+      else if (this.secondary?.id === sample.id) {
+        this.secondary = sample;
+        active.secondaryY = sample.y;
+      }
+      const centroid = (active.primaryY + active.secondaryY) / 2;
+      const intents: TouchIntent[] = [];
+      if (Math.abs(centroid - active.peekAnchorY) > TAP_SLOP_PX && !active.peeking) {
+        active.peeking = true;
+        intents.push({ kind: 'peek', held: true });
+      }
+      active.moved = true;
+      return intents;
+    }
+
     const dx = sample.x - active.start.x;
     const dy = sample.y - active.start.y;
     if (Math.abs(dx) > TAP_SLOP_PX || Math.abs(dy) > TAP_SLOP_PX) active.moved = true;
@@ -183,6 +216,14 @@ export class GestureRecogniser {
 
   private endRoll(sample: Sample, layout: TouchLayout): TouchIntent[] {
     const active = this.active;
+    if (active?.twoFinger) {
+      const intents: TouchIntent[] = [];
+      if (active.peeking) intents.push({ kind: 'peek', held: false });
+      this.active = null;
+      this.secondary = null;
+      return intents;
+    }
+
     this.active = null;
     if (!active) return [];
 

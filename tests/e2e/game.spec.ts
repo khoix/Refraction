@@ -3110,7 +3110,7 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
-    await page.getByRole('button', { name: '3D modes' }).click();
+    await page.getByRole('tab', { name: '3D modes' }).click();
 
     await expect(page.locator('.keymap--touch')).toBeVisible();
     await expect(page.locator('.keymap:not(.keymap--touch)')).toBeHidden();
@@ -3120,6 +3120,36 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('.keymap--touch')).toContainText('(When bar full) Right panel');
     await expect(page.locator('.keymap--touch')).not.toContainText('gauge');
     await expect(page.locator('.control-diagram--touch')).toBeVisible();
+    await expect(page.locator('.controls-editor__remap')).toBeHidden();
+    await expect(page.locator('.control-diagram__title')).toContainText('Tap Zones');
+    await expect(page.locator('.phone-bezel')).toBeVisible();
+    await expect(page.locator('.control-diagram--touch .wedge--roll').first()).toBeVisible();
+    await context.close();
+  });
+
+  test('Flatland tab shows the animated touch diagram on a phone', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+      ],
+    });
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.getByRole('tab', { name: 'Flatland' }).click();
+
+    await expect(page.locator('.control-diagram__wedge--flatland')).toBeVisible();
+    await expect(page.locator('.control-diagram--touch')).toContainText('Drag to move');
+    await expect(page.locator('.keymap--touch')).toContainText('Two-finger swipe up / down');
     await context.close();
   });
 
@@ -3131,6 +3161,7 @@ test.describe('the controls panel follows the input method', () => {
 
     await expect(page.locator('.keymap:not(.keymap--touch)')).toBeVisible();
     await expect(page.locator('.keymap--touch')).toBeHidden();
+    await expect(page.locator('.controls-editor__remap')).toBeVisible();
   });
 });
 
@@ -3332,6 +3363,27 @@ test.describe('Peek', () => {
     const tilted = await peeking(page);
     await page.keyboard.up('KeyP');
     expect(tilted).toBe(false);
+  });
+
+  test('stays available in Flatland past stage 6', async ({ page }) => {
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await page.evaluate(() => window.__refraction?.play('flatland', 'peek'));
+    await page.evaluate(
+      ({ perStage }) => {
+        const game = window.__refraction?.game;
+        if (!game) throw new Error('debug hook unavailable');
+        game.lines = perStage * 5;
+      },
+      { perStage: LINES_PER_STAGE }
+    );
+    await expect.poll(() => page.evaluate(() => window.__refraction?.game.stage.index)).toBe(6);
+    expect(await page.evaluate(() => window.__refraction?.game.peekAllowed)).toBe(true);
+
+    await page.keyboard.down('KeyP');
+    await expect.poll(() => peeking(page)).toBe(true);
+    await page.keyboard.up('KeyP');
+    await expect.poll(() => peeking(page)).toBe(false);
   });
 
   test('is off entirely where there is no colour to supplement', async ({ page }) => {

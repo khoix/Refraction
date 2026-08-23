@@ -14,7 +14,7 @@
  * answer to, because it reads the same resolved rows.
  */
 
-import type { DepthNudgePolicy, RotationPolicy } from '@core/modes';
+import type { DepthNudgePolicy, PeekPolicy, RotationPolicy } from '@core/modes';
 
 /** Everything the player can ask for. */
 export type Action =
@@ -126,12 +126,12 @@ const BINDING_META: readonly BindingMeta[] = [
   { action: 'moveRight', label: 'Right', group: 'Move' },
   { action: 'softDrop', label: 'Soft drop', group: 'Move' },
   { action: 'hardDrop', label: 'Hard drop', group: 'Move' },
-  { action: 'rollClock', label: 'Roll', group: 'Rotate' },
-  { action: 'rollAnti', label: 'Roll back', group: 'Rotate' },
-  { action: 'yawClock', label: 'Yaw', group: 'Rotate', needs: 'depthRotation' },
-  { action: 'yawAnti', label: 'Yaw back', group: 'Rotate', needs: 'depthRotation' },
-  { action: 'pitchUp', label: 'Pitch', group: 'Rotate', needs: 'depthRotation' },
-  { action: 'pitchDown', label: 'Pitch back', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'rollClock', label: 'Roll ▶', group: 'Rotate' },
+  { action: 'rollAnti', label: '◀ Roll', group: 'Rotate' },
+  { action: 'yawClock', label: 'Yaw ▶', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'yawAnti', label: '◀ Yaw', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'pitchUp', label: '▲ Pitch', group: 'Rotate', needs: 'depthRotation' },
+  { action: 'pitchDown', label: 'Pitch ▼', group: 'Rotate', needs: 'depthRotation' },
   {
     action: 'nudgeDeeper',
     needs: 'depthNudge',
@@ -150,7 +150,6 @@ const BINDING_META: readonly BindingMeta[] = [
     action: 'peek',
     label: 'Peek — hold to tilt',
     group: 'Depth',
-    note: 'Until stage 6',
   },
   {
     action: 'collapse',
@@ -372,14 +371,14 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
   },
   {
     gesture: 'Tap left',
-    label: 'Roll back',
+    label: '◀ Roll',
     group: 'Rotate',
     note: 'Left of centre',
     profile: 'roll',
   },
   {
     gesture: 'Tap right',
-    label: 'Roll',
+    label: 'Roll ▶',
     group: 'Rotate',
     note: 'Right of centre',
     profile: 'roll',
@@ -431,7 +430,12 @@ export const TOUCH_ACTIONS: readonly TouchAction[] = [
     profile: 'full',
   },
 
-  { gesture: 'Press and hold', label: 'Peek', group: 'Depth', note: 'Until stage 6', profile: 'roll' },
+  {
+    gesture: 'Two-finger swipe up / down',
+    label: 'Peek',
+    group: 'Depth',
+    profile: 'roll',
+  },
   {
     gesture: 'Vertical depth swipe',
     label: 'Peek',
@@ -461,6 +465,7 @@ export function appliesToMode(
     readonly rotation: RotationPolicy;
     readonly depthNudge: DepthNudgePolicy;
     readonly spectralCollapse: boolean;
+    readonly peekPolicy: PeekPolicy;
   }
 ): boolean {
   const profile = profileForMode(mode);
@@ -493,11 +498,17 @@ export function capsForProfile(profile: BindingProfile): {
   readonly rotation: RotationPolicy;
   readonly depthNudge: DepthNudgePolicy;
   readonly spectralCollapse: boolean;
+  readonly peekPolicy: PeekPolicy;
 } {
   if (profile === 'roll') {
-    return { rotation: 'roll', depthNudge: 'never', spectralCollapse: true };
+    return {
+      rotation: 'roll',
+      depthNudge: 'never',
+      spectralCollapse: true,
+      peekPolicy: 'always',
+    };
   }
-  return { rotation: 'all', depthNudge: 'always', spectralCollapse: true };
+  return { rotation: 'all', depthNudge: 'always', spectralCollapse: true, peekPolicy: 'byStage' };
 }
 
 export const TOUCH_TURN_NOTE =

@@ -7,6 +7,34 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Touch control diagrams + Flatland peek
+
+**Branch:** `main`
+
+Settings touch diagrams are now phone-frame SVGs: Flatland runs an animated
+gesture loop (drag, tap L/R roll, flick hard drop); 3D modes show the wedge tap
+map at phone aspect ratio with a playfield mock and directional rotation labels.
+Mobile controls CSS moved after the base rules so coarse-pointer devices actually
+get the touch panel (keyboard diagram was leaking through). Remap hides on touch;
+profile tabs are proper ARIA tabs.
+
+Flatland keeps Peek for the whole run (`peekPolicy: 'always'`) and gains a
+two-finger vertical swipe to peek. It starts at stage 1 again. Rotation labels
+in the key map use arrow glyphs (Roll ▶, ◀ Yaw, etc.). Peek’s “Until stage 6”
+note is mode-scoped in Settings.
+
+Dev: `server.cjs` mounts `dist/` for the main site; npm scripts invoke binaries
+via `node ./node_modules/...`; `.npmrc` sets `bin-links=false`; `tsconfig` clears
+the global `types` pin (Vitest globals stay on the test config).
+
+### Tested
+
+Unit: Flatland peek past stage 6, two-finger peek gesture, stage-1 start,
+profile peek caps, diagram source invariants. E2e: controls tabs and diagrams on
+phone, remap hidden on touch, Flatland peek past stage 6.
+
+---
+
 ## Dual-profile controls + remapping
 
 **Branch:** `cursor/refraction-kendega-desktop`

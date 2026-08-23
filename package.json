@@ -9,23 +9,24 @@
     "node": ">=20.19.0"
   },
   "scripts": {
-    "dev": "vite",
-    "build": "tsc --noEmit && vite build",
-    "preview": "vite preview --port 4173 --strictPort --host 127.0.0.1",
-    "typecheck": "tsc --noEmit",
-    "lint": "eslint .",
-    "lint:fix": "eslint . --fix",
-    "format": "prettier --write .",
-    "format:check": "prettier --check .",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "test:coverage": "vitest run --coverage",
-    "test:e2e": "playwright test",
-    "test:e2e:ui": "playwright test --ui",
+    "dev": "node ./node_modules/vite/bin/vite.js",
+    "build": "node ./node_modules/typescript/bin/tsc --noEmit && node ./node_modules/vite/bin/vite.js build",
+    "preview": "node ./node_modules/vite/bin/vite.js preview --port 4173 --strictPort --host 127.0.0.1",
+    "typecheck": "node ./node_modules/typescript/bin/tsc --noEmit",
+    "lint": "node ./node_modules/eslint/bin/eslint.js .",
+    "lint:fix": "node ./node_modules/eslint/bin/eslint.js . --fix",
+    "format": "node ./node_modules/prettier/bin/prettier.cjs --write .",
+    "format:check": "node ./node_modules/prettier/bin/prettier.cjs --check .",
+    "test": "node ./node_modules/vitest/vitest.mjs run",
+    "test:watch": "node ./node_modules/vitest/vitest.mjs",
+    "test:coverage": "node ./node_modules/vitest/vitest.mjs run --coverage",
+    "test:e2e": "node ./node_modules/@playwright/test/cli.js test",
+    "test:e2e:ui": "node ./node_modules/@playwright/test/cli.js test --ui",
     "verify": "npm run typecheck && npm run lint && npm run test",
     "verify:full": "npm run verify && npm run build && npm run test:e2e"
   },
   "dependencies": {
+    "express": "^4.22.2",
     "three": "^0.185.1"
   },
   "devDependencies": {
