@@ -2746,8 +2746,13 @@ test.describe('arrow keys move through the menus', () => {
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
+    // Land on the first toggle explicitly — remaps / diagrams added many
+    // focusables, so a short walk from whatever held focus after the click
+    // can miss the field rows entirely.
+    await page.locator('.panel--settings .field__input').first().focus();
+
     const seen = new Set<string>();
-    for (let i = 0; i < 12; i += 1) {
+    for (let i = 0; i < 40; i += 1) {
       seen.add(await page.evaluate(() => document.activeElement?.className ?? ''));
       await page.keyboard.press('ArrowDown');
     }
@@ -2936,17 +2941,18 @@ test.describe('touch controls', () => {
   test('a wedge tap rotates instead of moving', async ({ page }) => {
     await page.goto('/?debug=1&mode=ascent&seed=touchspin');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
-    const at = await anchors(page);
 
     const shape = (): Promise<string> =>
       page.evaluate(() => JSON.stringify(window.__refraction?.game.active?.offsets ?? []));
     const before = await shape();
     const beforeColumn = await column(page);
-    // Top-right corner of the viewport → roll / yaw wedge.
-    await gesture(page, [
-      { x: at.field(7).x, y: 30 },
-      { x: at.field(7).x, y: 30 },
-    ]);
+    // Viewport-normalized E_TOP_RIGHT → rollClock (always unlocked). A well
+    // column x at y≈0 often lands in W (pitch), which Ascent refuses early.
+    const corner = await page.evaluate(() => ({
+      x: window.innerWidth * 0.88,
+      y: window.innerHeight * 0.1,
+    }));
+    await gesture(page, [corner, corner]);
     expect(await shape()).not.toBe(before);
     expect(await column(page)).toBe(beforeColumn);
   });
