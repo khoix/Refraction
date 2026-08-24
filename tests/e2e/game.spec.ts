@@ -2,6 +2,18 @@ import { devices, expect, test } from '@playwright/test';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { LINES_PER_STAGE } from '../../src/core/stages';
 
+/**
+ * The controls editor keeps both profile panes mounted; CSS and `inert` hide the
+ * inactive one. Locators must scope to the active pane or Playwright strict mode
+ * sees duplicate keymaps and diagrams.
+ */
+const ACTIVE_CONTROLS_PANE = '.controls-editor__profile-pane:not(.controls-profile-pane--off)';
+const KEYBOARD_MAP = `${ACTIVE_CONTROLS_PANE} .keymap:not(.keymap--touch)`;
+const KEYBOARD_TABLE = `${ACTIVE_CONTROLS_PANE} .controls-editor__table`;
+const TOUCH_MAP = `${ACTIVE_CONTROLS_PANE} .keymap--touch`;
+const TOUCH_DIAGRAM = `${ACTIVE_CONTROLS_PANE} .control-diagram--touch`;
+const KEYBOARD_DIAGRAM = `${ACTIVE_CONTROLS_PANE} .control-diagram--keyboard`;
+
 /** Wait for the first rendered frame. */
 async function boot(page: Page): Promise<void> {
   await page.goto('/?mode=ascent');
@@ -2605,11 +2617,6 @@ test.describe('the marks survive a buried board', () => {
  * written and wrong by the next change, with nothing to catch it.
  */
 test.describe('the key map', () => {
-  // Both panels are in the DOM; CSS decides which one the device sees. Every
-  // locator here has to say which, or it matches the touch rows as well and
-  // counts them as keyboard bindings.
-  const KEYBOARD_MAP = '.keymap:not(.keymap--touch)';
-
   /**
    * Open settings with a given mode in play.
    *
@@ -3114,18 +3121,20 @@ test.describe('the controls panel follows the input method', () => {
     await page.getByRole('button', { name: 'Controls' }).click();
     await page.getByRole('tab', { name: '3D modes' }).click();
 
-    await expect(page.locator('.keymap--touch')).toBeVisible();
-    await expect(page.locator('.keymap:not(.keymap--touch)')).toBeHidden();
-    await expect(page.locator('.keymap--touch')).toContainText('Two-finger swipe down');
-    await expect(page.locator('.keymap--touch .keymap__foot')).toContainText('Shift meter');
-    await expect(page.locator('.keymap--touch')).toContainText('X button');
-    await expect(page.locator('.keymap--touch')).toContainText('(When bar full) Right panel');
-    await expect(page.locator('.keymap--touch')).not.toContainText('gauge');
-    await expect(page.locator('.control-diagram--touch')).toBeVisible();
-    await expect(page.locator('.controls-editor__table')).toBeHidden();
-    await expect(page.locator('.control-diagram__title')).toContainText('Tap Zones');
+    await expect(page.locator(TOUCH_MAP)).toBeVisible();
+    await expect(page.locator(KEYBOARD_MAP)).toBeHidden();
+    await expect(page.locator(TOUCH_MAP)).toContainText('Two-finger swipe down');
+    await expect(page.locator(`${TOUCH_MAP} .keymap__foot`)).toContainText('Shift meter');
+    await expect(page.locator(TOUCH_MAP)).toContainText('X button');
+    await expect(page.locator(TOUCH_MAP)).toContainText('(When bar full) Right panel');
+    await expect(page.locator(TOUCH_MAP)).not.toContainText('gauge');
+    await expect(page.locator(TOUCH_DIAGRAM)).toBeVisible();
+    await expect(page.locator(KEYBOARD_TABLE)).toBeHidden();
+    await expect(page.locator(`${TOUCH_DIAGRAM} .control-diagram__title`)).toContainText(
+      'Tap Zones'
+    );
     await expect(page.locator('.phone-bezel')).toBeVisible();
-    await expect(page.locator('.control-diagram--touch .wedge--roll').first()).toBeVisible();
+    await expect(page.locator(`${TOUCH_DIAGRAM} .wedge--roll`).first()).toBeVisible();
     await context.close();
   });
 
@@ -3181,8 +3190,8 @@ test.describe('the controls panel follows the input method', () => {
     await page.getByRole('tab', { name: 'Flatland' }).click();
 
     await expect(page.locator('.control-diagram__wedge--flatland')).toBeVisible();
-    await expect(page.locator('.control-diagram--touch')).toContainText('Drag to move');
-    await expect(page.locator('.keymap--touch')).toContainText('Two-finger swipe up / down');
+    await expect(page.locator(TOUCH_DIAGRAM)).toContainText('Drag to move');
+    await expect(page.locator(TOUCH_MAP)).toContainText('Two-finger swipe up / down');
     await context.close();
   });
 
@@ -3192,11 +3201,11 @@ test.describe('the controls panel follows the input method', () => {
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
-    await expect(page.locator('.keymap:not(.keymap--touch)')).toBeVisible();
-    await expect(page.locator('.keymap--touch')).toBeHidden();
-    await expect(page.locator('.control-diagram--touch')).toBeHidden();
-    await expect(page.locator('.control-diagram--keyboard')).toBeVisible();
-    await expect(page.locator('.controls-editor__table')).toBeVisible();
+    await expect(page.locator(KEYBOARD_MAP)).toBeVisible();
+    await expect(page.locator(TOUCH_MAP)).toBeHidden();
+    await expect(page.locator(TOUCH_DIAGRAM)).toBeHidden();
+    await expect(page.locator(KEYBOARD_DIAGRAM)).toBeVisible();
+    await expect(page.locator(KEYBOARD_TABLE)).toBeVisible();
   });
 });
 
@@ -4487,7 +4496,7 @@ test.describe('Spectral Collapse', () => {
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'SETTINGS' }).click();
       await expect(
-        page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
+        page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="collapse"]`)
       ).toBeVisible();
     }
   });

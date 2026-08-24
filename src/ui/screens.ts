@@ -850,7 +850,15 @@ export class Screens {
   private syncControlsProfile(): void {
     const profile = this.settingsProfile;
     for (const pane of this.controls.querySelectorAll<HTMLElement>('[data-controls-profile]')) {
-      pane.classList.toggle('controls-profile-pane--off', pane.dataset['controlsProfile'] !== profile);
+      const active = pane.dataset['controlsProfile'] === profile;
+      pane.classList.toggle('controls-profile-pane--off', !active);
+      if (active) {
+        pane.removeAttribute('inert');
+        pane.removeAttribute('aria-hidden');
+      } else {
+        pane.setAttribute('inert', '');
+        pane.setAttribute('aria-hidden', 'true');
+      }
     }
     const flatTab = this.controls.querySelector<HTMLButtonElement>('#controls-tab-roll');
     const fullTab = this.controls.querySelector<HTMLButtonElement>('#controls-tab-full');
