@@ -2913,6 +2913,11 @@ test.describe('touch controls', () => {
     await page.goto('/?debug=1&mode=ascent&seed=touchwall');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     const at = await anchors(page);
+    const minU = await page.evaluate(() => {
+      const active = window.__refraction?.game.active;
+      if (!active) return 0;
+      return -Math.min(...active.offsets.map((c) => c.x));
+    });
 
     // One continuous drag: left into the wall, then back, without lifting.
     //
@@ -2925,10 +2930,10 @@ test.describe('touch controls', () => {
       [at.strip(7), at.strip(4), at.strip(1), at.strip(0), at.strip(0), at.strip(1)],
       { pauseMs: 10 }
     );
-    // Seven columns of travel left from a spawn near the middle leaves three or
-    // four columns pressed into the wall. Coming back one column has to move the
-    // piece one column, not work off the debt first.
-    expect(await column(page)).toBe(1);
+    // Seven columns of travel left from a spawn near the middle presses into the
+    // wall at this shape's minimum u (pivot-centred offsets may be negative).
+    // Coming back one column has to move the piece one column, not work off debt.
+    expect(await column(page)).toBe(minU + 1);
   });
 
   test('a flick down drops the piece in Flatland', async ({ page }) => {
@@ -3133,7 +3138,7 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator(`${TOUCH_DIAGRAM} .control-diagram__title`)).toContainText(
       'Tap Zones'
     );
-    await expect(page.locator('.phone-bezel')).toBeVisible();
+    await expect(page.locator(`${TOUCH_DIAGRAM} .phone-bezel`)).toBeVisible();
     await expect(page.locator(`${TOUCH_DIAGRAM} .wedge--roll`).first()).toBeVisible();
     await context.close();
   });

@@ -42,6 +42,10 @@ back is the masthead button (`aria-label="Back"`), not a bottom BACK row — tes
 that walk keyboard focus or leave Settings should target that control. Both
 control profiles stay mounted; scope locators to
 `.controls-editor__profile-pane:not(.controls-profile-pane--off)` so inactive
+Flatland / 3D panes do not trip strict mode. Arrow-key focus skips `[inert]`
+subtrees so the hidden profile is not in the walk. Both
+control profiles stay mounted; scope locators to
+`.controls-editor__profile-pane:not(.controls-profile-pane--off)` so inactive
 Flatland / 3D panes do not trip strict mode.
 
 ### Visual regression — from M2

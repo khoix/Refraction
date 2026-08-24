@@ -814,7 +814,10 @@ export class Screens {
     }
 
     const items = [...panel.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]')].filter(
-      (node) => !(node as HTMLButtonElement).disabled && node.offsetParent !== null
+      (node) =>
+        !(node as HTMLButtonElement).disabled &&
+        node.offsetParent !== null &&
+        !node.closest('[inert]')
     );
     if (items.length === 0) return;
 
