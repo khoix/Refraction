@@ -50,14 +50,15 @@ export const GEL_VARIANTS: readonly GelVariant[] = [
     name: 'Translucent',
     blurb: 'See-through gel — faces breathe, edges hold the light like thick glass.',
     roundness: 0.14,
-    roughness: 0.18,
-    opacity: 0.78,
+    roughness: 0.22,
+    opacity: 0.72,
     boost: {
-      rim: 0.62,
-      gloss: 0.48,
-      translucency: 0.35,
-      innerGlow: 0.22,
-      density: 0.16,
+      rim: 0.32,
+      gloss: 0.28,
+      translucency: 0.32,
+      innerGlow: 0.06,
+      density: 0.14,
+      pool: 0.03,
     },
   },
   {
@@ -65,14 +66,14 @@ export const GEL_VARIANTS: readonly GelVariant[] = [
     name: 'Deep resin',
     blurb: 'Denser core, stronger pool — colour settles toward the lower edge.',
     roundness: 0.13,
-    roughness: 0.28,
-    opacity: 0.92,
+    roughness: 0.3,
+    opacity: 0.94,
     boost: {
-      density: 0.34,
-      pool: 0.08,
-      innerGlow: 0.28,
-      gloss: 0.42,
-      rim: 0.48,
+      density: 0.3,
+      pool: 0.06,
+      innerGlow: 0.1,
+      gloss: 0.32,
+      rim: 0.28,
     },
   },
   {
@@ -80,17 +81,18 @@ export const GEL_VARIANTS: readonly GelVariant[] = [
     name: 'Glass cube',
     blurb: 'Physical transmission — refractive body with a tight specular catch.',
     roundness: 0.16,
-    roughness: 0.06,
+    roughness: 0.08,
     opacity: 1,
     physical: true,
-    ior: 1.48,
-    transmission: 0.72,
-    thickness: 0.85,
-    clearcoat: 0.85,
+    ior: 1.45,
+    transmission: 0.55,
+    thickness: 0.7,
+    clearcoat: 0.6,
     boost: {
-      rim: 0.55,
-      gloss: 0.52,
-      chromatic: 0.12,
+      rim: 0.3,
+      gloss: 0.34,
+      chromatic: 0.05,
+      density: 0.12,
     },
   },
   {
@@ -98,13 +100,14 @@ export const GEL_VARIANTS: readonly GelVariant[] = [
     name: 'Neon edge',
     blurb: 'Bloom-friendly rim — silhouette glows, centre stays faithful to the ramp.',
     roundness: 0.12,
-    roughness: 0.22,
-    opacity: 0.88,
+    roughness: 0.26,
+    opacity: 0.9,
     boost: {
-      rim: 0.78,
-      innerGlow: 0.42,
-      gloss: 0.55,
-      caustic: 0.18,
+      rim: 0.36,
+      innerGlow: 0.08,
+      gloss: 0.3,
+      caustic: 0.06,
+      density: 0.16,
     },
   },
   {
@@ -112,14 +115,15 @@ export const GEL_VARIANTS: readonly GelVariant[] = [
     name: 'Soft jelly',
     blurb: 'Pillow corners, squishy body — rounded bevels and a milky centre.',
     roundness: 0.2,
-    roughness: 0.42,
-    opacity: 0.72,
+    roughness: 0.45,
+    opacity: 0.7,
     boost: {
-      translucency: 0.48,
-      density: 0.12,
-      pool: 0.06,
-      innerGlow: 0.18,
-      rim: 0.35,
+      translucency: 0.38,
+      density: 0.1,
+      pool: 0.04,
+      innerGlow: 0.05,
+      rim: 0.22,
+      gloss: 0.2,
     },
   },
 ] as const;
@@ -166,11 +170,12 @@ vec3 gelLight() {
 `;
 
 function makeBoostAlbedo(base: GelBoost | undefined): string {
-  const gloss = 0.38 + (base?.gloss ?? 0);
-  const rim = 0.4 + (base?.rim ?? 0);
-  const pool = 0.04 + (base?.pool ?? 0);
-  const density = 0.22 + (base?.density ?? 0);
-  const specks = 0.07 + (base?.specks ?? 0);
+  // Absolute coefficients (same scale as production gel), not stacked on top of it.
+  const gloss = base?.gloss ?? 0.38;
+  const rim = base?.rim ?? 0.4;
+  const pool = base?.pool ?? 0.04;
+  const density = base?.density ?? 0.22;
+  const specks = base?.specks ?? 0.07;
   const translucency = base?.translucency ?? 0;
   const caustic = base?.caustic ?? 0;
   const chromatic = base?.chromatic ?? 0;
@@ -209,13 +214,12 @@ function makeBoostAlbedo(base: GelBoost | undefined): string {
 }
 
 function makeBoostEmission(base: GelBoost | undefined): string {
-  const innerGlow = 0.18 + (base?.innerGlow ?? 0);
+  const innerGlow = base?.innerGlow ?? 0.1;
   return /* glsl */ `
   float gEdge = gelEdge(vGelPosition);
   float gPool = gelBelow(vGelPosition) * uGelStrength;
   float gInner = (1.0 - gEdge) * gPool * ${innerGlow.toFixed(3)} * uGelStrength;
   totalEmissiveRadiance += diffuseColor.rgb * gInner;
-  totalEmissiveRadiance += diffuseColor.rgb * gEdge * ${((base?.rim ?? 0) * 0.35).toFixed(3)} * uGelStrength;
 `;
 }
 

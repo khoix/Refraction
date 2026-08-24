@@ -15,6 +15,19 @@ import { createGelMaterial, GEL_VARIANTS, setPreviewGelYaw, type GelVariant } fr
 const CUBE_GAP = 0.88;
 const GRID_COLS = 3;
 const GRID_ROWS = 2;
+/** World spacing between variant centres. */
+const CELL_W = 7.2;
+const CELL_H = 6.4;
+/** Label sits this far below each cluster in world space. */
+const LABEL_BELOW = 2.15;
+
+export interface GelLabelAnchor {
+  readonly id: string;
+  readonly name: string;
+  /** CSS pixels from the canvas/stage top-left. */
+  readonly x: number;
+  readonly y: number;
+}
 
 interface VariantSlot {
   readonly variant: GelVariant;
@@ -32,7 +45,11 @@ export class GelShowcase {
   private readonly keyLight: THREE.DirectionalLight;
   private readonly fillLight: THREE.DirectionalLight;
   private readonly rimLight: THREE.DirectionalLight;
+  private readonly scratch = new THREE.Vector3();
   private elapsed = 0;
+  /** World-space look target — shifted so the grid sits in the free area right of the panel. */
+  private readonly lookAt = new THREE.Vector3(0, 0, 0);
+  private leftSafePx = 0;
 
   constructor(canvas: HTMLCanvasElement) {
     this.scene.background = new THREE.Color(0x05060a);
@@ -53,15 +70,16 @@ export class GelShowcase {
 
     this.composer = new EffectComposer(this.renderer);
     this.composer.addPass(new RenderPass(this.scene, this.camera));
-    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.72, 0.55, 0.45);
+    // Subtle halo only — faces must stay readable. Threshold high so gel albedo does not bloom.
+    this.bloomPass = new UnrealBloomPass(new THREE.Vector2(1, 1), 0.22, 0.28, 0.94);
     this.composer.addPass(this.bloomPass);
     this.composer.addPass(new OutputPass());
 
-    this.scene.add(new THREE.AmbientLight(0xffffff, Math.PI * 0.55));
+    this.scene.add(new THREE.AmbientLight(0xffffff, Math.PI * 0.38));
 
-    this.keyLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.85);
-    this.fillLight = new THREE.DirectionalLight(0xd8e4ff, Math.PI * 0.28);
-    this.rimLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.42);
+    this.keyLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.52);
+    this.fillLight = new THREE.DirectionalLight(0xd8e4ff, Math.PI * 0.18);
+    this.rimLight = new THREE.DirectionalLight(0xffffff, Math.PI * 0.22);
     this.scene.add(this.keyLight, this.fillLight, this.rimLight);
 
     this.buildGrid();
@@ -70,16 +88,14 @@ export class GelShowcase {
   }
 
   private buildGrid(): void {
-    const cellW = 4.2;
-    const cellH = 4.6;
-    const originX = -((GRID_COLS - 1) * cellW) / 2;
-    const originY = ((GRID_ROWS - 1) * cellH) / 2;
+    const originX = -((GRID_COLS - 1) * CELL_W) / 2;
+    const originY = ((GRID_ROWS - 1) * CELL_H) / 2;
 
     GEL_VARIANTS.forEach((variant, index) => {
       const col = index % GRID_COLS;
       const row = Math.floor(index / GRID_COLS);
       const group = new THREE.Group();
-      group.position.set(originX + col * cellW, originY - row * cellH, 0);
+      group.position.set(originX + col * CELL_W, originY - row * CELL_H, 0);
 
       const cubes = this.buildCluster(variant);
       for (const cube of cubes) group.add(cube);
@@ -127,17 +143,17 @@ export class GelShowcase {
     const pitch = THREE.MathUtils.degToRad(14);
     const dist = 28;
     this.keyLight.position.set(
-      Math.sin(yaw + 0.4) * Math.cos(pitch) * dist,
+      this.lookAt.x + Math.sin(yaw + 0.4) * Math.cos(pitch) * dist,
       Math.sin(pitch) * dist + 6,
       Math.cos(yaw + 0.4) * Math.cos(pitch) * dist
     );
     this.fillLight.position.set(
-      Math.sin(yaw - 1.2) * dist * 0.7,
+      this.lookAt.x + Math.sin(yaw - 1.2) * dist * 0.7,
       4,
       Math.cos(yaw - 1.2) * dist * 0.7
     );
     this.rimLight.position.set(
-      -Math.sin(yaw) * dist,
+      this.lookAt.x - Math.sin(yaw) * dist,
       8,
       -Math.cos(yaw) * dist
     );
@@ -160,7 +176,34 @@ export class GelShowcase {
     }
   }
 
-  resize(): void {
+  /**
+   * Screen positions for each variant label, under its cluster.
+   * Coordinates are CSS pixels relative to the canvas element.
+   */
+  labelAnchors(): readonly GelLabelAnchor[] {
+    const width = this.renderer.domElement.clientWidth;
+    const height = this.renderer.domElement.clientHeight;
+    if (width <= 0 || height <= 0) return [];
+
+    return this.slots.map((slot) => {
+      this.scratch.set(0, -LABEL_BELOW, 0);
+      slot.group.localToWorld(this.scratch);
+      this.scratch.project(this.camera);
+      return {
+        id: slot.variant.id,
+        name: slot.variant.name,
+        x: (this.scratch.x * 0.5 + 0.5) * width,
+        y: (-this.scratch.y * 0.5 + 0.5) * height,
+      };
+    });
+  }
+
+  /**
+   * Refit the camera. `leftSafePx` is the panel width (+ gap) in CSS pixels so the
+   * 3×2 grid is framed in the free area to the right of the chrome.
+   */
+  resize(leftSafePx = this.leftSafePx): void {
+    this.leftSafePx = Math.max(0, leftSafePx);
     const width = this.renderer.domElement.clientWidth;
     const height = this.renderer.domElement.clientHeight;
     if (width <= 0 || height <= 0) return;
@@ -168,13 +211,25 @@ export class GelShowcase {
     this.composer.setSize(width, height);
 
     const aspect = width / height;
-    const frustum = 11.5;
-    this.camera.left = -frustum * aspect;
-    this.camera.right = frustum * aspect;
+    const panelFrac = Math.min(0.55, this.leftSafePx / width);
+    const freeFrac = Math.max(0.4, 1 - panelFrac);
+
+    // Fit the grid into the free column, not the full canvas.
+    const gridHalfW = ((GRID_COLS - 1) * CELL_W) / 2 + 2.4;
+    const gridHalfH = ((GRID_ROWS - 1) * CELL_H) / 2 + 2.8;
+    const frustumFromWidth = gridHalfW / (aspect * freeFrac);
+    const frustum = Math.max(frustumFromWidth, gridHalfH);
+    const halfW = frustum * aspect;
+
+    // Place world origin at the horizontal centre of the free region.
+    this.lookAt.set(-panelFrac * halfW, 0, 0);
+
+    this.camera.left = -halfW;
+    this.camera.right = halfW;
     this.camera.top = frustum;
     this.camera.bottom = -frustum;
-    this.camera.position.set(0, 0, 42);
-    this.camera.lookAt(0, 0, 0);
+    this.camera.position.set(this.lookAt.x, this.lookAt.y, 42);
+    this.camera.lookAt(this.lookAt);
     this.camera.updateProjectionMatrix();
   }
 

@@ -3,7 +3,9 @@ import {
   EXPERIMENTAL_PIECES,
   PIECES,
   PIECES_BY_ID,
+  centerOnPivot,
   extent,
+  integerPivot,
   isConnected,
   isPlanar,
   normalize,
@@ -106,12 +108,20 @@ describe('the experimental catalogue', () => {
 });
 
 describe('rotation', () => {
-  it('returns to the original shape after four turns about any axis', () => {
+  it('centres every catalogue piece on its integer pivot', () => {
+    for (const piece of PIECES) {
+      const centred = centerOnPivot(piece.cells);
+      expect(integerPivot(centred)).toEqual({ x: 0, y: 0, z: 0 });
+    }
+  });
+
+  it('returns to the original offsets after four turns about any axis', () => {
     for (const piece of PIECES) {
       for (const axis of ['x', 'y', 'z'] as const) {
-        let cells: Cell[] = normalize([...piece.cells]);
+        const start = centerOnPivot([...piece.cells]);
+        let cells: Cell[] = start;
         for (let i = 0; i < 4; i += 1) cells = rotate(cells, axis);
-        expect(shapeKey(cells)).toBe(shapeKey(piece.cells));
+        expect(cells).toEqual(start);
       }
     }
   });
@@ -119,8 +129,9 @@ describe('rotation', () => {
   it('is reversible', () => {
     for (const piece of PIECES) {
       for (const axis of ['x', 'y', 'z'] as const) {
-        const there = rotate([...piece.cells], axis, true);
-        expect(shapeKey(rotate(there, axis, false))).toBe(shapeKey(piece.cells));
+        const centred = centerOnPivot([...piece.cells]);
+        const there = rotate(centred, axis, true);
+        expect(rotate(there, axis, false)).toEqual(centred);
       }
     }
   });
@@ -146,6 +157,48 @@ describe('rotation', () => {
     expect(orientations(PIECES_BY_ID.get('O')!.cells).length).toBeLessThan(
       orientations(PIECES_BY_ID.get('SCREW_L')!.cells).length
     );
+  });
+
+  it('rolls the I-piece about its 4-box centre, not a voxel', () => {
+    const centred = centerOnPivot(PIECES_BY_ID.get('I')!.cells);
+    // Integer storage origin is floor(1.5)=1 of the 4-box; rotation uses 0.5.
+    expect(integerPivot(centred)).toEqual({ x: 0, y: 0, z: 0 });
+    expect(centred).toEqual([
+      { x: -1, y: 0, z: 0 },
+      { x: 0, y: 0, z: 0 },
+      { x: 1, y: 0, z: 0 },
+      { x: 2, y: 0, z: 0 },
+    ]);
+
+    // World: bar at columns 3–6. Fractional pivot sits between columns 4 and 5
+    // (and between rows 10 and 11), matching the local 4×4 centre (1.5, 1.5).
+    const origin = { u: 4, y: 10, lane: 0 };
+    const world = (offsets: readonly Cell[]) =>
+      offsets
+        .map((o) => ({ x: origin.u + o.x, y: origin.y + o.y, z: origin.lane + o.z }))
+        .sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
+
+    expect(world(centred)).toEqual([
+      { x: 3, y: 10, z: 0 },
+      { x: 4, y: 10, z: 0 },
+      { x: 5, y: 10, z: 0 },
+      { x: 6, y: 10, z: 0 },
+    ]);
+
+    const rolled = rotate(centred, 'z', true);
+    // Vertical on the old third voxel's column; that cell stays occupied, but
+    // by the piece's second voxel — identity rotates around the fractional pivot.
+    expect(world(rolled)).toEqual([
+      { x: 5, y: 9, z: 0 },
+      { x: 5, y: 10, z: 0 },
+      { x: 5, y: 11, z: 0 },
+      { x: 5, y: 12, z: 0 },
+    ]);
+
+    // A full turn returns to the spawn offsets (box does not drift).
+    let cells: Cell[] = centred;
+    for (let i = 0; i < 4; i += 1) cells = rotate(cells, 'z', true);
+    expect(cells).toEqual(centred);
   });
 });
 

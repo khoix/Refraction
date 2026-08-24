@@ -13,7 +13,7 @@
 
 import { describe, expect, it } from 'vitest';
 import { Game } from '@core/game';
-import { normalize, rotate } from '@core/pieces';
+import { centerOnPivot, rotate } from '@core/pieces';
 import { columnCount, fromView } from '@core/projection';
 import type { Cell } from '@core/types';
 
@@ -43,17 +43,21 @@ function bestPlacement(game: Game): Placement | null {
   let best: Placement | null = null;
 
   for (let rolls = 0; rolls < 4; rolls += 1) {
-    let offsets = normalize([...piece.offsets]);
+    let offsets = centerOnPivot([...piece.offsets]);
     for (let i = 0; i < rolls; i += 1) offsets = rotate(offsets, 'z');
 
     for (let u = 0; u < columnCount(game.face); u += 1) {
-      const y = game.dropHeight(offsets, u, piece.lane);
+      // `u` here is the leftmost column of the bounding box, matching dropHeight's
+      // min-corner convention used elsewhere in searches.
+      const minX = Math.min(...offsets.map((c) => c.x));
+      const originU = u - minX;
+      const y = game.dropHeight(offsets, originU, piece.lane);
       if (y === null) continue;
 
       const board = game.board.clone();
       const cells = offsets.map((offset) =>
         fromView(game.face, {
-          u: u + offset.x,
+          u: originU + offset.x,
           y: y + offset.y,
           lane: piece.lane + offset.z,
         })
@@ -68,7 +72,7 @@ function bestPlacement(game: Game): Placement | null {
         lines * 40 +
         y * 0.6;
 
-      if (!best || cost < best.cost) best = { u, y, offsets, cost };
+      if (!best || cost < best.cost) best = { u: originU, y, offsets, cost };
     }
   }
   return best;

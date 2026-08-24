@@ -15,7 +15,7 @@ import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { depthParameterAtYaw, toView } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face } from '@core/types';
-import { applyGel, setGelStrength } from './gel';
+import { createGelMaterial, GEL_ROUNDNESS, setGelStrength } from './gel';
 import { toSceneX, toSceneY, toSceneZ } from './scene';
 
 const MAX_INSTANCES = BOARD_WIDTH * BOARD_HEIGHT * BOARD_DEPTH;
@@ -96,7 +96,7 @@ export class VoxelLayer {
   constructor(options: VoxelLayerOptions = {}) {
     this.lift = THREE.MathUtils.clamp(options.lift ?? 0, 0, 1);
     this.faceOffset = options.faceOffset ?? 0;
-    const geometry = new RoundedBoxGeometry(1, 1, 1, 3, 0.11);
+    const geometry = new RoundedBoxGeometry(1, 1, 1, 4, GEL_ROUNDNESS);
     const transparent = options.opacity !== undefined && options.opacity < 1;
 
     // The ghost is unlit on purpose: it has to show its landing lane's colour
@@ -118,19 +118,12 @@ export class VoxelLayer {
         : // Metalness stays at zero. With no environment map there is nothing
           // for a metal to reflect, so the only thing a non-zero value did here
           // was subtract that fraction from the diffuse albedo -- a cube's depth
-          // colour, quietly reduced for no visible return.
-          new THREE.MeshStandardMaterial({
-            roughness: 0.34,
-            metalness: 0,
+          // colour, quietly reduced for no visible return. Clearcoat carries the
+          // glass film instead; see createGelMaterial.
+          createGelMaterial({
             transparent,
             opacity: options.opacity ?? 1,
           });
-
-    // Solid cubes are cast resin; marks are not. The branch above has already
-    // separated them -- everything that is a ghost, a pane of glass, an occluded
-    // silhouette or a glow is unlit `MeshBasicMaterial` -- so the material's own
-    // type decides this rather than another option to pass through.
-    if (material instanceof THREE.MeshStandardMaterial) applyGel(material);
 
     // Where-hidden passes invert the depth test: fragments draw only when
     // something nearer has already claimed the pixel. Through-wall passes skip

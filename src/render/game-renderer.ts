@@ -16,7 +16,7 @@ import { BOARD_HEIGHT } from '@core/constants';
 import { FACE_YAW, depthParameterAtYaw, lineCells, toView, turnYawDelta } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face, TurnDirection } from '@core/types';
-import { Debris, Environment } from './environment';
+import { Debris, Environment, Sparks } from './environment';
 import { setGelYaw } from './gel';
 import type { SceneLights, Well } from './scene';
 import {
@@ -43,28 +43,35 @@ import { EdgeLayer, VoxelLayer } from './voxels';
 export const TURN_DURATION_MS = 750;
 
 /** How long the Full Spectrum whiteout takes to bloom and fade. */
-const PRISM_BLOOM_MS = 1500;
+const PRISM_BLOOM_MS = 1600;
 /**
  * Spectral Collapse whiteout: shorter and softer than Prism so Full Spectrum
  * still reads as the bigger event, but bright enough that the floor giving way
  * is not only a camera bump.
  */
-const COLLAPSE_BLOOM_MS = 720;
-const COLLAPSE_WHITEOUT_PEAK = 0.72;
+const COLLAPSE_BLOOM_MS = 820;
+const COLLAPSE_WHITEOUT_PEAK = 0.78;
 /** Peak camera pan during a shake, in board cells. */
-const SHAKE_AMPLITUDE = 0.32;
-const SHAKE_DECAY_MS = 380;
+const SHAKE_AMPLITUDE = 0.38;
+const SHAKE_DECAY_MS = 420;
 /** How long the just-locked cells flash. */
-const LOCK_FLASH_MS = 160;
+const LOCK_FLASH_MS = 220;
+/** Debris/spark counts per lock — sparse and small so lock stays a tap. */
+const LOCK_DEBRIS_RING = 1;
+const LOCK_DEBRIS_CENTER = 1;
+const LOCK_SPARKS_RING = 1;
+const LOCK_SPARKS_CENTER = 1;
+const LOCK_PARTICLE_SIZE = 0.55;
 
 /**
  * Bloom is selective by threshold: the settled board's colours sit safely
- * below it, so only pixels pushed past it by the additive clear glow or the
- * Prism whiteout ever bloom. Clears and Prism events shine; nothing else does.
+ * below it, so only pixels the clear glow or the Prism whiteout push past the
+ * threshold ever bloom. Kept restrained — glass clearcoat already reads bright,
+ * and a hot bloom turned every lock into a whiteout.
  */
 const BLOOM_THRESHOLD = 0.98;
-const BLOOM_STRENGTH = 0.55;
-const BLOOM_RADIUS = 0.3;
+const BLOOM_STRENGTH = 0.28;
+const BLOOM_RADIUS = 0.22;
 
 /**
  * What bloom becomes on the screens with no board on them.
@@ -487,6 +494,7 @@ export class GameRenderer {
   private previewRect: PreviewRect | null = null;
   private readonly environment: Environment;
   private readonly debris = new Debris();
+  private readonly sparks = new Sparks();
   private readonly composer: EffectComposer;
   private readonly bloomPass: UnrealBloomPass;
   /** Every layer that draws cubes, for settings that apply to all of them. */
@@ -614,7 +622,8 @@ export class GameRenderer {
       this.ghostHidden.mesh,
       this.contact.mesh,
       this.lockFlashLayer.mesh,
-      this.debris.points
+      this.debris.points,
+      this.sparks.group
     );
 
     // A real post-process chain, so bloom is thresholded rather than painted:
@@ -866,6 +875,8 @@ export class GameRenderer {
   /** Begin the Full Spectrum bloom. */
   startPrism(): void {
     this.prismElapsed = 0;
+    this.environment.react(1);
+    this.environment.ripple(1);
   }
 
   /**
@@ -878,6 +889,21 @@ export class GameRenderer {
     this.environment.react(1);
     this.environment.ripple(1);
     this.shake(1);
+    // Floor fracture sparks from the bottom of the well — upward welding arcs.
+    if (!this.reducedMotion) {
+      for (let u = 0; u < 8; u += 1) {
+        const along = u / 7;
+        this.sparks.burst(
+          toSceneX(u),
+          toSceneY(0) - 0.6,
+          0,
+          along,
+          { r: 1, g: 1, b: 1 },
+          4,
+          { upward: true, whiteHot: 0.95 }
+        );
+      }
+    }
   }
 
   /**
@@ -963,14 +989,46 @@ export class GameRenderer {
   lockFlash(cells: readonly Cell[]): void {
     this.lockFlashCells = cells;
     this.lockFlashElapsed = 0;
-    this.environment.react(0.14);
+    this.environment.react(0.1);
+    this.environment.ripple(0.18);
+
+    if (this.reducedMotion) return;
+
+    const yaw = this.yaw;
+    for (const cell of cells) {
+      const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yaw), 0, 1);
+      const rgb = depthColor(depth);
+      const x = toSceneX(cell.x);
+      const y = toSceneY(cell.y);
+      const z = toSceneZ(cell.z);
+
+      // Two light ring points plus a centre speck — enough to read impact.
+      for (let ring = 0; ring < 2; ring += 1) {
+        const angle = (ring / 2) * Math.PI * 2;
+        const ox = Math.cos(angle) * 0.28;
+        const oy = 0.12;
+        const oz = Math.sin(angle) * 0.28;
+        this.debris.burst(x + ox, y + oy, z + oz, 0, rgb, LOCK_DEBRIS_RING, {
+          sizeScale: LOCK_PARTICLE_SIZE,
+        });
+        this.sparks.burst(x + ox, y + oy, z + oz, 0, rgb, LOCK_SPARKS_RING, {
+          whiteHot: 0.55,
+          sizeScale: LOCK_PARTICLE_SIZE,
+        });
+      }
+      this.debris.burst(x, y, z, 0, rgb, LOCK_DEBRIS_CENTER, { sizeScale: LOCK_PARTICLE_SIZE });
+      this.sparks.burst(x, y, z, 0, rgb, LOCK_SPARKS_CENTER, {
+        whiteHot: 0.55,
+        sizeScale: LOCK_PARTICLE_SIZE,
+      });
+    }
   }
 
   /**
-   * Present a clear: debris erupts from the removed cells in their spectrum
-   * colours, staggered along the clearing axis so the line dissolves from one
-   * end to the other, and the environment answers -- a ripple for any clear,
-   * a bigger one for a Refraction Clear, and a major response for Prism.
+   * Present a clear: debris and sparks erupt from the removed cells in their
+   * spectrum colours, staggered along the clearing axis so the line dissolves
+   * from one end to the other, and the environment answers -- a ripple for any
+   * clear, a bigger one for a Refraction Clear, and a major response for Prism.
    */
   clearEffect(cleared: readonly Line[], face: Face, refraction: boolean, prism: boolean): void {
     const yaw = this.yaw;
@@ -979,18 +1037,30 @@ export class GameRenderer {
       cells.forEach((cell, index) => {
         const along = cells.length > 1 ? index / (cells.length - 1) : 0;
         const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yaw), 0, 1);
+        const rgb = depthColor(depth);
+        const debrisCount = this.reducedMotion ? 2 : prism ? 6 : refraction ? 5 : 4;
+        const sparkCount = this.reducedMotion ? 1 : prism ? 6 : refraction ? 4 : 3;
         this.debris.burst(
           toSceneX(cell.x),
           toSceneY(cell.y),
           toSceneZ(cell.z),
           along,
-          depthColor(depth),
-          this.reducedMotion ? 2 : 5
+          rgb,
+          debrisCount
+        );
+        this.sparks.burst(
+          toSceneX(cell.x),
+          toSceneY(cell.y),
+          toSceneZ(cell.z),
+          along,
+          rgb,
+          sparkCount,
+          { whiteHot: prism ? 0.7 : refraction ? 0.55 : 0.45 }
         );
       });
     }
 
-    const strength = prism ? 1 : refraction ? 0.7 : 0.42;
+    const strength = prism ? 1 : refraction ? 0.78 : 0.5;
     this.environment.react(strength);
     this.environment.ripple(strength);
   }
@@ -1244,7 +1314,7 @@ export class GameRenderer {
     const highlights = highlightCells(game);
     this.glow.update(highlights, yaw, separation * dissolve, whiteout);
     // Pulse rather than hold steady, so a line about to go reads as urgent.
-    this.glow.setOpacity(0.3 + 0.28 * Math.sin(this.glowElapsed * 0.011) + whiteout * 0.4);
+    this.glow.setOpacity(0.18 + 0.12 * Math.sin(this.glowElapsed * 0.011) + whiteout * 0.25);
 
     const activeCells = game.activeCells();
     const ghostCells = this.prefs.showGhost && pieceInFlight(game) ? game.ghostCells() : [];
@@ -1263,23 +1333,21 @@ export class GameRenderer {
     // The lock flash: a brief full-cell glow where the piece just settled.
     this.lockFlashElapsed = Math.min(LOCK_FLASH_MS, this.lockFlashElapsed + deltaMs);
     const flash = 1 - this.lockFlashElapsed / LOCK_FLASH_MS;
-    this.lockFlashLayer.update(flash > 0 ? this.lockFlashCells : [], yaw, separation, 0.5);
-    this.lockFlashLayer.setOpacity(flash * (this.reducedMotion ? 0.35 : 0.7));
+    this.lockFlashLayer.update(flash > 0 ? this.lockFlashCells : [], yaw, separation, 0.15 + flash * 0.2);
+    this.lockFlashLayer.setOpacity(flash * (this.reducedMotion ? 0.2 : 0.32));
 
     this.debris.update(deltaMs);
+    this.sparks.update(deltaMs);
     this.environment.setTension(
       game.status === 'awaitingTurn' ? 1 : game.shiftMeter / game.stage.linesPerTurn
     );
     this.environment.setFlatness(flatness);
     this.environment.update(deltaMs, yaw, this.isTurning);
 
-    // The post-process chain runs only while something can actually bloom --
-    // a lit clear line, the Prism whiteout, a lock flash, debris in flight.
-    // Below the threshold the composer's output is identical to a plain
-    // render, so skipping it costs nothing visually and returns the whole
-    // bloom chain's cost during ordinary play, where it matters most on
-    // integrated and software GL.
-    const canBloom = highlights.length > 0 || whiteout > 0 || flash > 0 || this.debris.isActive;
+    // Bloom only for clear-line glow and Prism/Collapse whiteout — not for lock
+    // sparks/debris. Lock already paints additive flash and sparks; feeding them
+    // into UnrealBloom turned every settle into a board-wide flare on glass clearcoat.
+    const canBloom = highlights.length > 0 || whiteout > 0;
     if (canBloom) {
       this.composer.render();
     } else {
@@ -1310,6 +1378,7 @@ export class GameRenderer {
     this.preview.dispose();
     this.environment.dispose();
     this.debris.dispose();
+    this.sparks.dispose();
     this.columnPanel.geometry.dispose();
     (this.columnPanel.material as THREE.Material).dispose();
     this.composer.dispose();

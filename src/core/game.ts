@@ -18,7 +18,7 @@ import { BOARD_HEIGHT, BOARD_HEIGHT_TOTAL } from './constants';
 import { Dealer } from './dealer';
 import type { DealtPiece } from './dealer';
 import type { PieceCatalog, PieceDef, PieceId, RotationAxis } from './pieces';
-import { PIECES_BY_ID, extent, normalize, rotate } from './pieces';
+import { PIECES_BY_ID, centerOnPivot, extent, normalize, rotate } from './pieces';
 import { columnCount, fromView, laneCount, turn } from './projection';
 import { createRng } from './rng';
 import type { Rng } from './rng';
@@ -738,15 +738,23 @@ export class Game {
   }
 
   private place(id: PieceId, offsets: Cell[], dealtLane: number): void {
-    const size = extent(offsets);
-    const u = Math.max(0, Math.floor((columnCount(this.face) - size.x) / 2));
-    const lane = Math.min(Math.max(dealtLane, 0), laneCount(this.face) - size.z);
+    // Pivot-centred offsets so rotate() spins about the piece centre (integer
+    // for odd spans; the I's half-integer 4-box centre) instead of the
+    // min-corner left behind by normalize.
+    const centred = centerOnPivot(offsets);
+    const size = extent(centred);
+    const minX = Math.min(...centred.map((c) => c.x));
+    const minY = Math.min(...centred.map((c) => c.y));
+    const minZ = Math.min(...centred.map((c) => c.z));
+    const u = Math.max(-minX, Math.floor((columnCount(this.face) - size.x) / 2) - minX);
+    const baseLane = Math.min(Math.max(dealtLane, 0), laneCount(this.face) - size.z);
+    const lane = baseLane - minZ;
     // Spawn inside the visible field rather than in the buffer above it: a piece
     // hovering above the well reads as detached from the board. The buffer is
     // there to catch locked cells that end up too high, not to stage pieces in.
-    const y = BOARD_HEIGHT - size.y;
+    const y = BOARD_HEIGHT - size.y - minY;
 
-    const piece: ActivePiece = { id, offsets, u, y, lane };
+    const piece: ActivePiece = { id, offsets: centred, u, y, lane };
     this.gravityTimer = 0;
     this.lockTimer = 0;
     this.lockResets = 0;

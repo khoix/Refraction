@@ -126,12 +126,12 @@ function openLab(): void {
     <div class="lab-panel__body" data-panel="materials">
       <p class="lab-panel__note">Six gel-cube directions. Click a card to spotlight. Drag bloom sliders to taste.</p>
       <div class="lab-slider">
-        <label>Bloom strength <output data-out="bloom-strength">0.72</output></label>
-        <input type="range" min="0" max="2" step="0.02" value="0.72" data-slider="bloom-strength" />
+        <label>Bloom strength <output data-out="bloom-strength">0.22</output></label>
+        <input type="range" min="0" max="1.2" step="0.02" value="0.22" data-slider="bloom-strength" />
       </div>
       <div class="lab-slider">
-        <label>Bloom threshold <output data-out="bloom-threshold">0.55</output></label>
-        <input type="range" min="0" max="1" step="0.01" value="0.55" data-slider="bloom-threshold" />
+        <label>Bloom threshold <output data-out="bloom-threshold">0.94</output></label>
+        <input type="range" min="0.5" max="1" step="0.01" value="0.94" data-slider="bloom-threshold" />
       </div>
       <div class="lab-cards">${variantCards(null)}</div>
     </div>
@@ -194,6 +194,13 @@ function openLab(): void {
     bannerTimer = 1800;
   };
 
+  const panelSafeLeft = (): number => {
+    const rect = panel.getBoundingClientRect();
+    const stageRect = stage.getBoundingClientRect();
+    // Panel right edge relative to the stage, plus a small gap.
+    return Math.max(0, rect.right - stageRect.left) + 16;
+  };
+
   const setTab = (next: PreviewTab): void => {
     tab = next;
     for (const btn of panel.querySelectorAll('.lab-tabs__btn')) {
@@ -213,7 +220,7 @@ function openLab(): void {
       enhancedShowcase = null;
       if (!gelShowcase) {
         gelShowcase = new GelShowcase(canvas);
-        gelShowcase.resize();
+        gelShowcase.resize(panelSafeLeft());
         updateMaterialLabels();
       }
     } else if (next === 'enhanced') {
@@ -254,16 +261,30 @@ function openLab(): void {
   const updateMaterialLabels = (): void => {
     labels.replaceChildren();
     if (!gelShowcase) return;
-    GEL_VARIANTS.forEach((variant, index) => {
-      const col = index % 3;
-      const row = Math.floor(index / 3);
+    for (const anchor of gelShowcase.labelAnchors()) {
       const el = document.createElement('div');
       el.className = 'lab-label';
-      el.style.setProperty('--col', String(col));
-      el.style.setProperty('--row', String(row));
-      el.innerHTML = `<strong>${variant.name}</strong>`;
+      el.dataset.variant = anchor.id;
+      el.innerHTML = `<strong>${anchor.name}</strong>`;
+      el.style.left = `${anchor.x}px`;
+      el.style.top = `${anchor.y}px`;
       labels.append(el);
-    });
+    }
+  };
+
+  const syncMaterialLabels = (): void => {
+    if (!gelShowcase || labels.childElementCount === 0) {
+      updateMaterialLabels();
+      return;
+    }
+    const anchors = gelShowcase.labelAnchors();
+    for (const el of labels.querySelectorAll('.lab-label')) {
+      if (!(el instanceof HTMLElement)) continue;
+      const anchor = anchors.find((a) => a.id === el.dataset.variant);
+      if (!anchor) continue;
+      el.style.left = `${anchor.x}px`;
+      el.style.top = `${anchor.y}px`;
+    }
   };
 
   const fireEffect = (id: string): void => {
@@ -375,18 +396,19 @@ function openLab(): void {
     if (out) out.textContent = target.value;
     if (!gelShowcase) return;
     const strength = Number(
-      (panel.querySelector('[data-slider="bloom-strength"]') as HTMLInputElement | null)?.value ?? 0.72
+      (panel.querySelector('[data-slider="bloom-strength"]') as HTMLInputElement | null)?.value ?? 0.22
     );
     const threshold = Number(
-      (panel.querySelector('[data-slider="bloom-threshold"]') as HTMLInputElement | null)?.value ?? 0.55
+      (panel.querySelector('[data-slider="bloom-threshold"]') as HTMLInputElement | null)?.value ?? 0.94
     );
     gelShowcase.setBloom(strength, threshold);
   });
 
   window.addEventListener('resize', () => {
-    gelShowcase?.resize();
+    gelShowcase?.resize(panelSafeLeft());
     enhancedShowcase?.resize();
     gameRenderer?.resize();
+    if (tab === 'materials') updateMaterialLabels();
   });
 
   setTab('materials');
@@ -399,11 +421,12 @@ function openLab(): void {
     if (tab === 'materials' && gelShowcase) {
       gelShowcase.update(delta);
       gelShowcase.render();
+      syncMaterialLabels();
     } else if (tab === 'enhanced' && enhancedShowcase) {
       enhancedShowcase.update(delta);
       enhancedShowcase.render();
       const level = enhancedShowcase.whiteoutLevel;
-      flash.style.opacity = String(level * 0.92);
+      flash.style.opacity = String(level * 0.55);
     } else if (tab === 'effects' && gameRenderer && game) {
       if (game.status === 'resolving' || game.status === 'turning') {
         game.tick(delta);

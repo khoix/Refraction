@@ -51,10 +51,11 @@
  */
 
 import * as THREE from 'three';
+import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
 import { BOARD_HEIGHT } from '@core/constants';
 import { depthColor } from '@core/spectrum';
 import { createRng } from '@core/rng';
-import { applyGel, setGelStrength } from './gel';
+import { createFloaterMaterial, GEL_ROUNDNESS, setGelStrength } from './gel';
 
 const BACKDROP_ORDER = -10;
 
@@ -138,9 +139,12 @@ const CHROMA_EASE_MS = 700;
 const RIPPLE_POOL = 5;
 const RIPPLE_LIFE_MS = 950;
 
-const DEBRIS_POOL = 600;
-const DEBRIS_LIFE_MS = 700;
+const DEBRIS_POOL = 900;
+const DEBRIS_LIFE_MS = 780;
 const DEBRIS_GRAVITY = 0.000028;
+const SPARK_POOL = 420;
+const SPARK_LIFE_MS = 220;
+const SPARK_GRAVITY = 0.000045;
 
 function backdropMaterialSettings(material: THREE.Material): void {
   material.depthWrite = false;
@@ -206,19 +210,14 @@ function voxelField(): THREE.Group {
   const rng = createRng(VOXEL_SEED);
   for (let i = 0; i < VOXEL_COUNT; i += 1) {
     /*
-     * The same material the board is made of.
+     * Same silhouette language as the board, not the same glass stack.
      *
-     * These were wireframe cages, and a cage is a drawing of a cube rather than
-     * a cube. The game already has an answer to "what does a voxel look like" --
-     * `gel.ts`, cast resin with a bevelled edge, a directional gloss and a rim --
-     * and a title screen whose floaters are made of something else is a title
-     * screen advertising a different game.
-     *
-     * `MeshStandardMaterial` with `applyGel`, exactly as `VoxelLayer` builds it,
-     * so the shader injection, the yaw-locked highlight and the roughness all
-     * come along. Metalness stays at zero for the same reason it does there:
-     * with no environment map a metal has nothing to reflect, and the only thing
-     * a non-zero value does is subtract that fraction from the colour.
+     * Floaters used to call `createGelMaterial()` and inherited transmission,
+     * clearcoat, and the scene environment map. Bright env lobes read as flat
+     * white panes, then bloomed whenever a lock or clear turned the post-process
+     * chain on. `createFloaterMaterial` keeps the rounded bevel and gel edge
+     * shader, and drops IBL / transmission so the room can never flash with the
+     * playfield.
      */
     const hero = i === 0;
     /*
@@ -233,9 +232,11 @@ function voxelField(): THREE.Group {
      * like something wearing its material.
      */
     const size = hero ? HERO_SIZE : 0.7 + rng.next() * 1.1;
-    const material = new THREE.MeshStandardMaterial({ roughness: 0.34, metalness: 0 });
-    applyGel(material);
-    const voxel = new THREE.Mesh(new THREE.BoxGeometry(size, size, size), material);
+    const material = createFloaterMaterial();
+    const voxel = new THREE.Mesh(
+      new RoundedBoxGeometry(size, size, size, 4, GEL_ROUNDNESS * size),
+      material
+    );
     // Drawn before the board and depth-tested against it, so a floater behind
     // the well is correctly hidden by whatever the player has stacked there.
     voxel.renderOrder = BACKDROP_ORDER;
@@ -601,13 +602,15 @@ export class Environment {
 }
 
 /**
- * Debris from a line clear: a burst of points at the removed cells, thrown
- * outward and pulled down, fading over well under a second. Each particle
- * keeps the spectrum colour of the cell it came from -- the board's depth
- * colour being carried away, distinct from the decorative colour of the room.
+ * Debris from a line clear: confetti shards of mixed size thrown outward and
+ * pulled down, fading over well under a second. Each particle keeps the spectrum
+ * colour of the cell it came from -- the board's depth colour being carried
+ * away, distinct from the decorative colour of the room.
  *
  * Particles are staggered along the clearing axis, so the burst reads as the
  * line dissolving from one end to the other rather than popping all at once.
+ * Size varies per particle so the burst reads as broken gel rather than as a
+ * uniform confetti stamp.
  */
 export class Debris {
   readonly points: THREE.Points;
@@ -615,6 +618,7 @@ export class Debris {
   private readonly colors: Float32Array;
   private readonly velocities: Float32Array;
   private readonly ages: Float32Array;
+  private readonly scales: Float32Array;
   private readonly geometry: THREE.BufferGeometry;
   private readonly material: THREE.PointsMaterial;
   private cursor = 0;
@@ -625,20 +629,30 @@ export class Debris {
     this.colors = new Float32Array(DEBRIS_POOL * 3);
     this.velocities = new Float32Array(DEBRIS_POOL * 3);
     this.ages = new Float32Array(DEBRIS_POOL).fill(DEBRIS_LIFE_MS);
+    this.scales = new Float32Array(DEBRIS_POOL).fill(1);
 
     this.geometry = new THREE.BufferGeometry();
     this.geometry.setAttribute('position', new THREE.BufferAttribute(this.positions, 3));
     this.geometry.setAttribute('color', new THREE.BufferAttribute(this.colors, 3));
+    this.geometry.setAttribute('aScale', new THREE.BufferAttribute(this.scales, 1));
 
     this.material = new THREE.PointsMaterial({
-      size: 3.2,
+      size: 3.6,
       sizeAttenuation: false,
       vertexColors: true,
       transparent: true,
-      opacity: 0.9,
+      opacity: 0.92,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     });
+    this.material.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace(
+          '#include <common>',
+          `#include <common>\nattribute float aScale;`
+        )
+        .replace('gl_PointSize = size;', 'gl_PointSize = size * aScale;');
+    };
     this.points = new THREE.Points(this.geometry, this.material);
     this.points.renderOrder = 3;
     this.points.frustumCulled = false;
@@ -656,8 +670,10 @@ export class Debris {
     z: number,
     along: number,
     rgb: { r: number; g: number; b: number },
-    count: number
+    count: number,
+    options: { sizeScale?: number } = {}
   ): void {
+    const sizeScale = options.sizeScale ?? 1;
     for (let n = 0; n < count; n += 1) {
       const i = this.cursor;
       this.cursor = (this.cursor + 1) % DEBRIS_POOL;
@@ -666,13 +682,26 @@ export class Debris {
       this.positions[i * 3 + 1] = y + (Math.random() - 0.5) * 0.6;
       this.positions[i * 3 + 2] = z + (Math.random() - 0.5) * 0.6;
 
-      this.velocities[i * 3] = (Math.random() - 0.5) * 0.008;
-      this.velocities[i * 3 + 1] = 0.004 + Math.random() * 0.009;
-      this.velocities[i * 3 + 2] = (Math.random() - 0.5) * 0.008;
+      const speed = 0.006 + Math.random() * 0.01;
+      const dirX = (Math.random() - 0.5) * 1.4;
+      const dirY = 0.35 + Math.random();
+      const dirZ = (Math.random() - 0.5) * 1.4;
+      const len = Math.hypot(dirX, dirY, dirZ) || 1;
+      this.velocities[i * 3] = (dirX / len) * speed;
+      this.velocities[i * 3 + 1] = (dirY / len) * speed;
+      this.velocities[i * 3 + 2] = (dirZ / len) * speed;
 
-      this.colors[i * 3] = rgb.r;
-      this.colors[i * 3 + 1] = rgb.g;
-      this.colors[i * 3 + 2] = rgb.b;
+      // Slight hue/brightness jitter so a single cell's debris is not a stamp.
+      const jitter = 0.92 + Math.random() * 0.16;
+      this.colors[i * 3] = Math.min(1.35, rgb.r * jitter);
+      this.colors[i * 3 + 1] = Math.min(1.35, rgb.g * jitter);
+      this.colors[i * 3 + 2] = Math.min(1.35, rgb.b * jitter);
+
+      // Specks, shards, and chunks — not one square size.
+      const roll = Math.random();
+      const base =
+        roll < 0.35 ? 0.45 + Math.random() * 0.35 : roll < 0.75 ? 0.85 + Math.random() * 0.55 : 1.5 + Math.random() * 1.1;
+      this.scales[i] = base * sizeScale;
 
       // Negative age delays the particle: the far end of the line waits.
       this.ages[i] = -along * 200 - Math.random() * 60;
@@ -721,10 +750,265 @@ export class Debris {
     this.points.visible = alive > 0;
     (this.geometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
     (this.geometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    (this.geometry.getAttribute('aScale') as THREE.BufferAttribute).needsUpdate = true;
   }
 
   dispose(): void {
     this.geometry.dispose();
     this.material.dispose();
+  }
+}
+
+/**
+ * Hot white sparks that ride alongside debris — streaks and pin flashes.
+ *
+ * Streaks are short line segments that trail their velocity; flashes are
+ * point sparks that pop and die. Both lean white-hot so they clear the bloom
+ * threshold without needing a second depth cue.
+ */
+export class Sparks {
+  readonly group = new THREE.Group();
+  private readonly streakPositions: Float32Array;
+  private readonly streakColors: Float32Array;
+  private readonly streakHeads: Float32Array;
+  private readonly streakVels: Float32Array;
+  private readonly streakAges: Float32Array;
+  private readonly streakLens: Float32Array;
+  private readonly flashPositions: Float32Array;
+  private readonly flashColors: Float32Array;
+  private readonly flashVels: Float32Array;
+  private readonly flashAges: Float32Array;
+  private readonly flashSizes: Float32Array;
+  private readonly flashBaseSizes: Float32Array;
+  private readonly streakGeometry: THREE.BufferGeometry;
+  private readonly flashGeometry: THREE.BufferGeometry;
+  private readonly streakMaterial: THREE.LineBasicMaterial;
+  private readonly flashMaterial: THREE.PointsMaterial;
+  private readonly streaks: THREE.LineSegments;
+  private readonly flashes: THREE.Points;
+  private streakCursor = 0;
+  private flashCursor = 0;
+  private streakActive = 0;
+  private flashActive = 0;
+
+  constructor() {
+    // Two vertices per streak.
+    this.streakPositions = new Float32Array(SPARK_POOL * 6);
+    this.streakColors = new Float32Array(SPARK_POOL * 6);
+    this.streakHeads = new Float32Array(SPARK_POOL * 3);
+    this.streakVels = new Float32Array(SPARK_POOL * 3);
+    this.streakAges = new Float32Array(SPARK_POOL).fill(SPARK_LIFE_MS);
+    this.streakLens = new Float32Array(SPARK_POOL);
+
+    this.flashPositions = new Float32Array(SPARK_POOL * 3);
+    this.flashColors = new Float32Array(SPARK_POOL * 3);
+    this.flashVels = new Float32Array(SPARK_POOL * 3);
+    this.flashAges = new Float32Array(SPARK_POOL).fill(SPARK_LIFE_MS);
+    this.flashSizes = new Float32Array(SPARK_POOL).fill(1);
+    this.flashBaseSizes = new Float32Array(SPARK_POOL).fill(1);
+
+    this.streakGeometry = new THREE.BufferGeometry();
+    this.streakGeometry.setAttribute('position', new THREE.BufferAttribute(this.streakPositions, 3));
+    this.streakGeometry.setAttribute('color', new THREE.BufferAttribute(this.streakColors, 3));
+    this.streakMaterial = new THREE.LineBasicMaterial({
+      vertexColors: true,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.streaks = new THREE.LineSegments(this.streakGeometry, this.streakMaterial);
+    this.streaks.renderOrder = 4;
+    this.streaks.frustumCulled = false;
+    this.streaks.visible = false;
+
+    this.flashGeometry = new THREE.BufferGeometry();
+    this.flashGeometry.setAttribute('position', new THREE.BufferAttribute(this.flashPositions, 3));
+    this.flashGeometry.setAttribute('color', new THREE.BufferAttribute(this.flashColors, 3));
+    this.flashGeometry.setAttribute('aScale', new THREE.BufferAttribute(this.flashSizes, 1));
+    this.flashMaterial = new THREE.PointsMaterial({
+      size: 4.8,
+      sizeAttenuation: false,
+      vertexColors: true,
+      transparent: true,
+      opacity: 1,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false,
+    });
+    this.flashMaterial.onBeforeCompile = (shader) => {
+      shader.vertexShader = shader.vertexShader
+        .replace('#include <common>', `#include <common>\nattribute float aScale;`)
+        .replace('gl_PointSize = size;', 'gl_PointSize = size * aScale;');
+    };
+    this.flashes = new THREE.Points(this.flashGeometry, this.flashMaterial);
+    this.flashes.renderOrder = 4;
+    this.flashes.frustumCulled = false;
+    this.flashes.visible = false;
+
+    this.group.add(this.streaks, this.flashes);
+  }
+
+  /**
+   * Fire sparks from a cell. `along` staggers with the debris dissolve;
+   * `intensity` scales count for prism / lock / collapse peaks.
+   */
+  burst(
+    x: number,
+    y: number,
+    z: number,
+    along: number,
+    rgb: { r: number; g: number; b: number },
+    count: number,
+    options: { upward?: boolean; whiteHot?: number; sizeScale?: number } = {}
+  ): void {
+    const whiteHot = options.whiteHot ?? 0.55;
+    const sizeScale = options.sizeScale ?? 1;
+    for (let n = 0; n < count; n += 1) {
+      const hotR = THREE.MathUtils.lerp(rgb.r, 1, whiteHot) * (1.05 + Math.random() * 0.25);
+      const hotG = THREE.MathUtils.lerp(rgb.g, 1, whiteHot) * (1.05 + Math.random() * 0.25);
+      const hotB = THREE.MathUtils.lerp(rgb.b, 1, whiteHot) * (1.05 + Math.random() * 0.25);
+      const delay = -along * 180 - Math.random() * 40;
+
+      if (Math.random() < 0.55) {
+        const i = this.streakCursor;
+        this.streakCursor = (this.streakCursor + 1) % SPARK_POOL;
+        const speed = 0.014 + Math.random() * 0.028;
+        const dirX = (Math.random() - 0.5) * (options.upward ? 0.7 : 1.6);
+        const dirY = Math.random() * (options.upward ? 1.8 : 0.7) + (options.upward ? 0.6 : 0.05);
+        const dirZ = (Math.random() - 0.5) * (options.upward ? 0.7 : 1.2);
+        const len = Math.hypot(dirX, dirY, dirZ) || 1;
+        this.streakHeads[i * 3] = x;
+        this.streakHeads[i * 3 + 1] = y;
+        this.streakHeads[i * 3 + 2] = z;
+        this.streakVels[i * 3] = (dirX / len) * speed;
+        this.streakVels[i * 3 + 1] = (dirY / len) * speed;
+        this.streakVels[i * 3 + 2] = (dirZ / len) * speed;
+        this.streakLens[i] = (0.18 + Math.random() * 0.42) * sizeScale;
+        this.streakAges[i] = delay;
+        for (let v = 0; v < 2; v += 1) {
+          this.streakColors[i * 6 + v * 3] = hotR;
+          this.streakColors[i * 6 + v * 3 + 1] = hotG;
+          this.streakColors[i * 6 + v * 3 + 2] = hotB;
+        }
+        this.writeStreak(i);
+      } else {
+        const i = this.flashCursor;
+        this.flashCursor = (this.flashCursor + 1) % SPARK_POOL;
+        const speed = 0.01 + Math.random() * 0.022;
+        this.flashPositions[i * 3] = x + (Math.random() - 0.5) * 0.2;
+        this.flashPositions[i * 3 + 1] = y + (Math.random() - 0.5) * 0.2;
+        this.flashPositions[i * 3 + 2] = z + (Math.random() - 0.5) * 0.2;
+        this.flashVels[i * 3] = (Math.random() - 0.5) * speed;
+        this.flashVels[i * 3 + 1] = Math.random() * speed * (options.upward ? 1.4 : 0.8);
+        this.flashVels[i * 3 + 2] = (Math.random() - 0.5) * speed;
+        this.flashColors[i * 3] = hotR;
+        this.flashColors[i * 3 + 1] = hotG;
+        this.flashColors[i * 3 + 2] = hotB;
+        this.flashSizes[i] = (0.7 + Math.random() * 1.6) * sizeScale;
+        this.flashBaseSizes[i] = this.flashSizes[i] as number;
+        this.flashAges[i] = delay;
+      }
+    }
+    this.streakActive = SPARK_POOL;
+    this.flashActive = SPARK_POOL;
+    this.streaks.visible = true;
+    this.flashes.visible = true;
+  }
+
+  get isActive(): boolean {
+    return this.streakActive > 0 || this.flashActive > 0;
+  }
+
+  private writeStreak(i: number): void {
+    const hx = this.streakHeads[i * 3] as number;
+    const hy = this.streakHeads[i * 3 + 1] as number;
+    const hz = this.streakHeads[i * 3 + 2] as number;
+    const vx = this.streakVels[i * 3] as number;
+    const vy = this.streakVels[i * 3 + 1] as number;
+    const vz = this.streakVels[i * 3 + 2] as number;
+    const speed = Math.hypot(vx, vy, vz) || 1;
+    const len = this.streakLens[i] as number;
+    this.streakPositions[i * 6] = hx;
+    this.streakPositions[i * 6 + 1] = hy;
+    this.streakPositions[i * 6 + 2] = hz;
+    this.streakPositions[i * 6 + 3] = hx - (vx / speed) * len;
+    this.streakPositions[i * 6 + 4] = hy - (vy / speed) * len;
+    this.streakPositions[i * 6 + 5] = hz - (vz / speed) * len;
+  }
+
+  update(deltaMs: number): void {
+    if (!this.isActive) return;
+    let streakAlive = 0;
+    let flashAlive = 0;
+
+    for (let i = 0; i < SPARK_POOL; i += 1) {
+      if ((this.streakAges[i] as number) >= SPARK_LIFE_MS) continue;
+      this.streakAges[i] = (this.streakAges[i] as number) + deltaMs;
+      const age = this.streakAges[i] as number;
+      if (age < 0) {
+        streakAlive += 1;
+        continue;
+      }
+      if (age >= SPARK_LIFE_MS) {
+        this.streakPositions[i * 6 + 1] = -1000;
+        this.streakPositions[i * 6 + 4] = -1000;
+        continue;
+      }
+      streakAlive += 1;
+      this.streakVels[i * 3 + 1] = (this.streakVels[i * 3 + 1] as number) - SPARK_GRAVITY * deltaMs;
+      this.streakHeads[i * 3] =
+        (this.streakHeads[i * 3] as number) + (this.streakVels[i * 3] as number) * deltaMs;
+      this.streakHeads[i * 3 + 1] =
+        (this.streakHeads[i * 3 + 1] as number) + (this.streakVels[i * 3 + 1] as number) * deltaMs;
+      this.streakHeads[i * 3 + 2] =
+        (this.streakHeads[i * 3 + 2] as number) + (this.streakVels[i * 3 + 2] as number) * deltaMs;
+      const fade = 1 - age / SPARK_LIFE_MS;
+      this.streakLens[i] = (this.streakLens[i] as number) * (0.4 + 0.6 * fade);
+      this.writeStreak(i);
+      for (let v = 0; v < 2; v += 1) {
+        this.streakColors[i * 6 + v * 3] = (this.streakColors[i * 6 + v * 3] as number) * (0.92 + 0.08 * fade);
+      }
+    }
+
+    for (let i = 0; i < SPARK_POOL; i += 1) {
+      if ((this.flashAges[i] as number) >= SPARK_LIFE_MS) continue;
+      this.flashAges[i] = (this.flashAges[i] as number) + deltaMs;
+      const age = this.flashAges[i] as number;
+      if (age < 0) {
+        flashAlive += 1;
+        continue;
+      }
+      if (age >= SPARK_LIFE_MS) {
+        this.flashPositions[i * 3 + 1] = -1000;
+        continue;
+      }
+      flashAlive += 1;
+      this.flashVels[i * 3 + 1] = (this.flashVels[i * 3 + 1] as number) - SPARK_GRAVITY * deltaMs;
+      this.flashPositions[i * 3] =
+        (this.flashPositions[i * 3] as number) + (this.flashVels[i * 3] as number) * deltaMs;
+      this.flashPositions[i * 3 + 1] =
+        (this.flashPositions[i * 3 + 1] as number) + (this.flashVels[i * 3 + 1] as number) * deltaMs;
+      this.flashPositions[i * 3 + 2] =
+        (this.flashPositions[i * 3 + 2] as number) + (this.flashVels[i * 3 + 2] as number) * deltaMs;
+      const fade = 1 - age / SPARK_LIFE_MS;
+      this.flashSizes[i] = (this.flashBaseSizes[i] as number) * (0.35 + 0.65 * fade);
+    }
+
+    this.streakActive = streakAlive;
+    this.flashActive = flashAlive;
+    this.streaks.visible = streakAlive > 0;
+    this.flashes.visible = flashAlive > 0;
+    (this.streakGeometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.streakGeometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    (this.flashGeometry.getAttribute('position') as THREE.BufferAttribute).needsUpdate = true;
+    (this.flashGeometry.getAttribute('color') as THREE.BufferAttribute).needsUpdate = true;
+    (this.flashGeometry.getAttribute('aScale') as THREE.BufferAttribute).needsUpdate = true;
+  }
+
+  dispose(): void {
+    this.streakGeometry.dispose();
+    this.flashGeometry.dispose();
+    this.streakMaterial.dispose();
+    this.flashMaterial.dispose();
   }
 }

@@ -264,22 +264,21 @@ body,
   inset: 0;
   z-index: 2;
   pointer-events: none;
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(2, 1fr);
-  padding: 12vh 8vw 8vh;
 }
 
 .lab-label {
-  display: flex;
-  align-items: flex-end;
-  justify-content: center;
-  padding-bottom: 0.5rem;
+  position: absolute;
+  transform: translate(-50%, 0);
+  white-space: nowrap;
   font-size: clamp(0.62rem, 1.4vw, 0.78rem);
   letter-spacing: 0.22em;
   text-transform: uppercase;
   text-shadow: 0 0 12px rgb(5 6 10 / 0.9);
-  opacity: 0.55;
+  opacity: 0.7;
+}
+
+.lab-label strong {
+  font-weight: 600;
 }
 
 .lab-flash {
@@ -362,10 +361,6 @@ body,
 }
 
 @media (max-width: 720px) {
-  .lab-labels {
-    display: none;
-  }
-
   .lab-panel {
     width: min(17.5rem, calc(100vw - 1.2rem));
     max-height: 42vh;

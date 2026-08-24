@@ -1,7 +1,7 @@
 /**
  * The gel material.
  *
- * Every solid cube is cast resin rather than flat plastic: denser through its
+ * Every solid cube is a glass gel rather than flat plastic: denser through its
  * thickness, a bright catch along the bevel the light falls on, the glow settling
  * toward its lower edge, and a faint tooth inside it. It is what makes a still
  * frame of the board look like this game and not like a grid of squares.
@@ -40,6 +40,20 @@
  * it says "these are objects", and the field of them is exactly as flat as it was.
  * Differential shading would be the violation; uniform shading is a material.
  *
+ * ## Glass read
+ *
+ * Clearcoat plus the gel shader's edge gloss, rim, and chromatic fringe carry
+ * the glass film. There is no environment map: IBL (RoomEnvironment or soft
+ * studio) stamped a dark square onto every near-mirror face. Scene lights alone
+ * feed clearcoat; every gel term still vanishes at the face centre, so the
+ * fidelity rule holds.
+ *
+ * Transmission is deliberately omitted. `MeshPhysicalMaterial.transmission`
+ * samples a scene buffer that EffectComposer's RenderPass does not provide, so
+ * the whole board went black for the duration of any bloom event (lock flash,
+ * clear debris, Prism). Clearcoat + gel shader is the glass look that survives
+ * the post-process chain.
+ *
  * ## Camera-relative, like the lighting rig
  *
  * The gel's light tracks the camera's yaw, using the same transform as
@@ -69,13 +83,33 @@ import * as THREE from 'three';
 const GEL_LIGHT_BASE: readonly [number, number, number] = [0.42, 0.78, 0.46];
 
 /**
+ * Bevel radius of every solid cube, in board-cell units.
+ *
+ * Soft enough to read as glass gel rather than a hard plastic brick; still
+ * shallow enough that neighbouring cubes keep a crisp silhouette gap.
+ */
+export const GEL_ROUNDNESS = 0.16;
+/** Surface roughness of the glass gel body. */
+export const GEL_ROUGHNESS = 0.08;
+/** Clearcoat strength — the thin glass film over the gel. */
+export const GEL_CLEARCOAT = 0.55;
+export const GEL_CLEARCOAT_ROUGHNESS = 0.1;
+/**
+ * Environment map intensity. Kept at zero: any IBL map (room or soft studio)
+ * reflected as a dark square on flat gel faces. Glass read comes from clearcoat
+ * + the gel edge shader instead.
+ */
+export const GEL_ENV_INTENSITY = 0;
+
+/**
  * How much of the surface counts as bevel.
  *
- * The geometry is a rounded box of radius 0.11, so the flat face runs out to
- * `edge` 0.78 and the bevel occupies 0.78 to 1. The catch starts just inside
- * that, so the gloss appears to wrap onto the face rather than stopping at a seam.
+ * The geometry is a rounded box of radius {@link GEL_ROUNDNESS}, so the flat face
+ * runs out near `edge` 0.7 and the bevel occupies the rest. The catch starts just
+ * inside that, so the gloss appears to wrap onto the face rather than stopping
+ * at a seam.
  */
-const BEVEL_START = 0.74;
+const BEVEL_START = 0.7;
 /**
  * Tightness of the catch along the bevel.
  *
@@ -84,9 +118,9 @@ const BEVEL_START = 0.74;
  * once. Real gloss is directional, so the band is weighted by how much the bevel
  * faces the light and raised to a power to keep it tight.
  */
-const GLOSS_FOCUS = 1.6;
+const GLOSS_FOCUS = 1.7;
 /** Strength of the catch, as a lerp toward white. */
-const GLOSS = 0.38;
+const GLOSS = 0.34;
 /**
  * The rim where the surface turns away from the eye.
  *
@@ -100,18 +134,18 @@ const GLOSS = 0.38;
  * anyway, so the rule that every term is masked stays true by reading rather
  * than by argument.
  */
-const RIM = 0.4;
-const RIM_FOCUS = 4.0;
+const RIM = 0.3;
+const RIM_FOCUS = 4.2;
 /**
  * Light settling toward the lower edge.
  *
- * One-sided on purpose: in cast resin the glow pools, and that is what says the
+ * One-sided on purpose: in cast gel the glow pools, and that is what says the
  * cube has an inside. Symmetrical brightening would only read as a vignette.
  * Starts below the face centre, which is what keeps it clear of the sampled patch.
  */
-const POOL = 0.04;
+const POOL = 0.035;
 /** Internal glow at the pooled edge, added as emission rather than as albedo. */
-const POOL_EMISSION = 0.18;
+const POOL_EMISSION = 0.14;
 /**
  * How much darker the cube reads through its thickness, toward its edges.
  *
@@ -120,9 +154,16 @@ const POOL_EMISSION = 0.18;
  * cube reads as something with depth rather than as a painted square. Applied
  * before the highlights, which is the order light actually arrives in.
  */
-const DENSITY = 0.22;
+const DENSITY = 0.12;
 /** Amplitude of the internal tooth. Faint enough to be texture, not pattern. */
-const SPECKS = 0.07;
+const SPECKS = 0.05;
+/**
+ * Chromatic fringe on the silhouette only.
+ *
+ * Preview-proven glass cue: a hair of red/blue separation where the surface
+ * turns away. Masked by `gelEdge` and Fresnel, so the face centre is untouched.
+ */
+const CHROMATIC = 0.05;
 
 /**
  * One uniform, shared by every gel material.
@@ -228,6 +269,11 @@ const GEL_ALBEDO = /* glsl */ `
   // for depth even here.
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), gGloss * ${GLOSS.toFixed(3)});
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), gRim * ${RIM.toFixed(3)});
+  // Chromatic fringe at the silhouette only — glass cue that cannot touch the
+  // face centre, because gRim and gEdge are both zero there.
+  float gChroma = gRim * ${CHROMATIC.toFixed(3)};
+  diffuseColor.r = mix(diffuseColor.r, 1.0, gChroma * 0.55);
+  diffuseColor.b = mix(diffuseColor.b, 1.0, gChroma * 0.3);
   diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.0), gPool * ${POOL.toFixed(3)});
 `;
 
@@ -244,13 +290,55 @@ const GEL_EMISSION = /* glsl */ `
 `;
 
 /**
+ * The solid-cube glass gel material.
+ *
+ * Clearcoat and the gel edge shader carry the glass film (no IBL — see
+ * {@link GEL_ENV_INTENSITY}). Transmission is omitted — it blacks out under the
+ * bloom EffectComposer. Marks (ghost, x-ray, glow) never reach here.
+ */
+export function createGelMaterial(options: {
+  readonly transparent?: boolean;
+  readonly opacity?: number;
+} = {}): THREE.MeshPhysicalMaterial {
+  const transparent = options.transparent ?? false;
+  const material = new THREE.MeshPhysicalMaterial({
+    roughness: GEL_ROUGHNESS,
+    metalness: 0,
+    clearcoat: GEL_CLEARCOAT,
+    clearcoatRoughness: GEL_CLEARCOAT_ROUGHNESS,
+    transparent,
+    opacity: options.opacity ?? 1,
+    envMapIntensity: GEL_ENV_INTENSITY,
+  });
+  applyGel(material);
+  return material;
+}
+
+/**
+ * Backdrop floaters — same gel *shape* language as the board, not the glass stack.
+ *
+ * Board cubes use clearcoat + gel edges with no environment map. Floaters drop
+ * clearcoat as well so they never bloom with the playfield. Isolation is
+ * deliberate: rounded bevel + gel edge shader only.
+ */
+export function createFloaterMaterial(): THREE.MeshStandardMaterial {
+  const material = new THREE.MeshStandardMaterial({
+    roughness: 0.42,
+    metalness: 0,
+    envMapIntensity: 0,
+  });
+  applyGel(material);
+  return material;
+}
+
+/**
  * Give a material the gel treatment.
  *
  * The layers that are marks rather than cubes -- the ghost, the x-ray glass, the
  * occluded silhouettes, the clear glow -- are unlit `MeshBasicMaterial` and never
  * reach here, so the material's own type is what decides.
  */
-export function applyGel(material: THREE.MeshStandardMaterial): void {
+export function applyGel(material: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial): void {
   const strength = { value: 1 };
   material.userData[STRENGTH_KEY] = strength;
   material.onBeforeCompile = (shader) => {
