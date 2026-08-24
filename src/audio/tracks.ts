@@ -1,10 +1,15 @@
 /**
  * The music manifest.
  *
- * One entry per piece of music that ships. URLs come from `?url` imports rather
- * than hand-written paths, so files are content-hashed and emitted by the
- * bundler: a track that is renamed or removed breaks the build instead of
- * 404-ing in front of a player, and a cached copy is never a stale one.
+ * Theme is named; everything else under `tracks/` that ends in `.webm` is a
+ * gameplay bed. Drop a new Opus WebM in the folder and it joins the run pool on
+ * the next build — no catalogue edit. Title and id come from the file name
+ * (`Block Drift.webm` → title "Block Drift", id `block-drift`).
+ *
+ * URLs come from Vite `?url` imports / globs rather than hand-written paths, so
+ * files are content-hashed and emitted by the bundler: a track that is renamed
+ * or removed breaks the build instead of 404-ing in front of a player, and a
+ * cached copy is never a stale one.
  *
  * ## More than one encoding of the same music
  *
@@ -28,25 +33,19 @@
  *
  * ## Streamed, not decoded
  *
- * `bytes` and `seconds` are recorded because both are load-bearing.
- *
  * `bytes` gives the preloader a denominator before the first response header
  * arrives, so the progress bar starts at a true zero rather than jumping once
- * `Content-Length` shows up. Being wrong for an alternate encoding costs
- * smoothness and never correctness.
+ * `Content-Length` shows up. Gameplay beds use a shared estimate; being wrong
+ * costs smoothness and never correctness. Theme keeps a measured size because
+ * it is the first thing the door waits on.
  *
- * `seconds` is why this is played through an `<audio>` element rather than
+ * `seconds` records why this is played through an `<audio>` element rather than
  * decoded into an `AudioBuffer`. Decoded audio is float32 at the context's rate:
  * 137 seconds of stereo at 48 kHz is about 53 MB resident, for a file that is
  * 1.8 MB on disk.
  */
 
 import themeWebm from './tracks/Blockfall Skyline (Theme).webm?url';
-import blockDriftWebm from './tracks/Block Drift.webm?url';
-import blockfallReduxWebm from './tracks/Blockfall Redux.webm?url';
-import colorfulShoresWebm from './tracks/Colorful Shores.webm?url';
-import stackUpWebm from './tracks/Stack Up.webm?url';
-import turnItOutWebm from './tracks/Turn It Out.webm?url';
 
 /** One encoding of one track. */
 export interface Source {
@@ -71,6 +70,15 @@ export interface Track {
 const WEBM_OPUS = 'audio/webm; codecs="opus"';
 const MP4_AAC = 'audio/mp4; codecs="mp4a.40.2"';
 
+/** Stem of the theme file — excluded from the gameplay glob. */
+const THEME_FILE = 'Blockfall Skyline (Theme)';
+
+/**
+ * Rough size for a gameplay WebM, for the loading bar before headers arrive.
+ * Real `Content-Length` replaces this once the fetch starts.
+ */
+const GAMEPLAY_BYTES_ESTIMATE = 1_600_000;
+
 /**
  * Alternate encodings, if any have been added.
  *
@@ -83,9 +91,26 @@ const alternates = import.meta.glob('./tracks/*.m4a', {
   import: 'default',
 }) as Record<string, string>;
 
+/**
+ * Every WebM in the folder. Theme is filtered out when building `GAMEPLAY`.
+ */
+const webms = import.meta.glob('./tracks/*.webm', {
+  eager: true,
+  query: '?url',
+  import: 'default',
+}) as Record<string, string>;
+
 function alternate(name: string): Source[] {
   const url = alternates[`./tracks/${name}.m4a`];
   return url ? [{ url, mime: MP4_AAC }] : [];
+}
+
+/** Catalogue id from a file stem: "Block Drift" → "block-drift". */
+function slug(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
 }
 
 function track(
@@ -107,11 +132,15 @@ function track(
   };
 }
 
+function stemFromPath(path: string): string {
+  return path.replace(/^\.\/tracks\//, '').replace(/\.webm$/i, '');
+}
+
 /** The menu theme. Loops on the main menu; the boot gate stays silent. */
 export const THEME: Track = track(
   'theme',
   'Blockfall Skyline',
-  'Blockfall Skyline (Theme)',
+  THEME_FILE,
   themeWebm,
   1_922_887,
   137.2
@@ -120,16 +149,16 @@ export const THEME: Track = track(
 /**
  * Everything that is not the theme.
  *
- * A run draws from this pool at random, one track after another, until the
- * player is back on a menu screen.
+ * Built from `./tracks/*.webm` minus the theme file. A run draws from this pool
+ * at random, one track after another, until the player is back on a menu screen.
  */
-export const GAMEPLAY: readonly Track[] = [
-  track('block-drift', 'Block Drift', 'Block Drift', blockDriftWebm, 1_856_389, 139.9),
-  track('blockfall-redux', 'Blockfall Redux', 'Blockfall Redux', blockfallReduxWebm, 1_599_926, 114.0),
-  track('colorful-shores', 'Colorful Shores', 'Colorful Shores', colorfulShoresWebm, 1_778_825, 128.0),
-  track('stack-up', 'Stack Up', 'Stack Up', stackUpWebm, 1_364_633, 108.4),
-  track('turn-it-out', 'Turn It Out', 'Turn It Out', turnItOutWebm, 1_396_870, 109.8),
-];
+export const GAMEPLAY: readonly Track[] = Object.entries(webms)
+  .map(([path, url]) => ({ stem: stemFromPath(path), url }))
+  .filter(({ stem }) => stem !== THEME_FILE)
+  .map(({ stem, url }) =>
+    track(slug(stem), stem, stem, url, GAMEPLAY_BYTES_ESTIMATE, 0)
+  )
+  .sort((a, b) => a.title.localeCompare(b.title));
 
 /** Every track the front door pulls down. */
 export const TRACKS: readonly Track[] = [THEME, ...GAMEPLAY];

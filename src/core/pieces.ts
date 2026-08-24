@@ -139,6 +139,32 @@ export function normalize(cells: readonly Cell[]): Cell[] {
     .sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
 }
 
+/**
+ * Integer centre of a shape's axis-aligned bounding box.
+ *
+ * For a 4-long bar this is the 2nd voxel (floor of the 4-box centre); for a
+ * 3-wide T/L/S it is the middle. Active pieces are stored relative to this
+ * point. The I then rotates about the half-integer 4-box centre — see rotate.
+ */
+export function integerPivot(cells: readonly Cell[]): Cell {
+  const xs = cells.map((c) => c.x);
+  const ys = cells.map((c) => c.y);
+  const zs = cells.map((c) => c.z);
+  return cell(
+    Math.floor((Math.min(...xs) + Math.max(...xs)) / 2),
+    Math.floor((Math.min(...ys) + Math.max(...ys)) / 2),
+    Math.floor((Math.min(...zs) + Math.max(...zs)) / 2)
+  );
+}
+
+/** Translate a shape so its integer pivot sits at the origin. */
+export function centerOnPivot(cells: readonly Cell[]): Cell[] {
+  const pivot = integerPivot(cells);
+  return cells
+    .map((c) => cell(c.x - pivot.x, c.y - pivot.y, c.z - pivot.z))
+    .sort((a, b) => a.x - b.x || a.y - b.y || a.z - b.z);
+}
+
 /** Canonical string for a normalised shape, for set membership and comparison. */
 export function shapeKey(cells: readonly Cell[]): string {
   return normalize(cells)
@@ -147,24 +173,62 @@ export function shapeKey(cells: readonly Cell[]): string {
 }
 
 /**
- * Rotate 90 degrees about a world axis.
+ * True for the straight tetracube (the I-piece) in any orientation.
  *
- * The result is re-normalised to the origin, which means four successive turns
- * about one axis always return the original shape.
+ * Its rotation centre is the middle of a 4×4×4 box, not a voxel. Centering on
+ * integerPivot puts that box on [-1, 2]³ with centre (0.5, 0.5, 0.5).
+ */
+function isStraightTetracube(cells: readonly Cell[]): boolean {
+  if (cells.length !== 4) return false;
+  const span = (values: number[]): number => Math.max(...values) - Math.min(...values);
+  const spans = [span(cells.map((c) => c.x)), span(cells.map((c) => c.y)), span(cells.map((c) => c.z))];
+  spans.sort((a, b) => a - b);
+  return spans[0] === 0 && spans[1] === 0 && spans[2] === 3;
+}
+
+/**
+ * Rotate 90 degrees about the piece's rotation centre.
+ *
+ * Most pieces spin about the origin (their integer pivot). The I spins about
+ * the half-integer centre of its 4×4×4 box, so voxel identity orbits the
+ * fractional pivot: a horizontal bar at offsets (-1,0)..(2,0) becomes
+ * (1,-1)..(1,2), and the cell that stays occupied is the old third voxel's
+ * cell, filled by a different voxel after the turn.
+ *
+ * Does not re-normalise: offsets may be negative, and four successive turns
+ * about one axis return the identical offsets.
  */
 export function rotate(cells: readonly Cell[], axis: RotationAxis, clockwise = true): Cell[] {
   const sign = clockwise ? 1 : -1;
-  const turned = cells.map((c) => {
+  // I: centre of the 4-box. Others: integer pivot already at the origin.
+  const pivot = isStraightTetracube(cells) ? 0.5 : 0;
+  return cells.map((c) => {
+    const x = c.x - pivot;
+    const y = c.y - pivot;
+    const z = c.z - pivot;
+    let nx: number;
+    let ny: number;
+    let nz: number;
     switch (axis) {
       case 'x':
-        return cell(c.x, -sign * c.z, sign * c.y);
+        nx = x;
+        ny = -sign * z;
+        nz = sign * y;
+        break;
       case 'y':
-        return cell(sign * c.z, c.y, -sign * c.x);
+        nx = sign * z;
+        ny = y;
+        nz = -sign * x;
+        break;
       case 'z':
-        return cell(-sign * c.y, sign * c.x, c.z);
+        nx = -sign * y;
+        ny = sign * x;
+        nz = z;
+        break;
     }
+    // Half-integer relative coords land back on the integer lattice.
+    return cell(Math.round(nx + pivot), Math.round(ny + pivot), Math.round(nz + pivot));
   });
-  return normalize(turned);
 }
 
 /** Every distinct orientation reachable by rotation. At most 24. */
@@ -176,7 +240,8 @@ export function orientations(cells: readonly Cell[]): Cell[][] {
   while (queue.length > 0) {
     const current = queue.pop() as Cell[];
     for (const axis of ['x', 'y', 'z'] as const) {
-      const next = rotate(current, axis);
+      // Enumerate shapes in min-corner form; gameplay keeps pivot-centred offsets.
+      const next = normalize(rotate(current, axis));
       const key = shapeKey(next);
       if (!seen.has(key)) {
         seen.set(key, next);

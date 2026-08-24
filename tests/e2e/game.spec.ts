@@ -2,6 +2,18 @@ import { devices, expect, test } from '@playwright/test';
 import type { Browser, BrowserContext, Page } from '@playwright/test';
 import { LINES_PER_STAGE } from '../../src/core/stages';
 
+/**
+ * The controls editor keeps both profile panes mounted; CSS and `inert` hide the
+ * inactive one. Locators must scope to the active pane or Playwright strict mode
+ * sees duplicate keymaps and diagrams.
+ */
+const ACTIVE_CONTROLS_PANE = '.controls-editor__profile-pane:not(.controls-profile-pane--off)';
+const KEYBOARD_MAP = `${ACTIVE_CONTROLS_PANE} .keymap:not(.keymap--touch)`;
+const KEYBOARD_TABLE = `${ACTIVE_CONTROLS_PANE} .controls-editor__table`;
+const TOUCH_MAP = `${ACTIVE_CONTROLS_PANE} .keymap--touch`;
+const TOUCH_DIAGRAM = `${ACTIVE_CONTROLS_PANE} .control-diagram--touch`;
+const KEYBOARD_DIAGRAM = `${ACTIVE_CONTROLS_PANE} .control-diagram--keyboard`;
+
 /** Wait for the first rendered frame. */
 async function boot(page: Page): Promise<void> {
   await page.goto('/?mode=ascent');
@@ -1175,7 +1187,7 @@ test.describe('persistence', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await endRun(page);
     await page.getByRole('button', { name: 'CHOOSE MODE' }).click();
-    await page.getByRole('button', { name: 'BACK' }).click();
+    await page.getByRole('button', { name: 'Back' }).click();
     await page.getByRole('button', { name: 'SCORES' }).click();
     await expect(page.locator('.scores__row').first()).toContainText('Flatland');
   });
@@ -2605,11 +2617,6 @@ test.describe('the marks survive a buried board', () => {
  * written and wrong by the next change, with nothing to catch it.
  */
 test.describe('the key map', () => {
-  // Both panels are in the DOM; CSS decides which one the device sees. Every
-  // locator here has to say which, or it matches the touch rows as well and
-  // counts them as keyboard bindings.
-  const KEYBOARD_MAP = '.keymap:not(.keymap--touch)';
-
   /**
    * Open settings with a given mode in play.
    *
@@ -2756,9 +2763,10 @@ test.describe('arrow keys move through the menus', () => {
       seen.add(await page.evaluate(() => document.activeElement?.className ?? ''));
       await page.keyboard.press('ArrowDown');
     }
-    // It travels the checkboxes and the slider, and gets to BACK.
+    // It travels the preference rows and the masthead back control.
     expect([...seen].some((name) => name.includes('field__input'))).toBe(true);
     expect([...seen].some((name) => name.includes('field__range'))).toBe(true);
+    expect([...seen].some((name) => name.includes('panel__back'))).toBe(true);
   });
 
   test('leaves the arrows alone where a control needs them', async ({ page }) => {
@@ -2905,6 +2913,11 @@ test.describe('touch controls', () => {
     await page.goto('/?debug=1&mode=ascent&seed=touchwall');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     const at = await anchors(page);
+    const minU = await page.evaluate(() => {
+      const active = window.__refraction?.game.active;
+      if (!active) return 0;
+      return -Math.min(...active.offsets.map((c) => c.x));
+    });
 
     // One continuous drag: left into the wall, then back, without lifting.
     //
@@ -2917,10 +2930,10 @@ test.describe('touch controls', () => {
       [at.strip(7), at.strip(4), at.strip(1), at.strip(0), at.strip(0), at.strip(1)],
       { pauseMs: 10 }
     );
-    // Seven columns of travel left from a spawn near the middle leaves three or
-    // four columns pressed into the wall. Coming back one column has to move the
-    // piece one column, not work off the debt first.
-    expect(await column(page)).toBe(1);
+    // Seven columns of travel left from a spawn near the middle presses into the
+    // wall at this shape's minimum u (pivot-centred offsets may be negative).
+    // Coming back one column has to move the piece one column, not work off debt.
+    expect(await column(page)).toBe(minU + 1);
   });
 
   test('a flick down drops the piece in Flatland', async ({ page }) => {
@@ -3110,20 +3123,53 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.getByRole('button', { name: 'Controls' }).click();
     await page.getByRole('tab', { name: '3D modes' }).click();
 
-    await expect(page.locator('.keymap--touch')).toBeVisible();
-    await expect(page.locator('.keymap:not(.keymap--touch)')).toBeHidden();
-    await expect(page.locator('.keymap--touch')).toContainText('Two-finger swipe down');
-    await expect(page.locator('.keymap--touch .keymap__foot')).toContainText('Shift meter');
-    await expect(page.locator('.keymap--touch')).toContainText('X button');
-    await expect(page.locator('.keymap--touch')).toContainText('(When bar full) Right panel');
-    await expect(page.locator('.keymap--touch')).not.toContainText('gauge');
-    await expect(page.locator('.control-diagram--touch')).toBeVisible();
-    await expect(page.locator('.controls-editor__remap')).toBeHidden();
-    await expect(page.locator('.control-diagram__title')).toContainText('Tap Zones');
-    await expect(page.locator('.phone-bezel')).toBeVisible();
-    await expect(page.locator('.control-diagram--touch .wedge--roll').first()).toBeVisible();
+    await expect(page.locator(TOUCH_MAP)).toBeVisible();
+    await expect(page.locator(KEYBOARD_MAP)).toBeHidden();
+    await expect(page.locator(TOUCH_MAP)).toContainText('Two-finger swipe down');
+    await expect(page.locator(`${TOUCH_MAP} .keymap__foot`)).toContainText('Shift meter');
+    await expect(page.locator(TOUCH_MAP)).toContainText('X button');
+    await expect(page.locator(TOUCH_MAP)).toContainText('(When bar full) Right panel');
+    await expect(page.locator(TOUCH_MAP)).not.toContainText('gauge');
+    await expect(page.locator(TOUCH_DIAGRAM)).toBeVisible();
+    await expect(page.locator(KEYBOARD_TABLE)).toBeHidden();
+    await expect(page.locator(`${TOUCH_DIAGRAM} .control-diagram__title`)).toContainText(
+      'Tap Zones'
+    );
+    await expect(page.locator(`${TOUCH_DIAGRAM} .phone-bezel`)).toBeVisible();
+    await expect(page.locator(`${TOUCH_DIAGRAM} .wedge--roll`).first()).toBeVisible();
+    await context.close();
+  });
+
+  test('mobile Controls returns to Settings then the title', async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 390, height: 844 },
+      hasTouch: true,
+      isMobile: true,
+    });
+    const page = await context.newPage();
+    const cdp = await context.newCDPSession(page);
+    await cdp.send('Emulation.setEmulatedMedia', {
+      features: [
+        { name: 'pointer', value: 'coarse' },
+        { name: 'hover', value: 'none' },
+      ],
+    });
+    await page.goto('/?debug=1');
+    await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+    await enter(page);
+    await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
+    await expect(page.locator('.settings-nav-controls')).toBeVisible();
+    await expect(page.locator('.settings-controls')).toBeHidden();
+    await page.getByRole('button', { name: 'Controls' }).click();
+    await expect(page.locator('.panel[data-screen="settings-controls"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('.panel[data-screen="settings"]')).toBeVisible();
+    await page.getByRole('button', { name: 'Back' }).click();
+    await expect(page.locator('.panel--title')).toBeVisible();
     await context.close();
   });
 
@@ -3145,11 +3191,12 @@ test.describe('the controls panel follows the input method', () => {
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
+    await page.getByRole('button', { name: 'Controls' }).click();
     await page.getByRole('tab', { name: 'Flatland' }).click();
 
     await expect(page.locator('.control-diagram__wedge--flatland')).toBeVisible();
-    await expect(page.locator('.control-diagram--touch')).toContainText('Drag to move');
-    await expect(page.locator('.keymap--touch')).toContainText('Two-finger swipe up / down');
+    await expect(page.locator(TOUCH_DIAGRAM)).toContainText('Drag to move');
+    await expect(page.locator(TOUCH_MAP)).toContainText('Two-finger swipe up / down');
     await context.close();
   });
 
@@ -3159,9 +3206,11 @@ test.describe('the controls panel follows the input method', () => {
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
-    await expect(page.locator('.keymap:not(.keymap--touch)')).toBeVisible();
-    await expect(page.locator('.keymap--touch')).toBeHidden();
-    await expect(page.locator('.controls-editor__remap')).toBeVisible();
+    await expect(page.locator(KEYBOARD_MAP)).toBeVisible();
+    await expect(page.locator(TOUCH_MAP)).toBeHidden();
+    await expect(page.locator(TOUCH_DIAGRAM)).toBeHidden();
+    await expect(page.locator(KEYBOARD_DIAGRAM)).toBeVisible();
+    await expect(page.locator(KEYBOARD_TABLE)).toBeVisible();
   });
 });
 
@@ -4452,7 +4501,7 @@ test.describe('Spectral Collapse', () => {
       await page.keyboard.press('Escape');
       await page.getByRole('button', { name: 'SETTINGS' }).click();
       await expect(
-        page.locator('.keymap:not(.keymap--touch) .keymap__row[data-action="collapse"]')
+        page.locator(`${KEYBOARD_MAP} .keymap__row[data-action="collapse"]`)
       ).toBeVisible();
     }
   });

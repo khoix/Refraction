@@ -20,7 +20,7 @@ export default defineConfig({
     rollupOptions: {
       input: {
         main: resolvePath('./index.html'),
-        effects: resolvePath('./effects.html'),
+        preview: resolvePath('./preview.html'),
       },
       output: {
         // Keep the renderer library in its own long-lived chunk so gameplay

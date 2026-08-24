@@ -79,6 +79,38 @@ describe('playableSource', () => {
 
   it('keeps the theme out of the gameplay pool', () => {
     expect(GAMEPLAY.some((entry) => entry.id === THEME.id)).toBe(false);
+    expect(GAMEPLAY.some((entry) => entry.title.includes('(Theme)'))).toBe(false);
+  });
+
+  it('builds gameplay ids from file names so the tutorial pin stays stable', () => {
+    expect(GAMEPLAY.map((entry) => entry.id)).toContain('block-drift');
+  });
+
+  it('discovers every gameplay WebM in the folder except the theme', () => {
+    expect(GAMEPLAY).toHaveLength(9);
+    expect(GAMEPLAY.map((entry) => entry.id).sort()).toEqual([
+      'block-drift',
+      'blockfall-redux',
+      'colorful-shores',
+      'daft-funk',
+      'get-you-in-the-groove',
+      'mushroom-boogie',
+      'punch-the-block',
+      'stack-up',
+      'turn-it-out',
+    ]);
+  });
+
+  it('sorts gameplay beds alphabetically by title', () => {
+    const titles = GAMEPLAY.map((entry) => entry.title);
+    expect(titles).toEqual([...titles].sort((a, b) => a.localeCompare(b)));
+  });
+
+  it('uses a shared byte estimate for gameplay beds', () => {
+    for (const entry of GAMEPLAY) {
+      expect(entry.bytes).toBe(1_600_000);
+      expect(entry.seconds).toBe(0);
+    }
   });
 
   it('credits every catalogue track', () => {

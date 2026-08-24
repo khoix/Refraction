@@ -7,6 +7,63 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Glass gel, pivot rotation, and drop-in music
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+**Rotation.** Active pieces store pivot-centred offsets; the I-piece spins about
+the half-integer centre of its 4×4 box instead of re-normalising to a voxel
+corner. Spawn placement compensates for negative offsets so world positions stay
+correct.
+
+**Music.** Gameplay beds are discovered from `./tracks/*.webm` at build time —
+drop a file in the folder and it joins the run pool with a slug id derived from
+the name. Four new beds ship: Daft Funk, Get You In The Groove, Mushroom Boogie,
+Punch The Block.
+
+**Rendering.** Board cubes use `MeshPhysicalMaterial` clearcoat + gel edge shader
+with no transmission or environment map (transmission blacked the board under
+bloom). Backdrop floaters get a lighter `createFloaterMaterial` so the room
+never flashes with the playfield. Line clears and locks gain variable-size debris
+and a new spark layer (streaks + pin flashes); bloom is toned down and gated to
+clear-line glow and Prism/Collapse whiteout only — lock sparks no longer whiteout
+the whole well.
+
+**Preview lab.** Materials tab bloom defaults match production; variant labels
+anchor under each 3D cluster; enhanced effect demos expanded (chromatic fringe,
+particle/spark profiles).
+
+### Tested
+
+Unit: pivot rotation (I-piece world positions, four-turn identity), glob-built
+track catalogue (theme exclusion, slug ids, new beds), playability with centred
+offsets. Typecheck, lint.
+
+---
+
+## Settings layout + panel navigation
+
+**Branch:** `cursor/refraction-kendega-desktop`
+
+Desktop settings split into preferences and a wider controls column. Flatland /
+3D are underline tabs; bindings live in a 3×2 table (piece diagram | move /
+rotate | depth / game) with rebind rows in each cell and Reset profile in the
+panel head. The profile stack keeps its height when switching tabs so the panel
+does not jump.
+
+Mobile moves the controls editor behind a **Controls** preferences row into a
+dedicated screen. Masthead ← back replaces the bottom BACK row on Settings,
+Controls, Choose Mode, and Challenge. `settingsReturn` is preserved when backing
+out of Controls into Settings so a second back reaches the screen that opened
+Settings, not Controls again.
+
+### Tested
+
+Typecheck, lint. E2e: desktop controls table, touch vs keyboard panels, mobile
+Controls nav round-trip (Settings → Controls → Settings → title).
+
+---
+
 ## Touch control diagrams + Flatland peek
 
 **Branch:** `main`

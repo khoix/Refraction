@@ -28,11 +28,19 @@ import {
   remapFromSave,
   resolveBindings,
 } from '../keymap';
-import type { Action, Binding, BindingProfile } from '../keymap';
+import type { Action, Binding, BindingGroup, BindingProfile } from '../keymap';
 import { buildKeyboardDiagram, buildTouchDiagram } from './control-diagram';
 
 export type ScreenName =
-  'boot' | 'title' | 'modes' | 'playing' | 'paused' | 'over' | 'settings' | 'challenge';
+  | 'boot'
+  | 'title'
+  | 'modes'
+  | 'playing'
+  | 'paused'
+  | 'over'
+  | 'settings'
+  | 'settings-controls'
+  | 'challenge';
 
 /**
  * How long a panel takes to hand over to the next one.
@@ -75,6 +83,17 @@ function button(label: string, className: string, onClick: () => void): HTMLButt
   node.type = 'button';
   node.addEventListener('click', onClick);
   return node;
+}
+
+/** Title row with a back control tucked against the left of the heading. */
+function panelMasthead(title: string, onBack: () => void): HTMLElement {
+  const head = element('div', 'panel__masthead');
+  const inner = element('div', 'panel__masthead-inner');
+  const back = button('←', 'panel__back', onBack);
+  back.setAttribute('aria-label', 'Back');
+  inner.append(back, element('h2', 'panel__title', title));
+  head.append(inner);
+  return head;
 }
 
 /** Filled and empty pips for the mode card's difficulty rating. */
@@ -255,43 +274,12 @@ function buildTouchMap(mode: ModeConfig): HTMLElement {
   return list;
 }
 
-/**
- * The key map — from resolved bindings for the mode's profile.
- */
-function buildKeyMap(mode: ModeConfig, bindings: readonly Binding[]): HTMLElement {
-  const list = element('div', 'keymap');
-  list.append(element('h3', 'keymap__title', 'CONTROLS'));
-
-  for (const group of BINDING_GROUPS) {
-    const rows = bindings.filter(
-      (binding) => binding.group === group && appliesToMode(binding, mode)
-    );
-    if (rows.length === 0) continue;
-    const section = element('section', 'keymap__section');
-    section.append(element('h4', 'keymap__group', group.toUpperCase()));
-    for (const binding of rows) {
-      const row = element('div', 'keymap__row');
-      row.dataset['action'] = binding.action;
-
-      const keys = element('span', 'keymap__keys');
-      for (const code of binding.codes) {
-        keys.append(element('kbd', 'key', keyLabel(code)));
-      }
-      const label = element('span', 'keymap__label', binding.label);
-      row.append(keys, label);
-      const note =
-        binding.action === 'peek' && mode.peekPolicy === 'byStage'
-          ? 'Until stage 6'
-          : binding.note;
-      if (note) row.append(element('span', 'keymap__note', note));
-      section.append(row);
-    }
-    list.append(section);
-  }
-
-  list.append(element('p', 'keymap__foot', TURN_PROMPT_NOTE));
-  return list;
-}
+const CONTROL_TABLE_CELL: Readonly<Record<BindingGroup, string>> = {
+  Move: 'controls-editor__cell--move',
+  Rotate: 'controls-editor__cell--rotate',
+  Depth: 'controls-editor__cell--depth',
+  Game: 'controls-editor__cell--game',
+};
 
 export class Screens {
   readonly root = element('div', 'screens');
@@ -313,7 +301,9 @@ export class Screens {
    * so a panel built once at boot would advertise four keys and two gestures the
    * engine ignores.
    */
-  private readonly controls = element('div', 'keymap__pair');
+  private readonly controls = element('div', 'settings-controls__stack');
+  private readonly settingsControlsHost = element('div', 'settings-controls-host');
+  private readonly settingsControlsPageHost = element('div', 'settings-controls-page__editor');
   private mode: ModeConfig = modeById(DEFAULT_MODE_ID);
   /** Settings tab: which binding profile is being edited. */
   private settingsProfile: BindingProfile = 'roll';
@@ -361,6 +351,7 @@ export class Screens {
     this.panels.set('over', this.buildGameOver());
     this.setMode(this.mode);
     this.panels.set('settings', this.buildSettings());
+    this.panels.set('settings-controls', this.buildSettingsControls());
     this.panels.set('challenge', this.buildChallenge());
     for (const panel of this.panels.values()) this.root.append(panel);
     this.root.addEventListener('keydown', (event) => this.handleArrow(event));
@@ -531,10 +522,11 @@ export class Screens {
       grid.append(card);
     }
 
-    const actions = element('div', 'panel__actions');
-    actions.append(button('BACK', 'button', () => this.handlers.onOpen('title')));
-
-    return this.panel('modes', element('h2', 'panel__title', 'CHOOSE A MODE'), grid, actions);
+    return this.panel(
+      'modes',
+      panelMasthead('CHOOSE A MODE', () => this.handlers.onOpen('title')),
+      grid
+    );
   }
 
   private buildPause(): HTMLElement {
@@ -631,13 +623,12 @@ export class Screens {
         const daily = dailyChallenge(new Date());
         this.challengeInput.value = daily.code;
         this.handlers.onChallenge(daily);
-      }),
-      button('BACK', 'button', () => this.handlers.onOpen('title'))
+      })
     );
 
     return this.panel(
       'challenge',
-      element('h2', 'panel__title', 'CHALLENGE'),
+      panelMasthead('CHALLENGE', () => this.handlers.onOpen('title')),
       element(
         'p',
         'panel__detail',
@@ -652,6 +643,15 @@ export class Screens {
 
   private buildSettings(): HTMLElement {
     const fields = element('div', 'fields');
+
+    const controlsNav = element('button', 'field field--nav settings-nav-controls');
+    controlsNav.type = 'button';
+    controlsNav.append(
+      element('span', 'field__label', 'Controls'),
+      element('span', 'field__hint', 'Tap zones and gestures')
+    );
+    controlsNav.addEventListener('click', () => this.handlers.onOpen('settings-controls'));
+    fields.append(controlsNav);
 
     const rows = [
       toggleRow(
@@ -745,15 +745,34 @@ export class Screens {
       volume.value = String(Math.round(this.save.settings.volume * 100));
     });
 
-    const actions = element('div', 'panel__actions');
-    actions.append(button('BACK', 'button', () => this.handlers.onQuit()));
+    const preferences = element('section', 'settings-preferences');
+    preferences.append(element('h3', 'settings-section__title', 'PREFERENCES'), fields);
+
+    const controlsSection = element('section', 'settings-controls');
+    controlsSection.append(
+      element('h3', 'settings-section__title', 'CONTROLS'),
+      this.settingsControlsHost
+    );
+    this.settingsControlsHost.append(this.controls);
+
+    const body = element('div', 'settings-body');
+    body.append(preferences, controlsSection);
 
     return this.panel(
       'settings',
-      element('h2', 'panel__title', 'SETTINGS'),
-      fields,
-      this.controls,
-      actions
+      panelMasthead('SETTINGS', () => this.handlers.onQuit()),
+      body
+    );
+  }
+
+  private buildSettingsControls(): HTMLElement {
+    const body = element('div', 'settings-controls-page__body');
+    body.append(this.settingsControlsPageHost);
+
+    return this.panel(
+      'settings-controls',
+      panelMasthead('CONTROLS', () => this.handlers.onOpen('settings')),
+      body
     );
   }
 
@@ -795,7 +814,10 @@ export class Screens {
     }
 
     const items = [...panel.querySelectorAll<HTMLElement>('button, input, [tabindex="0"]')].filter(
-      (node) => !(node as HTMLButtonElement).disabled && node.offsetParent !== null
+      (node) =>
+        !(node as HTMLButtonElement).disabled &&
+        node.offsetParent !== null &&
+        !node.closest('[inert]')
     );
     if (items.length === 0) return;
 
@@ -827,98 +849,179 @@ export class Screens {
     return resolveBindings(profile, remapFromSave(this.save.settings.bindings[profile]));
   }
 
-  private rebuildControls(): void {
+  /** Toggle Flatland / 3D panes without rebuilding — keeps layout height pinned. */
+  private syncControlsProfile(): void {
     const profile = this.settingsProfile;
+    for (const pane of this.controls.querySelectorAll<HTMLElement>('[data-controls-profile]')) {
+      const active = pane.dataset['controlsProfile'] === profile;
+      pane.classList.toggle('controls-profile-pane--off', !active);
+      if (active) {
+        pane.removeAttribute('inert');
+        pane.removeAttribute('aria-hidden');
+      } else {
+        pane.setAttribute('inert', '');
+        pane.setAttribute('aria-hidden', 'true');
+      }
+    }
+    const flatTab = this.controls.querySelector<HTMLButtonElement>('#controls-tab-roll');
+    const fullTab = this.controls.querySelector<HTMLButtonElement>('#controls-tab-full');
+    const panel = this.controls.querySelector('#controls-panel-profile');
+    if (flatTab) {
+      flatTab.classList.toggle('controls-editor__tab--on', profile === 'roll');
+      flatTab.setAttribute('aria-selected', profile === 'roll' ? 'true' : 'false');
+      flatTab.tabIndex = profile === 'roll' ? 0 : -1;
+    }
+    if (fullTab) {
+      fullTab.classList.toggle('controls-editor__tab--on', profile === 'full');
+      fullTab.setAttribute('aria-selected', profile === 'full' ? 'true' : 'false');
+      fullTab.tabIndex = profile === 'full' ? 0 : -1;
+    }
+    panel?.setAttribute(
+      'aria-labelledby',
+      profile === 'roll' ? 'controls-tab-roll' : 'controls-tab-full'
+    );
+  }
+
+  private buildBindingRow(binding: Binding, mode: ModeConfig): HTMLElement {
+    const row = button('', 'keymap__row keymap__row--rebind', () =>
+      this.startRebind(binding.action)
+    );
+    row.dataset['action'] = binding.action;
+    if (this.rebindTarget === binding.action) {
+      row.classList.add('keymap__row--listening');
+    }
+    const keys = element('span', 'keymap__keys');
+    for (const code of binding.codes) {
+      keys.append(element('kbd', 'key', keyLabel(code)));
+    }
+    row.append(keys, element('span', 'keymap__label', binding.label));
+    const note =
+      binding.action === 'peek' && mode.peekPolicy === 'byStage'
+        ? 'Until stage 6'
+        : binding.note;
+    if (note) row.append(element('span', 'keymap__note', note));
+    return row;
+  }
+
+  private buildControlTableCell(
+    profile: BindingProfile,
+    group: BindingGroup,
+    mode: ModeConfig
+  ): HTMLElement {
     const bindings = this.profileBindings(profile);
     const caps = capsForProfile(profile);
+    const cell = element('section', `controls-editor__cell ${CONTROL_TABLE_CELL[group]}`);
+    cell.append(element('h4', 'controls-editor__cell-title', group.toUpperCase()));
+
+    const rows = bindings.filter(
+      (binding) =>
+        binding.group === group &&
+        appliesToMode(binding, {
+          rotation: caps.rotation,
+          depthNudge: caps.depthNudge,
+          spectralCollapse: caps.spectralCollapse,
+          peekPolicy: caps.peekPolicy,
+        })
+    );
+    for (const binding of rows) {
+      cell.append(this.buildBindingRow(binding, mode));
+    }
+    if (group === 'Game') {
+      cell.append(element('p', 'keymap__foot', TURN_PROMPT_NOTE));
+    }
+    return cell;
+  }
+
+  private buildControlTable(profile: BindingProfile): HTMLElement {
+    const bindings = this.profileBindings(profile);
+    const mode = profile === 'roll' ? modeById('flatland') : modeById('ascent');
+
+    const table = element('div', 'controls-editor__table keymap');
+
+    const piece = element('div', 'controls-editor__piece');
+    piece.append(element('h4', 'controls-editor__cell-title', 'PIECE CONTROLS'));
+    const diagrams = element('div', 'controls-editor__diagrams');
+    diagrams.append(buildKeyboardDiagram(profile, bindings));
+    piece.append(diagrams);
+    table.append(piece);
+
+    for (const group of BINDING_GROUPS) {
+      table.append(this.buildControlTableCell(profile, group, mode));
+    }
+
+    return table;
+  }
+
+  private buildPanelHead(profile: BindingProfile): HTMLElement {
+    const head = element('div', 'controls-editor__panel-head');
+    head.append(
+      button('Reset profile', 'controls-editor__reset', () => {
+        this.handlers.onSettings({
+          bindings: {
+            ...this.save.settings.bindings,
+            [profile]: {},
+          },
+        });
+        this.rebuildControls();
+      })
+    );
+    return head;
+  }
+
+  private rebuildControls(): void {
+    const profile = this.settingsProfile;
+    const profiles: readonly BindingProfile[] = ['roll', 'full'];
 
     const editor = element('div', 'controls-editor');
     const tabs = element('div', 'controls-editor__tabs');
     tabs.setAttribute('role', 'tablist');
     tabs.setAttribute('aria-label', 'Control profile');
-    const flatTab = button('Flatland', 'button controls-editor__tab', () => {
+    const flatTab = button('Flatland', 'controls-editor__tab', () => {
+      if (this.settingsProfile === 'roll') return;
       this.settingsProfile = 'roll';
-      this.rebuildControls();
+      this.syncControlsProfile();
     });
     flatTab.id = 'controls-tab-roll';
     flatTab.setAttribute('role', 'tab');
-    flatTab.setAttribute('aria-selected', profile === 'roll' ? 'true' : 'false');
     flatTab.setAttribute('aria-controls', 'controls-panel-profile');
-    flatTab.tabIndex = profile === 'roll' ? 0 : -1;
-    const fullTab = button('3D modes', 'button controls-editor__tab', () => {
+    const fullTab = button('3D modes', 'controls-editor__tab', () => {
+      if (this.settingsProfile === 'full') return;
       this.settingsProfile = 'full';
-      this.rebuildControls();
+      this.syncControlsProfile();
     });
     fullTab.id = 'controls-tab-full';
     fullTab.setAttribute('role', 'tab');
-    fullTab.setAttribute('aria-selected', profile === 'full' ? 'true' : 'false');
     fullTab.setAttribute('aria-controls', 'controls-panel-profile');
-    fullTab.tabIndex = profile === 'full' ? 0 : -1;
-    flatTab.classList.toggle('controls-editor__tab--on', profile === 'roll');
-    fullTab.classList.toggle('controls-editor__tab--on', profile === 'full');
     tabs.append(flatTab, fullTab);
     editor.append(tabs);
 
-    const diagrams = element('div', 'controls-editor__diagrams');
-    diagrams.id = 'controls-panel-profile';
-    diagrams.setAttribute('role', 'tabpanel');
-    diagrams.setAttribute('aria-labelledby', profile === 'roll' ? 'controls-tab-roll' : 'controls-tab-full');
-    diagrams.append(buildKeyboardDiagram(profile, bindings), buildTouchDiagram(profile, bindings));
-    editor.append(diagrams);
+    const profileStack = element('div', 'controls-editor__stack');
+    profileStack.id = 'controls-panel-profile';
+    profileStack.setAttribute('role', 'tabpanel');
+    for (const p of profiles) {
+      const pane = element('div', 'controls-editor__profile-pane');
+      pane.dataset['controlsProfile'] = p;
+      if (p !== profile) pane.classList.add('controls-profile-pane--off');
 
-    const remap = element('div', 'controls-editor__remap');
-    remap.append(element('h3', 'keymap__title', 'REBIND'));
-    for (const group of BINDING_GROUPS) {
-      const rows = bindings.filter(
-        (binding) =>
-          binding.group === group &&
-          appliesToMode(binding, {
-            rotation: caps.rotation,
-            depthNudge: caps.depthNudge,
-            spectralCollapse: caps.spectralCollapse,
-            peekPolicy: caps.peekPolicy,
-          })
-      );
-      if (rows.length === 0) continue;
-      const section = element('section', 'keymap__section');
-      section.append(element('h4', 'keymap__group', group.toUpperCase()));
-      for (const binding of rows) {
-        const row = button('', 'keymap__row keymap__row--rebind', () =>
-          this.startRebind(binding.action)
-        );
-        row.dataset['action'] = binding.action;
-        if (this.rebindTarget === binding.action) {
-          row.classList.add('keymap__row--listening');
-        }
-        const keys = element('span', 'keymap__keys');
-        for (const code of binding.codes) {
-          keys.append(element('kbd', 'key', keyLabel(code)));
-        }
-        row.append(keys, element('span', 'keymap__label', binding.label));
-        if (binding.note) row.append(element('span', 'keymap__note', binding.note));
-        section.append(row);
-      }
-      remap.append(section);
+      const bindings = this.profileBindings(p);
+      const displayMode = p === 'roll' ? modeById('flatland') : modeById('ascent');
+
+      const panel = element('div', 'controls-editor__panel');
+      panel.append(this.buildPanelHead(p), this.buildControlTable(p));
+
+      const touch = element('div', 'controls-editor__touch');
+      const touchDiagrams = element('div', 'controls-editor__diagrams');
+      touchDiagrams.append(buildTouchDiagram(p, bindings));
+      touch.append(touchDiagrams, buildTouchMap(displayMode));
+
+      pane.append(panel, touch);
+      profileStack.append(pane);
     }
-    const reset = button('Reset profile', 'button', () => {
-      this.handlers.onSettings({
-        bindings: {
-          ...this.save.settings.bindings,
-          [profile]: {},
-        },
-      });
-      this.rebuildControls();
-    });
-    remap.append(reset);
-    editor.append(remap);
+    editor.append(profileStack);
 
-    const runBindings = bindings;
-    const displayMode = profile === 'roll' ? modeById('flatland') : modeById('ascent');
-    this.controls.replaceChildren(
-      editor,
-      buildKeyMap(displayMode, runBindings),
-      buildTouchMap(displayMode)
-    );
+    this.controls.replaceChildren(editor);
+    this.syncControlsProfile();
+    this.mountControls();
   }
 
   private startRebind(action: Action): void {
@@ -996,6 +1099,17 @@ export class Screens {
    * Leaving is skipped on the way into a run: `root.hidden` takes the whole
    * layer away at once there, and a run should start immediately.
    */
+  /** Keep the shared controls editor mounted in the panel that is showing it. */
+  private mountControls(): void {
+    const host =
+      this.current === 'settings-controls'
+        ? this.settingsControlsPageHost
+        : this.settingsControlsHost;
+    if (this.controls.parentElement !== host) {
+      host.append(this.controls);
+    }
+  }
+
   show(name: ScreenName): void {
     const previous = this.current;
     this.current = name;
@@ -1046,6 +1160,7 @@ export class Screens {
     // changes, so the player never loses sight of what they were doing.
     this.root.hidden = name === 'playing';
     this.root.dataset['screen'] = name;
+    this.mountControls();
     this.sync();
     // The mode grid opens on the mode you last played, not on whichever card
     // happens to be first in the table. For a new save that is the default mode,
@@ -1064,7 +1179,7 @@ export class Screens {
     this.save = save;
     this.sync();
     // Remaps live in settings; keep the editor in step when commit() updates save.
-    if (this.current === 'settings') this.rebuildControls();
+    if (this.current === 'settings' || this.current === 'settings-controls') this.rebuildControls();
   }
 
   /** Fill in the game-over panel from a finished run. */

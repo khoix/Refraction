@@ -382,6 +382,7 @@ function boot(root: HTMLElement): void {
     onQuit: () => {
       // From settings this is "back"; from pause it is "leave the run".
       if (screens.screen === 'settings') screens.show(settingsReturn);
+      else if (screens.screen === 'settings-controls') screens.show('settings');
       else {
         stillTheTitle();
         screens.show('title');
@@ -390,7 +391,11 @@ function boot(root: HTMLElement): void {
     onRestart: () => startRun(mode.id, challenge),
     onSettings: (patch) => commit(withSettings(save, patch)),
     onOpen: (screen) => {
-      if (screen === 'settings') settingsReturn = screens.screen;
+      // Returning from Controls → Settings is still inside settings; do not
+      // overwrite where Settings should exit to.
+      if (screen === 'settings' && screens.screen !== 'settings-controls') {
+        settingsReturn = screens.screen;
+      }
       // Game over → mode grid (and any other boardless destination) must drop
       // the finished stack the same way MAIN MENU does via `onQuit`.
       if (
@@ -558,6 +563,8 @@ function boot(root: HTMLElement): void {
           screens.show('playing');
         } else if (screens.screen === 'settings') {
           screens.show(settingsReturn);
+        } else if (screens.screen === 'settings-controls') {
+          screens.show('settings');
         }
         touch.cancel();
       },
@@ -754,7 +761,8 @@ function boot(root: HTMLElement): void {
      * both idempotent at the graph level precisely so this can run every frame.
      */
     const screen = screens.screen;
-    const bedFor = screen === 'settings' ? settingsReturn : screen;
+    const bedFor =
+      screen === 'settings' || screen === 'settings-controls' ? settingsReturn : screen;
     if (THEME_SCREENS.has(bedFor)) audio.playTheme();
     else if (bedFor === 'boot') audio.stopMusic();
     else audio.playGameplay();
