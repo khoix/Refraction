@@ -25,6 +25,7 @@
 import * as THREE from 'three';
 import { BOARD_DEPTH } from '@core/constants';
 import type { Cell } from '@core/types';
+import { CellSnapshot } from './cell-snapshot';
 import { VoxelLayer } from './voxels';
 
 /** A full turn of the preview, in milliseconds. */
@@ -61,7 +62,9 @@ export class PiecePreview {
   private readonly light = new THREE.AmbientLight(0xffffff, Math.PI);
   private elapsed = 0;
   private cells: readonly Cell[] = [];
-  private lane = 0;
+  private lane = NaN;
+  private readonly layout = new CellSnapshot();
+  private placed: Cell[] = [];
   private spinning = true;
   private readonly target = new THREE.Vector3();
 
@@ -97,12 +100,10 @@ export class PiecePreview {
    * which is what decides its colour.
    */
   setPiece(cells: readonly Cell[], lane: number): void {
+    if (lane === this.lane && this.layout.matches(cells)) return;
+    this.layout.capture(cells);
     this.cells = cells;
     this.lane = lane;
-  }
-
-  update(deltaMs: number): void {
-    if (this.spinning) this.elapsed = (this.elapsed + deltaMs) % REVOLUTION_MS;
 
     // Centred on its own bounding box, so a wide piece and a tall one both sit
     // in the middle of the panel rather than drifting by their origin.
@@ -118,7 +119,7 @@ export class PiecePreview {
     // The layer positions cubes in board space, so the piece is placed where its
     // centre lands on the board's centre and the whole preview shares the
     // board's own colour maths -- including the lane the piece will arrive in.
-    const placed: Cell[] = this.cells.map((cell) => ({
+    this.placed = this.cells.map((cell) => ({
       x: cell.x - cx + (BOARD_DEPTH - 1) / 2,
       y: cell.y - cy + 8.5,
       z: BOARD_DEPTH - 1 - this.lane + (cell.z - cz),
@@ -130,12 +131,16 @@ export class PiecePreview {
     // being drawn.
     this.target.set(0, 0, BOARD_DEPTH - 1 - this.lane - (BOARD_DEPTH - 1) / 2);
 
+  }
+
+  update(deltaMs: number): void {
+    if (this.spinning) this.elapsed = (this.elapsed + deltaMs) % REVOLUTION_MS;
     const yaw = (this.elapsed / REVOLUTION_MS) * 360;
     // Colour follows the *board's* yaw, not the preview's: the piece has to be
     // shown wearing the colour of the lane it will arrive in, and that colour is
     // a property of the board's orientation. Spinning the diagram must not
     // repaint it.
-    this.cubes.update(placed, 0, 1);
+    this.cubes.update(this.placed, 0, 1);
     this.orient(yaw);
   }
 

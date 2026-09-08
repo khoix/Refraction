@@ -10,12 +10,13 @@
  */
 
 import * as THREE from 'three';
-import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { acquireVoxelGeometry, releaseVoxelGeometry } from './voxel-geometry';
+import { CellSnapshot } from './cell-snapshot';
 import { BOARD_DEPTH, BOARD_HEIGHT, BOARD_WIDTH } from '@core/constants';
 import { depthParameterAtYaw, toView } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face } from '@core/types';
-import { createGelMaterial, GEL_ROUNDNESS, setGelStrength } from './gel';
+import { createGelMaterial, setGelStrength } from './gel';
 import { toSceneX, toSceneY, toSceneZ } from './scene';
 
 const MAX_INSTANCES = BOARD_WIDTH * BOARD_HEIGHT * BOARD_DEPTH;
@@ -92,11 +93,18 @@ export class VoxelLayer {
   private depthColour = true;
   private readonly lift: number;
   private readonly faceOffset: number;
+  private readonly previousCells = new CellSnapshot();
+  private previousYaw = NaN;
+  private previousScale = NaN;
+  private previousWhite = NaN;
+  private previousDim = NaN;
+  private previousDepthColour: boolean | null = null;
+  private disposed = false;
 
   constructor(options: VoxelLayerOptions = {}) {
     this.lift = THREE.MathUtils.clamp(options.lift ?? 0, 0, 1);
     this.faceOffset = options.faceOffset ?? 0;
-    const geometry = new RoundedBoxGeometry(1, 1, 1, 4, GEL_ROUNDNESS);
+    const geometry = acquireVoxelGeometry('board');
     const transparent = options.opacity !== undefined && options.opacity < 1;
 
     // The ghost is unlit on purpose: it has to show its landing lane's colour
@@ -165,6 +173,19 @@ export class VoxelLayer {
   }
 
   update(cells: readonly Cell[], yawDegrees: number, scaleBias = 1, whiteout = 0, dim = 0): void {
+    const cellsChanged = !this.previousCells.matches(cells);
+    const matricesChanged = cellsChanged || scaleBias !== this.previousScale ||
+      (this.faceOffset !== 0 && yawDegrees !== this.previousYaw);
+    const coloursChanged = cellsChanged || yawDegrees !== this.previousYaw ||
+      whiteout !== this.previousWhite || dim !== this.previousDim ||
+      this.depthColour !== this.previousDepthColour;
+    if (!matricesChanged && !coloursChanged) return;
+    this.previousCells.capture(cells);
+    this.previousYaw = yawDegrees;
+    this.previousScale = scaleBias;
+    this.previousWhite = whiteout;
+    this.previousDim = dim;
+    this.previousDepthColour = this.depthColour;
     const count = Math.min(cells.length, this.mesh.instanceMatrix.count);
     this.mesh.count = count;
     const size = CUBE_GAP * scaleBias;
@@ -178,12 +199,14 @@ export class VoxelLayer {
 
     for (let i = 0; i < count; i += 1) {
       const cell = cells[i] as Cell;
-      const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
-
+      if (matricesChanged) {
       this.position.set(toSceneX(cell.x) + outX, toSceneY(cell.y), toSceneZ(cell.z) + outZ);
       this.scaleVector.setScalar(size);
       this.matrix.compose(this.position, this.quaternion, this.scaleVector);
       this.mesh.setMatrixAt(i, this.matrix);
+      }
+      if (!coloursChanged) continue;
+      const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yawDegrees), 0, 1);
 
       // Full Spectrum drives every band toward white, which is the whole colour
       // metaphor stated literally: the visible spectrum combined is white light.
@@ -207,8 +230,16 @@ export class VoxelLayer {
     // read brighter than the glass in front of it.
     setGelStrength(this.mesh.material as THREE.Material, 1 - toVoid);
 
-    this.mesh.instanceMatrix.needsUpdate = true;
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    if (matricesChanged && count > 0) {
+      this.mesh.instanceMatrix.clearUpdateRanges();
+      this.mesh.instanceMatrix.addUpdateRange(0, count * 16);
+      this.mesh.instanceMatrix.needsUpdate = true;
+    }
+    if (coloursChanged && count > 0 && this.mesh.instanceColor) {
+      this.mesh.instanceColor.clearUpdateRanges();
+      this.mesh.instanceColor.addUpdateRange(0, count * 3);
+      this.mesh.instanceColor.needsUpdate = true;
+    }
   }
 
   /** Vary the layer's overall strength, e.g. to pulse the clear glow. */
@@ -217,7 +248,10 @@ export class VoxelLayer {
   }
 
   dispose(): void {
-    this.mesh.geometry.dispose();
+    if (this.disposed) return;
+    this.disposed = true;
+    releaseVoxelGeometry('board');
+    this.mesh.dispose();
     (this.mesh.material as THREE.Material).dispose();
   }
 }
@@ -265,6 +299,10 @@ export class EdgeLayer {
 
   /** Screen cell -> the smallest depth parameter seen at it, for the colour. */
   private readonly occupied = new Map<number, number>();
+  private readonly previousCells = new CellSnapshot();
+  private previousFace: Face | null = null;
+  private previousYaw = NaN;
+  private previousDepthColour: boolean | null = null;
 
   constructor(maxCells = MAX_INSTANCES, opacity = 0.3, renderOrder = 0) {
     // Four boundary edges per cell is the worst case, when no cell touches
@@ -305,6 +343,12 @@ export class EdgeLayer {
    * while a piece is falling, and nothing falls during a turn.
    */
   update(cells: readonly Cell[], face: Face, yawDegrees: number): void {
+    if (this.previousCells.matches(cells) && face === this.previousFace &&
+      yawDegrees === this.previousYaw && this.depthColour === this.previousDepthColour) return;
+    this.previousCells.capture(cells);
+    this.previousFace = face;
+    this.previousYaw = yawDegrees;
+    this.previousDepthColour = this.depthColour;
     this.occupied.clear();
     for (const cell of cells) {
       const { u, y } = toView(face, cell);
@@ -370,8 +414,11 @@ export class EdgeLayer {
     }
 
     this.geometry.setDrawRange(0, v);
-    this.geometry.getAttribute('position').needsUpdate = true;
-    this.geometry.getAttribute('color').needsUpdate = true;
+    for (const name of ['position', 'color']) {
+      const attribute = this.geometry.getAttribute(name) as THREE.BufferAttribute;
+      attribute.clearUpdateRanges();
+      if (v > 0) { attribute.addUpdateRange(0, v * 3); attribute.needsUpdate = true; }
+    }
   }
 
   /** Screen cells are small and bounded, so one integer keys the map. */

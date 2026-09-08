@@ -218,6 +218,7 @@ varying vec3 vGelNormal;
 varying vec3 vGelView;
 uniform float uGelYaw;
 uniform float uGelStrength;
+uniform float uGelPolish;
 
 float gelHash(vec3 p) {
   return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
@@ -231,7 +232,7 @@ float gelEdge(vec3 p) {
 }
 
 float gelBelow(vec3 p) {
-  return smoothstep(-0.12, -0.5, p.y);
+  return 1.0 - smoothstep(-0.5, -0.12, p.y);
 }
 
 // The same transform orientLights() uses, so the gel's light and the scene's
@@ -258,11 +259,21 @@ const GEL_ALBEDO = /* glsl */ `
   float gLambert = max(dot(normalize(vGelNormal), gelLight()), 0.0);
   float gGloss = gBevel * pow(gLambert, ${GLOSS_FOCUS.toFixed(2)}) * uGelStrength;
   float gSpeck = (gelHash(floor(vGelPosition * 30.0)) - 0.5) * gEdge;
+  vec3 gFootprint = fwidth(vGelPosition * 30.0);
+  float gFilter = 1.0 - smoothstep(0.45, 1.4, max(gFootprint.x, max(gFootprint.y, gFootprint.z)));
+  gSpeck *= mix(1.0, gFilter, uGelPolish);
+  vec3 gView = normalize(vGelView);
+  float gSpec = pow(max(dot(gView, normalize(vec3(0.32, 0.58, 1.0))), 0.0), 20.0);
+  float gCatch = gBevel * gSpec * uGelStrength;
+  gGloss = mix(gGloss, gGloss * 0.65 + gCatch * 2.8, uGelPolish);
   // Orthographic, so the eye direction is constant and the view-space normal's
   // z component *is* the facing ratio -- no view vector to reconstruct.
-  float gRim = pow(1.0 - abs(vGelView.z), ${RIM_FOCUS.toFixed(1)}) * gEdge * uGelStrength;
+  float gRim = pow(1.0 - abs(gView.z), ${RIM_FOCUS.toFixed(1)}) * gEdge * uGelStrength;
 
-  diffuseColor.rgb *= 1.0 - gEdge * gEdge * ${DENSITY.toFixed(3)};
+  gRim *= mix(1.0, 0.45 + 0.55 * gLambert, uGelPolish);
+  diffuseColor.rgb *= 1.0 - gEdge * gEdge * (${DENSITY.toFixed(3)} + 0.14 * uGelPolish);
+  float gBand = smoothstep(0.32, 0.72, gEdge) * (1.0 - smoothstep(0.78, 1.0, gEdge));
+  diffuseColor.rgb *= 1.0 + gBand * 0.10 * uGelStrength * uGelPolish;
   diffuseColor.rgb *= 1.0 + gSpeck * ${SPECKS.toFixed(3)};
   // Toward white rather than toward a brighter version of the hue: a specular
   // highlight is the colour of the light, not of the surface. Hue stays reserved
@@ -310,7 +321,7 @@ export function createGelMaterial(options: {
     opacity: options.opacity ?? 1,
     envMapIntensity: GEL_ENV_INTENSITY,
   });
-  applyGel(material);
+  applyGel(material, 1, true);
   return material;
 }
 
@@ -321,13 +332,13 @@ export function createGelMaterial(options: {
  * clearcoat as well so they never bloom with the playfield. Isolation is
  * deliberate: rounded bevel + gel edge shader only.
  */
-export function createFloaterMaterial(): THREE.MeshStandardMaterial {
+export function createFloaterMaterial(positionScale = 1): THREE.MeshStandardMaterial {
   const material = new THREE.MeshStandardMaterial({
     roughness: 0.42,
     metalness: 0,
     envMapIntensity: 0,
   });
-  applyGel(material);
+  applyGel(material, positionScale);
   return material;
 }
 
@@ -338,23 +349,27 @@ export function createFloaterMaterial(): THREE.MeshStandardMaterial {
  * occluded silhouettes, the clear glow -- are unlit `MeshBasicMaterial` and never
  * reach here, so the material's own type is what decides.
  */
-export function applyGel(material: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial): void {
+export function applyGel(material: THREE.MeshStandardMaterial | THREE.MeshPhysicalMaterial, positionScale = 1, polish = false): void {
   const strength = { value: 1 };
   material.userData[STRENGTH_KEY] = strength;
   material.onBeforeCompile = (shader) => {
     shader.uniforms.uGelYaw = gelYaw;
     shader.uniforms.uGelStrength = strength;
+    shader.uniforms.uGelPolish = { value: polish ? 1 : 0 };
+    // Shared unit floaters retain the old size-authored object-space masks.
+    // Board cubes always use 1; this is never a depth-dependent term.
+    shader.uniforms.uGelPositionScale = { value: positionScale };
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        `#include <common>\nvarying vec3 vGelPosition;\nvarying vec3 vGelNormal;\nvarying vec3 vGelView;`
+        `#include <common>\nvarying vec3 vGelPosition;\nuniform float uGelPositionScale;\nvarying vec3 vGelNormal;\nvarying vec3 vGelView;`
       )
       .replace(
         '#include <begin_vertex>',
         // `normalMatrix` omits the instance transform, which is exact here: every
         // instance is a translation and a uniform scale, never a rotation, so the
         // instanced normal and the mesh normal agree.
-        `#include <begin_vertex>\nvGelPosition = position;\nvGelNormal = normal;\nvGelView = normalize(normalMatrix * normal);`
+        `#include <begin_vertex>\nvGelPosition = position * uGelPositionScale;\nvGelNormal = normal;\nvGelView = normalize(normalMatrix * normal);`
       );
     shader.fragmentShader = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${GEL_COMMON}`)

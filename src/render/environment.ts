@@ -52,16 +52,17 @@
 
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
+import { acquireVoxelGeometry, releaseVoxelGeometry } from './voxel-geometry';
 import { BOARD_HEIGHT } from '@core/constants';
 import { depthColor } from '@core/spectrum';
 import { createRng } from '@core/rng';
-import { createFloaterMaterial, GEL_ROUNDNESS, setGelStrength } from './gel';
+import { createFloaterMaterial, setGelStrength } from './gel';
 
 const BACKDROP_ORDER = -10;
 
 const DUST_INNER_RADIUS = 13;
 const DUST_OUTER_RADIUS = 42;
-const DUST_COUNT = 520;
+const DUST_COUNT = 260;
 
 const VOXEL_COUNT = 28;
 /**
@@ -166,19 +167,21 @@ function backdropMaterialSettings(material: THREE.Material): void {
  * mid-dark grey. That mistake is what made the old room a flat grey field, and
  * it is why every level in this file is stated the way it will actually look.
  */
+const lightScratch = new THREE.Color();
 function light(level: number): THREE.Color {
   const value = Math.max(0, level);
-  return new THREE.Color().setRGB(value * 0.94, value * 0.97, value, THREE.SRGBColorSpace);
+  return lightScratch.setRGB(value * 0.94, value * 0.97, value, THREE.SRGBColorSpace);
 }
 
 function dustCloud(seedAngle: number): THREE.Points {
   const positions = new Float32Array(DUST_COUNT * 3);
+  const rng = createRng(`dust-${seedAngle}`);
   for (let i = 0; i < DUST_COUNT; i += 1) {
-    const angle = seedAngle + Math.random() * Math.PI * 2;
+    const angle = seedAngle + rng.next() * Math.PI * 2;
     const radius =
-      DUST_INNER_RADIUS + Math.random() * Math.random() * (DUST_OUTER_RADIUS - DUST_INNER_RADIUS);
+      DUST_INNER_RADIUS + rng.next() * rng.next() * (DUST_OUTER_RADIUS - DUST_INNER_RADIUS);
     positions[i * 3] = Math.cos(angle) * radius;
-    positions[i * 3 + 1] = (Math.random() - 0.35) * BOARD_HEIGHT * 1.9;
+    positions[i * 3 + 1] = (rng.next() - 0.35) * BOARD_HEIGHT * 1.9;
     positions[i * 3 + 2] = Math.sin(angle) * radius;
   }
   const geometry = new THREE.BufferGeometry();
@@ -189,6 +192,36 @@ function dustCloud(seedAngle: number): THREE.Points {
   points.renderOrder = BACKDROP_ORDER;
   points.frustumCulled = false;
   return points;
+}
+
+/** Baked neutral light pools: no moving rig, texture, or per-pixel noise. */
+function roomLight(): THREE.Mesh {
+  const geometry = new THREE.PlaneGeometry(2, 2, 20, 12);
+  const position = geometry.getAttribute('position');
+  const colours = new Float32Array(position.count * 3);
+  for (let i = 0; i < position.count; i++) {
+    const x = position.getX(i);
+    const y = position.getY(i);
+    const left = Math.exp(-((x + 0.58) ** 2 * 9 + (y - 0.2) ** 2 * 2));
+    const right = Math.exp(-((x - 0.58) ** 2 * 12 + (y + 0.25) ** 2 * 3));
+    const c = light(0.075 * (left + right * 0.75));
+    colours[i * 3] = c.r;
+    colours[i * 3 + 1] = c.g;
+    colours[i * 3 + 2] = c.b;
+  }
+  geometry.setAttribute('color', new THREE.BufferAttribute(colours, 3));
+  const material = new THREE.MeshBasicMaterial({ vertexColors: true, toneMapped: false });
+  backdropMaterialSettings(material);
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader.replace(
+      '#include <project_vertex>',
+      'gl_Position = vec4(position.xy, 1.0, 1.0);'
+    );
+  };
+  const mesh = new THREE.Mesh(geometry, material);
+  mesh.frustumCulled = false;
+  mesh.renderOrder = BACKDROP_ORDER - 1;
+  return mesh;
 }
 
 /**
@@ -207,6 +240,44 @@ function dustCloud(seedAngle: number): THREE.Points {
  */
 function voxelField(): THREE.Group {
   const group = new THREE.Group();
+  // Distant forms need fewer bevel segments than the playable cubes. Shared
+  // by every ordinary floater; the composed title hero keeps its full geometry.
+  const geometry = new RoundedBoxGeometry(1, 1, 1, 2, 0.16);
+  const strength = new THREE.InstancedBufferAttribute(new Float32Array(VOXEL_COUNT), 1).setUsage(
+    THREE.DynamicDrawUsage
+  );
+  const sizes = new THREE.InstancedBufferAttribute(new Float32Array(VOXEL_COUNT), 1).setUsage(
+    THREE.DynamicDrawUsage
+  );
+  geometry.setAttribute('roomStrength', strength);
+  geometry.setAttribute('roomSize', sizes);
+  const sharedMaterial = createFloaterMaterial();
+  const gelCompile = sharedMaterial.onBeforeCompile;
+  sharedMaterial.onBeforeCompile = (shader, renderer) => {
+    gelCompile.call(sharedMaterial, shader, renderer);
+    shader.vertexShader = shader.vertexShader
+      .replace(
+        '#include <common>',
+        '#include <common>\nattribute float roomStrength;\nattribute float roomSize;\nvarying float vRoomStrength;'
+      )
+      .replace(
+        'vGelPosition = position * uGelPositionScale;',
+        'vRoomStrength = roomStrength; vGelPosition = position * roomSize;'
+      )
+      .replace('vGelNormal = normal;', 'vGelNormal = normalize(mat3(instanceMatrix) * normal);')
+      .replace('normalMatrix * normal', 'normalMatrix * mat3(instanceMatrix) * normal');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('uniform float uGelStrength;', 'varying float vRoomStrength;')
+      .replaceAll('uGelStrength', 'vRoomStrength');
+  };
+  sharedMaterial.customProgramCacheKey = () => 'room-instanced-gel-v1';
+  const instances = new THREE.InstancedMesh(geometry, sharedMaterial, VOXEL_COUNT);
+  instances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+  instances.frustumCulled = false;
+  instances.renderOrder = BACKDROP_ORDER;
+  const floaters: THREE.Mesh[] = [];
+  group.userData['floaters'] = floaters;
+  group.userData['instances'] = instances;
   const rng = createRng(VOXEL_SEED);
   for (let i = 0; i < VOXEL_COUNT; i += 1) {
     /*
@@ -232,13 +303,15 @@ function voxelField(): THREE.Group {
      * like something wearing its material.
      */
     const size = hero ? HERO_SIZE : 0.7 + rng.next() * 1.1;
-    const material = createFloaterMaterial();
-    const voxel = new THREE.Mesh(
-      new RoundedBoxGeometry(size, size, size, 4, GEL_ROUNDNESS * size),
-      material
-    );
-    // Drawn before the board and depth-tested against it, so a floater behind
-    // the well is correctly hidden by whatever the player has stacked there.
+    const material = hero ? createFloaterMaterial(size) : sharedMaterial;
+    const voxel = new THREE.Mesh(hero ? acquireVoxelGeometry() : geometry, material);
+    // Scenery cannot claim gameplay depth, even when its physical position is
+    // in front of the camera's play plane. The board always paints over it.
+    material.depthWrite = false;
+    material.depthTest = false;
+    voxel.scale.setScalar(size);
+    voxel.userData['size'] = size;
+    voxel.userData['hero'] = hero;
     voxel.renderOrder = BACKDROP_ORDER;
     voxel.frustumCulled = false;
 
@@ -276,9 +349,11 @@ function voxelField(): THREE.Group {
     // Where on the ramp this one sits, its own brightness, and its own drift, so
     // the field is a scattering rather than a pattern.
     voxel.userData['hue'] = hero ? HERO_HUE : rng.next();
+    voxel.userData['colour'] = depthColor(voxel.userData['hue'] as number);
     voxel.userData['level'] = hero ? HERO_LEVEL : 0.55 + rng.next() * 0.4;
     voxel.userData['bob'] = rng.next() * Math.PI * 2;
     voxel.userData['rise'] = 0.5 + rng.next() * 1.4;
+    voxel.userData['spin'] = 0.6 + i * 0.037;
 
     if (hero) {
       // Placed rather than scattered: the one large floater is a composition
@@ -287,8 +362,10 @@ function voxelField(): THREE.Group {
       voxel.rotation.set(0.42, 0.62, 0);
     }
     voxel.userData['home'] = voxel.position.y;
-    group.add(voxel);
+    floaters.push(voxel);
+    if (hero) group.add(voxel);
   }
+  group.add(instances);
   return group;
 }
 
@@ -329,15 +406,7 @@ function floorLattice(): THREE.LineSegments {
   return lattice;
 }
 
-/**
- * Shafts of light standing around the board.
- *
- * The falloff is the whole trick. A flat plane at constant brightness reads as
- * a coloured strip of paper; the same plane with its brightness ramped to
- * nothing at both ends reads as light passing through. The ramp is baked into
- * vertex colours -- under additive blending, black is invisible -- so it costs
- * one attribute and no shader.
- */
+/** Event-local neutral rings, pooled and inactive between clears. */
 interface Ripple {
   readonly ring: THREE.LineLoop;
   readonly material: THREE.LineBasicMaterial;
@@ -376,7 +445,6 @@ export class Environment {
   /** Reused so tinting the field allocates nothing per frame. */
   private readonly scratch = new THREE.Color();
   /** Reused for the keep-out test, for the same reason. */
-  private readonly worldScratch = new THREE.Vector3();
   private readonly lattice: THREE.LineSegments;
   private readonly ripples: Ripple[] = [];
 
@@ -384,7 +452,7 @@ export class Environment {
   private tension = 0;
   /** 1 while the board is settled and dead-on, 0 at the midpoint of a turn. */
   private flatness = 1;
-  private turnDrive = 0;
+  private disposed = false;
   /** Free-running clock for the floaters' individual bobbing. */
   private phase = 0;
   private readonly reducedMotion: boolean;
@@ -406,6 +474,7 @@ export class Environment {
     for (let i = 0; i < RIPPLE_POOL; i += 1) this.ripples.push(buildRipple());
 
     this.group.add(
+      roomLight(),
       this.dustNear,
       this.dustFar,
       this.voxels,
@@ -438,6 +507,10 @@ export class Environment {
    */
   setChroma(on: boolean): void {
     this.chromaTarget = on ? 1 : 0;
+    // Palette permission changes immediately; only menu arrival fades in.
+    // An exponential colour tail otherwise leaves dark solid floaters inside
+    // the well for the first seconds of a run.
+    if (!on) this.chroma = 0;
   }
 
   react(strength: number): void {
@@ -446,7 +519,7 @@ export class Environment {
 
   ripple(strength: number): void {
     const idle = this.ripples.find((candidate) => candidate.ageMs >= RIPPLE_LIFE_MS);
-    if (!idle) return;
+    if (!idle || this.reducedMotion) return;
     idle.ageMs = 0;
     idle.strength = strength * this.intensity;
     idle.ring.visible = true;
@@ -456,12 +529,10 @@ export class Environment {
     this.tension = THREE.MathUtils.clamp(tension, 0, 1);
   }
 
-  update(deltaMs: number, yawDegrees: number, turning: boolean): void {
+  update(deltaMs: number, yawDegrees: number, _turning: boolean): void {
     this.pulse = Math.max(0, this.pulse - deltaMs * 0.0022);
-    const target = turning ? 1 : 0;
-    this.turnDrive += (target - this.turnDrive) * Math.min(1, deltaMs * 0.008);
 
-    const drive = 1 + this.tension * 0.9 + this.turnDrive * 2.6 + this.pulse * 1.4;
+    const drive = 1 + this.tension * 0.15;
     const step = deltaMs * 0.000018 * drive * this.intensity;
     this.phase += deltaMs * 0.00035 * (this.reducedMotion ? 0.4 : 1);
 
@@ -481,9 +552,9 @@ export class Environment {
     // changing colour.
     const glow = this.pulse + this.tension * 0.3;
 
-    (this.dustNear.material as THREE.PointsMaterial).color.copy(light(0.26 + glow * 0.3));
-    (this.dustFar.material as THREE.PointsMaterial).color.copy(light(0.13 + glow * 0.16));
-    (this.dustNear.material as THREE.PointsMaterial).size = 1.9 + this.pulse * 1.2;
+    (this.dustNear.material as THREE.PointsMaterial).color.copy(light(0.18 + glow * 0.07));
+    (this.dustFar.material as THREE.PointsMaterial).color.copy(light(0.09 + glow * 0.035));
+    (this.dustNear.material as THREE.PointsMaterial).size = 1.35 + this.pulse * 0.12;
 
     /*
      * One field, kept out of the play column.
@@ -501,9 +572,8 @@ export class Environment {
      * the column and back in as it leaves, and only while there is a board to
      * protect. On the menus nothing fades, because there is nothing to read.
      *
-     * The keep-out is computed from the *world* position, so the field's own slow
-     * rotation is included -- the group turns, and a voxel that was clear a
-     * minute ago need not be now.
+     * The group is stationary. Local x/z are already world x/z; only the
+     * camera basis changes, so no matrix traversal is needed for this test.
      */
     this.chroma += Math.min(1, deltaMs / CHROMA_EASE_MS) * (this.chromaTarget - this.chroma);
     // The screen-right vector, matching the camera convention in `scene.ts`.
@@ -511,23 +581,28 @@ export class Environment {
     const rightX = Math.cos(viewYaw);
     const rightZ = -Math.sin(viewYaw);
 
-    this.voxels.children.forEach((child) => {
+    const instances = this.voxels.userData['instances'] as THREE.InstancedMesh;
+    const strengths = instances.geometry.getAttribute(
+      'roomStrength'
+    ) as THREE.InstancedBufferAttribute;
+    const sizes = instances.geometry.getAttribute('roomSize') as THREE.InstancedBufferAttribute;
+    let count = 0;
+    for (const child of this.voxels.userData['floaters'] as THREE.Mesh[]) {
       const voxel = child as THREE.Mesh;
-      voxel.getWorldPosition(this.worldScratch);
-      const screenX = this.worldScratch.x * rightX + this.worldScratch.z * rightZ;
+      const screenX = voxel.position.x * rightX + voxel.position.z * rightZ;
       // Full strength once a board's width clear of the column, nothing inside
       // it, and a soft ramp between so a turn does not make them blink.
       const clear = THREE.MathUtils.smoothstep(
-        Math.abs(screenX),
+        Math.abs(screenX) - ((voxel.userData['size'] as number) * Math.sqrt(3)) / 2,
         PLAY_COLUMN_HALF_WIDTH,
         PLAY_COLUMN_HALF_WIDTH * 2
       );
       const shown = this.chroma + (1 - this.chroma) * clear;
       voxel.visible = shown > 0.01;
-      if (!voxel.visible) return;
+      if (!voxel.visible) continue;
       const dim = PLAY_DIM + (1 - PLAY_DIM) * this.chroma;
       const own = ((voxel.userData['level'] as number) + glow * 0.4) * shown * dim;
-      const { r, g, b } = depthColor(voxel.userData['hue'] as number);
+      const { r, g, b } = voxel.userData['colour'] as { r: number; g: number; b: number };
 
       /*
        * The colour goes straight into the material, which is what the gel's
@@ -553,8 +628,8 @@ export class Environment {
        * face. Scaling them together keeps the material's look and the colour.
        */
       setGelStrength(material, Math.min(1, own));
-      voxel.rotation.x += step * 0.7;
-      voxel.rotation.y += step * 0.4;
+      voxel.rotation.x += step * (voxel.userData['spin'] as number);
+      voxel.rotation.y += (step * 0.4) / (voxel.userData['spin'] as number);
       // Floating: a slow rise and fall around where it was placed, each on its
       // own phase so the field never moves as one body.
       voxel.position.y =
@@ -563,18 +638,33 @@ export class Environment {
           this.phase * (voxel.userData['rise'] as number) + (voxel.userData['bob'] as number)
         ) *
           1.4;
-      voxel.scale.setScalar(1 + this.pulse * 0.1);
-    });
+      voxel.scale.setScalar(voxel.userData['size'] as number);
+      if (!voxel.userData['hero']) {
+        voxel.updateMatrix();
+        instances.setMatrixAt(count, voxel.matrix);
+        instances.setColorAt(count, material.color);
+        strengths.setX(count, Math.min(1, own));
+        sizes.setX(count, voxel.userData['size'] as number);
+        count++;
+      }
+    }
+    // Instance colour carries each floater's albedo; the shared base stays white.
+    (instances.material as THREE.MeshStandardMaterial).color.setRGB(1, 1, 1);
+    instances.count = count;
+    instances.instanceMatrix.needsUpdate = true;
+    if (instances.instanceColor) instances.instanceColor.needsUpdate = true;
+    strengths.needsUpdate = true;
+    sizes.needsUpdate = true;
 
     // Nothing at all when the board is dead-on, where this would be a hard white
     // rule rather than a floor. See `floorLattice`.
     (this.lattice.material as THREE.LineBasicMaterial).color.copy(
-      light((0.085 + glow * 0.11) * (1 - this.flatness))
+      light((0.045 + glow * 0.025) * (1 - this.flatness))
     );
 
     // A true neutral ground. A saturated near-black is a tint, and dark tints
     // read as dirt -- which is exactly how the old hue-cycled backdrop looked.
-    const ground = 0.035 + glow * 0.03;
+    const ground = 0.035;
     this.backdrop.setRGB(ground * 0.92, ground * 0.96, ground, THREE.SRGBColorSpace);
 
     const yawRad = THREE.MathUtils.degToRad(yawDegrees);
@@ -585,17 +675,26 @@ export class Environment {
       }
       ripple.ageMs += deltaMs;
       const t = Math.min(1, ripple.ageMs / RIPPLE_LIFE_MS);
-      ripple.ring.scale.setScalar(9 + t * 26);
+      ripple.ring.scale.setScalar(6 + t * 14);
+      ripple.ring.position.y = -BOARD_HEIGHT / 2 + 1;
       ripple.ring.rotation.y = yawRad;
-      ripple.material.color.copy(light((1 - t) * (1 - t) * 0.5 * ripple.strength));
+      ripple.material.color.copy(light((1 - t) * (1 - t) * 0.2 * ripple.strength));
     }
   }
 
   dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    const disposed = new Set<THREE.BufferGeometry>();
     const disposeObject = (object: THREE.Object3D): void => {
       const mesh = object as Partial<THREE.Mesh> & THREE.Object3D;
-      if (mesh.geometry) (mesh.geometry as THREE.BufferGeometry).dispose();
+      if (mesh.userData['hero']) releaseVoxelGeometry();
+      else if (mesh.geometry && !disposed.has(mesh.geometry)) {
+        disposed.add(mesh.geometry);
+        mesh.geometry.dispose();
+      }
       if (mesh.material) (mesh.material as THREE.Material).dispose();
+      if (object instanceof THREE.InstancedMesh) object.dispose();
     };
     this.group.traverse(disposeObject);
   }
@@ -647,10 +746,7 @@ export class Debris {
     });
     this.material.onBeforeCompile = (shader) => {
       shader.vertexShader = shader.vertexShader
-        .replace(
-          '#include <common>',
-          `#include <common>\nattribute float aScale;`
-        )
+        .replace('#include <common>', `#include <common>\nattribute float aScale;`)
         .replace('gl_PointSize = size;', 'gl_PointSize = size * aScale;');
     };
     this.points = new THREE.Points(this.geometry, this.material);
@@ -700,7 +796,11 @@ export class Debris {
       // Specks, shards, and chunks — not one square size.
       const roll = Math.random();
       const base =
-        roll < 0.35 ? 0.45 + Math.random() * 0.35 : roll < 0.75 ? 0.85 + Math.random() * 0.55 : 1.5 + Math.random() * 1.1;
+        roll < 0.35
+          ? 0.45 + Math.random() * 0.35
+          : roll < 0.75
+            ? 0.85 + Math.random() * 0.55
+            : 1.5 + Math.random() * 1.1;
       this.scales[i] = base * sizeScale;
 
       // Negative age delays the particle: the far end of the line waits.
@@ -808,7 +908,10 @@ export class Sparks {
     this.flashBaseSizes = new Float32Array(SPARK_POOL).fill(1);
 
     this.streakGeometry = new THREE.BufferGeometry();
-    this.streakGeometry.setAttribute('position', new THREE.BufferAttribute(this.streakPositions, 3));
+    this.streakGeometry.setAttribute(
+      'position',
+      new THREE.BufferAttribute(this.streakPositions, 3)
+    );
     this.streakGeometry.setAttribute('color', new THREE.BufferAttribute(this.streakColors, 3));
     this.streakMaterial = new THREE.LineBasicMaterial({
       vertexColors: true,
@@ -966,7 +1069,8 @@ export class Sparks {
       this.streakLens[i] = (this.streakLens[i] as number) * (0.4 + 0.6 * fade);
       this.writeStreak(i);
       for (let v = 0; v < 2; v += 1) {
-        this.streakColors[i * 6 + v * 3] = (this.streakColors[i * 6 + v * 3] as number) * (0.92 + 0.08 * fade);
+        this.streakColors[i * 6 + v * 3] =
+          (this.streakColors[i * 6 + v * 3] as number) * (0.92 + 0.08 * fade);
       }
     }
 
@@ -987,9 +1091,11 @@ export class Sparks {
       this.flashPositions[i * 3] =
         (this.flashPositions[i * 3] as number) + (this.flashVels[i * 3] as number) * deltaMs;
       this.flashPositions[i * 3 + 1] =
-        (this.flashPositions[i * 3 + 1] as number) + (this.flashVels[i * 3 + 1] as number) * deltaMs;
+        (this.flashPositions[i * 3 + 1] as number) +
+        (this.flashVels[i * 3 + 1] as number) * deltaMs;
       this.flashPositions[i * 3 + 2] =
-        (this.flashPositions[i * 3 + 2] as number) + (this.flashVels[i * 3 + 2] as number) * deltaMs;
+        (this.flashPositions[i * 3 + 2] as number) +
+        (this.flashVels[i * 3 + 2] as number) * deltaMs;
       const fade = 1 - age / SPARK_LIFE_MS;
       this.flashSizes[i] = (this.flashBaseSizes[i] as number) * (0.35 + 0.65 * fade);
     }

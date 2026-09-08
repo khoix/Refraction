@@ -1,0 +1,463 @@
+{
+  "method": "90 calls to GameRenderer.render per scenario, fixed seed/RAF, 1440x900 desktop or Pixel 7 CSS viewport at DPR 1. CPU submission timing; not real-device GPU timing. Baseline reused, not regenerated.",
+  "baseline": [
+    {
+      "name": "title",
+      "cpuRenderMs": {
+        "p50": 0.39999999990686774,
+        "p95": 1.400000000372529,
+        "max": 10.600000000093132
+      },
+      "drawCalls": 32,
+      "triangles": 27216,
+      "geometries": 45,
+      "textures": 1,
+      "uploadsPerFrame": 12,
+      "uploadBytesPerFrame": 519168,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0.134,
+      "taskMs": 1873.443,
+      "heapDelta": -449624
+    },
+    {
+      "name": "falling",
+      "cpuRenderMs": {
+        "p50": 0.6000000000931323,
+        "p95": 0.8999999999068677,
+        "max": 1.2000000001862645
+      },
+      "drawCalls": 40,
+      "triangles": 46658,
+      "geometries": 46,
+      "textures": 1,
+      "uploadsPerFrame": 18,
+      "uploadBytesPerFrame": 520160,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0.07200000000000001,
+      "taskMs": 2986.18,
+      "heapDelta": 2085984
+    },
+    {
+      "name": "dense",
+      "cpuRenderMs": {
+        "p50": 0.5,
+        "p95": 1.2000000001862645,
+        "max": 7.5
+      },
+      "drawCalls": 36,
+      "triangles": 573482,
+      "geometries": 46,
+      "textures": 1,
+      "uploadsPerFrame": 22,
+      "uploadBytesPerFrame": 561728,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0.509,
+      "taskMs": 32579.6,
+      "heapDelta": 1246024
+    },
+    {
+      "name": "xray",
+      "cpuRenderMs": {
+        "p50": 0.6000000000931323,
+        "p95": 1,
+        "max": 2.6000000000931323
+      },
+      "drawCalls": 35,
+      "triangles": 431570,
+      "geometries": 46,
+      "textures": 1,
+      "uploadsPerFrame": 22,
+      "uploadBytesPerFrame": 561728,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0.339,
+      "taskMs": 24517.649,
+      "heapDelta": 268796
+    },
+    {
+      "name": "prism",
+      "cpuRenderMs": {
+        "p50": 0.8000000002793968,
+        "p95": 1.6000000000931323,
+        "max": 2.8999999999068677
+      },
+      "drawCalls": 51,
+      "triangles": 288700,
+      "geometries": 52,
+      "textures": 14,
+      "uploadsPerFrame": 24,
+      "uploadBytesPerFrame": 575648,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 43.16157395056286,
+        "width": 315.78947368421063,
+        "height": 750.518957362032
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 15997.889000000001,
+      "heapDelta": 926528
+    },
+    {
+      "name": "portrait-flatland",
+      "cpuRenderMs": {
+        "p50": 0.6999999997206032,
+        "p95": 1.3000000002793968,
+        "max": 2.7000000001862645
+      },
+      "drawCalls": 36,
+      "triangles": 217730,
+      "geometries": 38,
+      "textures": 1,
+      "uploadsPerFrame": 22,
+      "uploadBytesPerFrame": 561728,
+      "well": {
+        "left": 92.45217725605568,
+        "top": 124.27566086574473,
+        "width": 227.09564548788865,
+        "height": 545.0295491709328
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 9000.551,
+      "heapDelta": 762120
+    },
+    {
+      "name": "portrait-ascent",
+      "cpuRenderMs": {
+        "p50": 0.40000000037252903,
+        "p95": 0.8000000002793968,
+        "max": 1.2000000001862645
+      },
+      "drawCalls": 36,
+      "triangles": 217730,
+      "geometries": 38,
+      "textures": 1,
+      "uploadsPerFrame": 22,
+      "uploadBytesPerFrame": 561728,
+      "well": {
+        "left": 92.45217725605568,
+        "top": 124.27566086574473,
+        "width": 227.09564548788865,
+        "height": 545.0295491709328
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 9165.562000000002,
+      "heapDelta": 253392
+    },
+    {
+      "name": "landscape-flatland",
+      "cpuRenderMs": {
+        "p50": 0.5,
+        "p95": 1.3000000002793968,
+        "max": 3.1999999997206032
+      },
+      "drawCalls": 36,
+      "triangles": 217730,
+      "geometries": 38,
+      "textures": 1,
+      "uploadsPerFrame": 22,
+      "uploadBytesPerFrame": 561728,
+      "well": {
+        "left": 370.71875085328753,
+        "top": 15.195312286678142,
+        "width": 121.56249829342494,
+        "height": 291.74999590421976
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 8235.161999999998,
+      "heapDelta": 917004
+    },
+    {
+      "name": "landscape-ascent",
+      "cpuRenderMs": {
+        "p50": 0.39999999990686774,
+        "p95": 0.7999999998137355,
+        "max": 1.2999999998137355
+      },
+      "drawCalls": 36,
+      "triangles": 217730,
+      "geometries": 38,
+      "textures": 1,
+      "uploadsPerFrame": 22,
+      "uploadBytesPerFrame": 561728,
+      "well": {
+        "left": 370.71875085328753,
+        "top": 15.195312286678142,
+        "width": 121.56249829342494,
+        "height": 291.74999590421976
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 8141.373,
+      "heapDelta": 2076900
+    }
+  ],
+  "final": [
+    {
+      "name": "title",
+      "cpuRenderMs": {
+        "p50": 0.30000000004656613,
+        "p95": 1.5,
+        "max": 4.400000000023283
+      },
+      "drawCalls": 7,
+      "triangles": 9552,
+      "geometries": 11,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 2136.984,
+      "heapDelta": 794960
+    },
+    {
+      "name": "falling",
+      "cpuRenderMs": {
+        "p50": 0.19999999995343387,
+        "p95": 0.30000000004656613,
+        "max": 0.9000000000232831
+      },
+      "drawCalls": 14,
+      "triangles": 25322,
+      "geometries": 11,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 2606.719,
+      "heapDelta": 1873424
+    },
+    {
+      "name": "dense",
+      "cpuRenderMs": {
+        "p50": 0.19999999995343387,
+        "p95": 0.30000000004656613,
+        "max": 0.5
+      },
+      "drawCalls": 18,
+      "triangles": 559922,
+      "geometries": 11,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 37570.954,
+      "heapDelta": 683768
+    },
+    {
+      "name": "xray",
+      "cpuRenderMs": {
+        "p50": 0.19999999995343387,
+        "p95": 0.39999999990686774,
+        "max": 0.6000000000931323
+      },
+      "drawCalls": 17,
+      "triangles": 418010,
+      "geometries": 11,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 57982.49,
+      "heapDelta": 143900
+    },
+    {
+      "name": "prism",
+      "cpuRenderMs": {
+        "p50": 0.6000000000931323,
+        "p95": 1.3000000000465661,
+        "max": 7.300000000046566
+      },
+      "drawCalls": 32,
+      "triangles": 275140,
+      "geometries": 14,
+      "textures": 14,
+      "uploadsPerFrame": 9.6,
+      "uploadBytesPerFrame": 5320,
+      "well": {
+        "left": 562.1052631578947,
+        "top": 39.47368421052629,
+        "width": 315.78947368421063,
+        "height": 757.8947368421052
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 19929.847,
+      "heapDelta": 1348792
+    },
+    {
+      "name": "portrait-flatland",
+      "cpuRenderMs": {
+        "p50": 0.39999999990686774,
+        "p95": 0.8999999999068677,
+        "max": 1.6999999999534339
+      },
+      "drawCalls": 18,
+      "triangles": 204170,
+      "geometries": 10,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 92.45217725605568,
+        "top": 124.27566086574473,
+        "width": 227.09564548788865,
+        "height": 545.0295491709328
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 9698.573,
+      "heapDelta": -103940
+    },
+    {
+      "name": "portrait-ascent",
+      "cpuRenderMs": {
+        "p50": 0.19999999995343387,
+        "p95": 0.30000000004656613,
+        "max": 0.5999999998603016
+      },
+      "drawCalls": 18,
+      "triangles": 204170,
+      "geometries": 10,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 92.45217725605568,
+        "top": 124.27566086574473,
+        "width": 227.09564548788865,
+        "height": 545.0295491709328
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 9707.177,
+      "heapDelta": 1763700
+    },
+    {
+      "name": "landscape-flatland",
+      "cpuRenderMs": {
+        "p50": 0.30000000004656613,
+        "p95": 0.7000000001862645,
+        "max": 1.5999999998603016
+      },
+      "drawCalls": 18,
+      "triangles": 204170,
+      "geometries": 10,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 362.2692307692308,
+        "top": 13.846153846153877,
+        "width": 138.46153846153845,
+        "height": 332.30769230769226
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 7874.176,
+      "heapDelta": 250048
+    },
+    {
+      "name": "landscape-ascent",
+      "cpuRenderMs": {
+        "p50": 0.10000000009313226,
+        "p95": 0.30000000004656613,
+        "max": 0.6000000000931323
+      },
+      "drawCalls": 18,
+      "triangles": 204170,
+      "geometries": 10,
+      "textures": 1,
+      "uploadsPerFrame": 4,
+      "uploadBytesPerFrame": 2352,
+      "well": {
+        "left": 362.2692307692308,
+        "top": 13.846153846153877,
+        "width": 138.46153846153845,
+        "height": 332.30769230769226
+      },
+      "gpu": "WebKit WebGL",
+      "scriptMs": 0,
+      "taskMs": 8584.418,
+      "heapDelta": 1618980
+    }
+  ],
+  "xray_followup": [
+    {
+      "name": "retained-baseline",
+      "p50": 0.7999999998137355,
+      "p95": 1.2000000001862645,
+      "all": [
+        0.5999999998603016, 0.6000000000931323, 0.6000000000931323, 0.6999999999534339,
+        0.7000000001862645, 0.7000000001862645, 0.7999999998137355, 0.7999999998137355,
+        0.7999999998137355, 0.8000000000465661, 0.8000000000465661, 1, 1.1999999999534339,
+        1.1999999999534339, 1.2000000001862645
+      ]
+    },
+    {
+      "name": "current",
+      "p50": 0.5999999998603016,
+      "p95": 3.1000000000931323,
+      "all": [
+        0.39999999990686774, 0.39999999990686774, 0.5, 0.5, 0.5, 0.5, 0.5, 0.5999999998603016,
+        0.6000000000931323, 0.6999999999534339, 0.7000000001862645, 0.7999999998137355,
+        0.8999999999068677, 1.4000000001396984, 3.1000000000931323
+      ]
+    }
+  ],
+  "capture_errors": []
+}

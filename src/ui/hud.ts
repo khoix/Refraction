@@ -6,6 +6,7 @@
  * it only ever reads game state.
  */
 
+import { landscapePhone } from '@render/layout';
 import { facePreview, type Game } from '@core/game';
 import { DEPTH_LANES } from '@core/constants';
 import { PIECES_BY_ID, extent, normalize } from '@core/pieces';
@@ -427,9 +428,10 @@ export class Hud {
       stripTop === null ? origin.height : Math.min(origin.height, stripTop - origin.top);
     const limit = floor - own - SHIFT_EDGE_MARGIN;
 
-    this.shift.style.left = `${rect.left - origin.left}px`;
-    this.shift.style.width = `${rect.width}px`;
-    this.shift.style.top = `${Math.max(0, Math.min(desired, limit))}px`;
+    const landscape = landscapePhone();
+    this.shift.style.left = landscape ? 'max(12px, env(safe-area-inset-left))' : `${rect.left - origin.left}px`;
+    this.shift.style.width = landscape ? '168px' : `${rect.width}px`;
+    this.shift.style.top = landscape ? `${Math.max(0, origin.height - own - 12)}px` : `${Math.max(0, Math.min(desired, limit))}px`;
 
     // Against the well's right edge, spanning its height. Outside the silhouette
     // rather than over it: the board is the one thing nothing may cover.

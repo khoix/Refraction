@@ -12,7 +12,7 @@ import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
 import type { Game } from '@core/game';
 import type { Line } from '@core/board';
-import { BOARD_HEIGHT } from '@core/constants';
+import { BOARD_HEIGHT, BOARD_HEIGHT_TOTAL } from '@core/constants';
 import { FACE_YAW, depthParameterAtYaw, lineCells, toView, turnYawDelta } from '@core/projection';
 import { depthColor } from '@core/spectrum';
 import type { Cell, Face, TurnDirection } from '@core/types';
@@ -31,12 +31,16 @@ import {
   projectedFootprintWidth,
   setLightingFlatness,
   setWellFlatness,
+  shiftReveal,
+  shiftYawProgress,
   toSceneX,
   toSceneY,
   toSceneZ,
 } from './scene';
 import { PiecePreview } from './preview';
 import type { PreviewRect } from './preview';
+import { fitLandscapeCamera, landscapePhone } from './layout';
+import { CellSnapshot } from './cell-snapshot';
 import { EdgeLayer, VoxelLayer } from './voxels';
 
 /** Duration of the 90 degree turn. Design spec puts the useful range at 0.6-0.9s. */
@@ -247,16 +251,16 @@ function dropChannel(game: Game): Map<number, DropChannel> | null {
   // Where the surface actually is, keyed by the column and lane it sits under.
   // A column with nothing beneath the piece has no contact cell at all, and its
   // channel should reach the well floor rather than stop in mid-air.
-  const surface = new Map<string, number>();
+  const surface = new Map<number, number>();
   for (const cell of game.firstContactCells()) {
     const { u, y, lane } = toView(game.face, cell);
-    surface.set(`${u},${lane}`, y);
+    surface.set(u * 8 + lane, y);
   }
 
   const channel = new Map<number, DropChannel>();
   for (const cell of ghost) {
     const { u, lane } = toView(game.face, cell);
-    const floor = surface.get(`${u},${lane}`) ?? 0;
+    const floor = surface.get(u * 8 + lane) ?? 0;
     const found = channel.get(u);
     channel.set(u, {
       floor: found ? Math.min(found.floor, floor) : floor,
@@ -331,8 +335,8 @@ function partitionBoard(game: Game): BoardBands {
   // The surface cubes the piece will come to rest on are the one thing in the
   // channel that stays solid. They are the backstop the channel stops against,
   // and they carry the landing mark -- an x-rayed cube cannot hold a mark.
-  const backstop = new Set<string>();
-  for (const cell of game.firstContactCells()) backstop.add(`${cell.x},${cell.y},${cell.z}`);
+  const backstop = new Uint8Array(8 * BOARD_HEIGHT_TOTAL * 8);
+  for (const cell of game.firstContactCells()) backstop[(cell.y * 8 + cell.z) * 8 + cell.x] = 1;
 
   // Screen cell -> the nearest cube standing in the channel there, and its lane.
   // Screen cells are 8 x 18, so one integer keys them.
@@ -342,7 +346,7 @@ function partitionBoard(game: Game): BoardBands {
   for (const cell of filled) {
     const { u, y, lane } = toView(game.face, cell);
     const column = channel.get(u);
-    if (!column || y < column.floor || backstop.has(`${cell.x},${cell.y},${cell.z}`)) {
+    if (!column || y < column.floor || backstop[(cell.y * 8 + cell.z) * 8 + cell.x] === 1) {
       plain.push(cell);
     } else if (lane <= column.back) {
       const key = u * 1024 + y;
@@ -503,8 +507,75 @@ export class GameRenderer {
   private readonly well: Well;
   private readonly columnPanel: THREE.Mesh;
   private readonly scratch = new THREE.Vector3();
+  private partitionGame: Game | null = null;
+  private partitionRevision = -1;
+  private partitionFace: Face | null = null;
+  private partitionFlight = false;
+  private readonly partitionPiece = new CellSnapshot();
+  private landing: Cell[] = [];
+  private contacts: Cell[] = [];
+  private bands: BoardBands = { xray: [], plain: [], muted: [] };
+
+  private boardBands(game: Game, activeCells: readonly Cell[]): BoardBands {
+    const flight = pieceInFlight(game);
+    if (this.partitionGame !== game || this.partitionRevision !== game.board.revision ||
+      this.partitionFace !== game.face || this.partitionFlight !== flight ||
+      !this.partitionPiece.matches(activeCells)) {
+      this.bands = partitionBoard(game);
+      this.landing = flight ? game.ghostCells() : [];
+      this.contacts = flight ? game.firstContactCells() : [];
+      this.partitionGame = game;
+      this.partitionRevision = game.board.revision;
+      this.partitionFace = game.face;
+      this.partitionFlight = flight;
+      this.partitionPiece.capture(activeCells);
+    }
+    return this.bands;
+  }
 
   /** Yaw the camera is easing away from, and the one it is heading to. */
+  private finalLook: { yaw: number; elevation: number; flatness: number; separation: number; elapsed: number;
+    left: number; right: number; top: number; bottom: number } | null = null;
+  private renderedElevation = 0;
+
+  /** The final construction gets its own composition, never a new projection. */
+  setFinalLook(enabled: boolean): void {
+    if (enabled === !!this.finalLook) return;
+    if (enabled) {
+      const yaw = this.yaw;
+      const flatness = this.flatness;
+      const separation = this.isTurning && !this.tutorialLook && !this.tutorialLoop
+        ? 1 : THREE.MathUtils.lerp(1, 0.78, 1 - flatness);
+      this.finalLook = { yaw, elevation: this.renderedElevation, flatness, separation, elapsed: 0,
+        left: this.camera.left, right: this.camera.right, top: this.camera.top, bottom: this.camera.bottom };
+      this.tutorialLook = null;
+      this.tutorialLoop = null;
+    } else {
+      this.finalLook = null;
+      this.resize();
+    }
+  }
+
+  private get finalProgress(): number {
+    return this.finalLook ? easeInOutCubic(Math.min(1, this.finalLook.elapsed / 1800)) : 0;
+  }
+
+  private frameFinalBoard(): void {
+    const look = this.finalLook;
+    if (!look) return;
+    const portrait = this.aspect < 0.8;
+    // Portrait leaves a lower ledger; wide layouts put it in the right gutter.
+    const half = portrait ? Math.max(25, 7.5 / this.aspect) : Math.max(13, 12 / this.aspect);
+    const cx = portrait ? 0 : half * this.aspect * 0.38;
+    const cy = portrait ? -half * 0.48 : 0;
+    const t = this.finalProgress;
+    this.camera.left = THREE.MathUtils.lerp(look.left, cx - half * this.aspect, t);
+    this.camera.right = THREE.MathUtils.lerp(look.right, cx + half * this.aspect, t);
+    this.camera.top = THREE.MathUtils.lerp(look.top, cy + half, t);
+    this.camera.bottom = THREE.MathUtils.lerp(look.bottom, cy - half, t);
+    this.camera.updateProjectionMatrix();
+  }
+
   private yawFrom = FACE_YAW.front;
   private yawTo = FACE_YAW.front;
   private turnElapsed: number;
@@ -650,6 +721,12 @@ export class GameRenderer {
 
   /** Current camera yaw, which mid-turn is between two faces. */
   get yaw(): number {
+    if (this.finalLook) {
+      const elapsed = this.finalLook.elapsed;
+      // A slow ease into a continuous examination. Reduced motion holds a corner.
+      const orbit = this.reducedMotion ? 0 : 0.005 * (elapsed - 1800 * (1 - Math.exp(-elapsed / 1800)));
+      return this.finalLook.yaw + 32 * this.finalProgress + orbit;
+    }
     if (this.tutorialLook) {
       const t = easeInOutCubic(
         Math.min(1, this.tutorialLook.elapsed / this.tutorialLook.durationMs)
@@ -661,7 +738,7 @@ export class GameRenderer {
       return this.tutorialLoop.baseYaw + Math.sin(t) * this.tutorialLoop.yawAmplitude;
     }
     if (!this.isTurning) return this.yawTo;
-    const t = easeInOutCubic(this.turnElapsed / this.turnDurationMs);
+    const t = shiftYawProgress(this.turnElapsed / this.turnDurationMs);
     return this.yawFrom + (this.yawTo - this.yawFrom) * t;
   }
 
@@ -677,6 +754,9 @@ export class GameRenderer {
    * pointed the wrong way.
    */
   snapToFace(face: Face): void {
+    this.setFinalLook(false);
+    this.peek = 0;
+    this.peekHeld = false;
     this.yawFrom = FACE_YAW[face];
     this.yawTo = this.yawFrom;
     this.turnElapsed = this.turnDurationMs;
@@ -997,7 +1077,7 @@ export class GameRenderer {
     const yaw = this.yaw;
     for (const cell of cells) {
       const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yaw), 0, 1);
-      const rgb = depthColor(depth);
+      const rgb = this.prefs.depthColour ? depthColor(depth) : { r: 0.62, g: 0.64, b: 0.68 };
       const x = toSceneX(cell.x);
       const y = toSceneY(cell.y);
       const z = toSceneZ(cell.z);
@@ -1037,7 +1117,7 @@ export class GameRenderer {
       cells.forEach((cell, index) => {
         const along = cells.length > 1 ? index / (cells.length - 1) : 0;
         const depth = THREE.MathUtils.clamp(depthParameterAtYaw(cell.x, cell.z, yaw), 0, 1);
-        const rgb = depthColor(depth);
+        const rgb = this.prefs.depthColour ? depthColor(depth) : { r: 0.62, g: 0.64, b: 0.68 };
         const debrisCount = this.reducedMotion ? 2 : prism ? 6 : refraction ? 5 : 4;
         const sparkCount = this.reducedMotion ? 1 : prism ? 6 : refraction ? 4 : 3;
         this.debris.burst(
@@ -1154,6 +1234,12 @@ export class GameRenderer {
     this.composer.setSize(width, height);
     this.aspect = width / Math.max(1, height);
     fitCamera(this.camera, this.aspect, this.bottomReservePx, height);
+    if (landscapePhone()) fitLandscapeCamera(this.camera, this.aspect);
+    if (this.finalLook) {
+      Object.assign(this.finalLook, { left: this.camera.left, right: this.camera.right,
+        top: this.camera.top, bottom: this.camera.bottom });
+      this.frameFinalBoard();
+    }
   }
 
   /**
@@ -1175,20 +1261,22 @@ export class GameRenderer {
    * How flat the board currently looks: 1 while settled on a face, easing to 0
    * at the midpoint of a turn and back to 1 on arrival.
    *
-   * A half sine rather than the eased yaw, so the board is fully flat the
+   * A separate reveal envelope holds the middle view and is fully flat the
    * instant it settles and the dimensional peak lands exactly halfway through
    * the rotation, where the parallax is most legible.
    */
   get flatness(): number {
+    if (this.finalLook) return THREE.MathUtils.lerp(this.finalLook.flatness, 0, this.finalProgress);
     if (this.tutorialLook || this.tutorialLoop) {
       // Open cube gaps while the tutorial orbits, same idea as mid-turn.
       return 1 - Math.min(1, Math.abs(this.tutorialElevation) / TURN_ELEVATION_DEG);
     }
     if (!this.isTurning) return 1;
-    return 1 - Math.sin(Math.PI * (this.turnElapsed / this.turnDurationMs));
+    return 1 - shiftReveal(this.turnElapsed / this.turnDurationMs);
   }
 
   render(game: Game, deltaMs: number): void {
+    if (this.finalLook) this.finalLook.elapsed += deltaMs;
     if (this.tutorialLoop) {
       this.tutorialLoop.elapsed += deltaMs;
     }
@@ -1250,12 +1338,12 @@ export class GameRenderer {
     const dimensional = 1 - flatness;
     const whiteout = this.whiteout;
 
-    // Shrink every cube by the SAME factor as the board turns. Packed flush
-    // together they smear into bands at an angle; opening the gaps lets each
-    // cube read as a cube. Uniform is the important word -- this is a legibility
-    // adjustment applied equally to all of them, not a depth cue, and a cube at
-    // the back is exactly the size of one at the front throughout.
-    const separation = THREE.MathUtils.lerp(1, 0.78, dimensional);
+    // Preserve the completed Shift: one fixed-size construction, with only
+    // yaw-driven colours changing. Tutorial/final look retain their own spacing.
+    const shifting = this.isTurning && !this.finalLook && !this.tutorialLook && !this.tutorialLoop;
+    const separation = this.finalLook
+      ? THREE.MathUtils.lerp(this.finalLook.separation, 0.78, this.finalProgress)
+      : shifting ? 1 : THREE.MathUtils.lerp(1, 0.78, dimensional);
 
     // Orthographic throughout, so a cube's size on screen never depends on how
     // far back it is. Only the yaw and a small turn-time elevation change.
@@ -1265,10 +1353,15 @@ export class GameRenderer {
     const peekStep = deltaMs / PEEK_EASE_MS;
     this.peek = THREE.MathUtils.clamp(this.peek + (this.peekHeld ? peekStep : -peekStep), 0, 1);
     const tutorialElev = this.tutorialLook || this.tutorialLoop ? this.tutorialElevation : 0;
-    const elevation =
+    const normalElevation =
       TURN_ELEVATION_DEG * dimensional +
       PEEK_ELEVATION_DEG * easeInOutCubic(this.peek) +
       tutorialElev;
+    const elevation = this.finalLook
+      ? THREE.MathUtils.lerp(this.finalLook.elevation, 22, this.finalProgress)
+      : normalElevation;
+    this.renderedElevation = elevation;
+    this.frameFinalBoard();
     positionCamera(this.camera, yaw, elevation, this.shakeOffset);
 
     // The front door takes the well away. Eased on the same principle as Peek,
@@ -1288,7 +1381,7 @@ export class GameRenderer {
     setLightingFlatness(this.lights, flatness);
     // Same ease as bloom: well and column leave together when the front door opens.
     const backdropEase = easeInOutCubic(this.backdrop);
-    setWellFlatness(this.well, flatness, backdropEase, this.tutorialBrightGrid);
+    setWellFlatness(this.well, flatness, backdropEase, this.tutorialBrightGrid, shifting ? dimensional : 0);
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.
@@ -1300,7 +1393,8 @@ export class GameRenderer {
       0.62 * (1 - whiteout * 0.7) * (1 - backdropEase)
     );
 
-    const bands = partitionBoard(game);
+    const activeCells = game.activeCells();
+    const bands = this.boardBands(game, activeCells);
     this.lockedXray.update(bands.xray, yaw, separation, whiteout);
     this.lockedXrayEdges.update(bands.xray, game.face, yaw);
     this.lockedPlain.update(bands.plain, yaw, separation, whiteout);
@@ -1316,8 +1410,7 @@ export class GameRenderer {
     // Pulse rather than hold steady, so a line about to go reads as urgent.
     this.glow.setOpacity(0.18 + 0.12 * Math.sin(this.glowElapsed * 0.011) + whiteout * 0.25);
 
-    const activeCells = game.activeCells();
-    const ghostCells = this.prefs.showGhost && pieceInFlight(game) ? game.ghostCells() : [];
+    const ghostCells = this.prefs.showGhost ? this.landing : [];
     this.active.update(activeCells, yaw, separation, whiteout);
     // The ghost is inset so it reads as a target rather than as a real block.
     this.ghost.update(ghostCells, yaw, 0.78 * separation);
@@ -1327,7 +1420,7 @@ export class GameRenderer {
     this.activeHidden.update(activeCells, yaw, separation, whiteout);
     this.ghostHidden.update(ghostCells, yaw, 0.78 * separation);
 
-    const contacts = pieceInFlight(game) ? game.firstContactCells() : [];
+    const contacts = this.contacts;
     this.contact.update(contacts, yaw, separation * 0.72, whiteout);
 
     // The lock flash: a brief full-cell glow where the piece just settled.
@@ -1348,7 +1441,7 @@ export class GameRenderer {
     // sparks/debris. Lock already paints additive flash and sparks; feeding them
     // into UnrealBloom turned every settle into a board-wide flare on glass clearcoat.
     const canBloom = highlights.length > 0 || whiteout > 0;
-    if (canBloom) {
+    if (canBloom && this.prefs.bloom && !this.reducedMotion) {
       this.composer.render();
     } else {
       this.renderer.render(this.scene, this.camera);

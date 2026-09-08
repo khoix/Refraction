@@ -799,13 +799,14 @@ function boot(root: HTMLElement): void {
     // the frame and posts are an empty box drawn around nothing.
     const menu =
       bedFor === 'title' || bedFor === 'modes' || bedFor === 'challenge' || bedFor === 'boot';
+    renderer.setFinalLook(screen === 'over' && mode.canFail);
     renderer.setBackdrop(menu);
     // The room shows the ramp while nobody is reading a board, and goes neutral
     // for a run. §2.2, and the reason `setAmbientChroma` exists at all.
     renderer.setAmbientChroma(menu);
 
     // The title screen is the board, not the HUD. Nor is the gate in front of it.
-    hud.setHidden(screen === 'title' || screen === 'boot');
+    hud.setHidden(screen === 'title' || screen === 'boot' || screen === 'over');
     // Pause lives on the phone; Esc covers everything else.
     hud.setPauseVisible(touchPrimary() && screen === 'playing');
     hud.setPauseExits(tutorial.running);
@@ -824,7 +825,6 @@ function boot(root: HTMLElement): void {
     hud.setTurnPromptAllowed(!tutorial.running || tutorial.showsTurnPrompt());
     renderer.setTutorialBrightGrid(tutorial.running && touchPrimary());
     hud.update(game, elapsed);
-    hud.layoutWell(renderer.wellScreenRect(), null);
     const next = game.preview[0];
     renderer.setPreview(
       save.settings.spinPreview && next && screens.screen === 'playing' ? hud.nextSlotRect() : null,
@@ -832,6 +832,9 @@ function boot(root: HTMLElement): void {
       next?.lane ?? 0
     );
     renderer.render(game, elapsed);
+    // Project chrome after rendering updates the camera matrices. Using the
+    // previous frame's matrices makes the gauge lag the well during Shift.
+    hud.layoutWell(renderer.wellScreenRect(), null);
     requestAnimationFrame(frame);
   };
 

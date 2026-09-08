@@ -18,6 +18,8 @@ export interface Line {
 
 export class Board {
   private readonly cells: Uint8Array;
+  /** Render-cache invalidation only; never participates in gameplay or saves. */
+  revision = 0;
 
   constructor(cells?: Uint8Array) {
     this.cells = cells ?? new Uint8Array(BOARD_WIDTH * BOARD_HEIGHT_TOTAL * BOARD_DEPTH);
@@ -41,17 +43,24 @@ export class Board {
 
   fill(cell: Cell): void {
     if (!this.isInside(cell)) return;
-    this.cells[Board.index(cell.x, cell.y, cell.z)] = 1;
+    const index = Board.index(cell.x, cell.y, cell.z);
+    if (this.cells[index] === 1) return;
+    this.cells[index] = 1;
+    this.revision += 1;
   }
 
   clear(cell: Cell): void {
     if (!this.isInside(cell)) return;
-    this.cells[Board.index(cell.x, cell.y, cell.z)] = 0;
+    const index = Board.index(cell.x, cell.y, cell.z);
+    if (this.cells[index] === 0) return;
+    this.cells[index] = 0;
+    this.revision += 1;
   }
 
   /** Empty the whole volume. Used when a run leaves for a boardless screen. */
   clearAll(): void {
     this.cells.fill(0);
+    this.revision += 1;
   }
 
   /**
@@ -112,6 +121,7 @@ export class Board {
    */
   clearLines(face: Face, lines: readonly Line[]): void {
     if (lines.length === 0) return;
+    this.revision += 1;
 
     const clearedByLane = new Map<number, Set<number>>();
     for (const line of lines) {
@@ -183,6 +193,7 @@ export class Board {
         }
       }
     }
+    if (moved) this.revision += 1;
     return moved;
   }
 
@@ -213,6 +224,7 @@ export class Board {
   removeHighestRow(): boolean {
     const y = this.highestFilledY();
     if (y < 0) return false;
+    this.revision += 1;
     this.cells.fill(0, y * BOARD_DEPTH * BOARD_WIDTH, (y + 1) * BOARD_DEPTH * BOARD_WIDTH);
     return true;
   }
