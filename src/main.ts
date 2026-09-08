@@ -799,13 +799,14 @@ function boot(root: HTMLElement): void {
     // the frame and posts are an empty box drawn around nothing.
     const menu =
       bedFor === 'title' || bedFor === 'modes' || bedFor === 'challenge' || bedFor === 'boot';
+    renderer.setFinalLook(screen === 'over' && mode.canFail);
     renderer.setBackdrop(menu);
     // The room shows the ramp while nobody is reading a board, and goes neutral
     // for a run. §2.2, and the reason `setAmbientChroma` exists at all.
     renderer.setAmbientChroma(menu);
 
     // The title screen is the board, not the HUD. Nor is the gate in front of it.
-    hud.setHidden(screen === 'title' || screen === 'boot');
+    hud.setHidden(screen === 'title' || screen === 'boot' || screen === 'over');
     // Pause lives on the phone; Esc covers everything else.
     hud.setPauseVisible(touchPrimary() && screen === 'playing');
     hud.setPauseExits(tutorial.running);

@@ -1436,6 +1436,7 @@ test.describe('the room', () => {
    * as a mid-dark grey. These are the two numbers that catch either mistake.
    */
   async function roomAndBoard(page: Page): Promise<{
+    diagnostic: string;
     roomMean: number;
     roomBright: number;
     roomSaturation: number;
@@ -1463,6 +1464,7 @@ test.describe('the room', () => {
       const top = (rect.top - box.top) * scaleY;
       const bottom = top + rect.height * scaleY;
 
+      let diagnostic = '';
       let roomSum = 0;
       let roomCount = 0;
       let roomSaturation = 0;
@@ -1483,6 +1485,7 @@ test.describe('the room', () => {
             roomSum += luminance;
             roomCount += 1;
             roomLuminance.push(luminance);
+            if (Math.max(r,g,b)-Math.min(r,g,b)>roomSaturation) diagnostic=JSON.stringify({x,y,r,g,b,left,right,top,bottom});
             roomSaturation = Math.max(roomSaturation, Math.max(r, g, b) - Math.min(r, g, b));
           }
         }
@@ -1490,6 +1493,7 @@ test.describe('the room', () => {
       roomLuminance.sort((a, b) => a - b);
       const percentile = roomLuminance[Math.floor(roomLuminance.length * 0.995)] ?? 0;
       return {
+        diagnostic,
         roomMean: roomSum / Math.max(1, roomCount),
         roomBright: percentile,
         roomSaturation,
@@ -1516,9 +1520,20 @@ test.describe('the room', () => {
     }
     await page.evaluate(() => {
       const game = window.__refraction?.game;
-      if (game) game.status = 'gameOver';
+      if (game) {
+        // This fixture measures a dead-on room, not the final-board cinematic.
+        // Game over now moves the camera; suppress only that presentation in
+        // this fixture so its board rectangle still defines the sampled region.
+        const renderer = window.__refraction!.renderer;
+        const finalLook = renderer.setFinalLook.bind(renderer);
+        renderer.setFinalLook = () => finalLook(false);
+        game.active = null;
+        game.status = 'gameOver';
+      }
     });
-    await page.waitForTimeout(400);
+    // Wait beyond the 780ms coloured cell-debris lifetime: debris below the
+    // well is legitimate gameplay colour, not part of an idle room sample.
+    await page.waitForTimeout(1000);
   }
 
   test('draws no hard line across the frame when the board is settled', async ({ page }) => {
@@ -1576,10 +1591,10 @@ test.describe('the room', () => {
 
   test('is achromatic — no hue anywhere outside the board', async ({ page }) => {
     await busyBoard(page);
-    const { roomSaturation } = await roomAndBoard(page);
+    const { roomSaturation, diagnostic } = await roomAndBoard(page);
     // A cube at full chroma spans ~170 between its channels. The room must not
     // come close: anything with a hue would be a second colour language.
-    expect(roomSaturation).toBeLessThan(40);
+    expect(roomSaturation, diagnostic).toBeLessThan(40);
   });
 
   test('sits under the board rather than over it', async ({ page }) => {

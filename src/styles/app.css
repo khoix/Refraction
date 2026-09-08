@@ -3735,3 +3735,54 @@ text.diagram-finger-emoji {
     display: none;
   }
 }
+
+/* Landscape phone: use side gutters for chrome and leave the full height to
+   the fixed orthographic well. Portrait rules remain untouched. */
+@media (max-height: 500px) and (min-aspect-ratio: 3/2) and (pointer: coarse) {
+  .hud__column--left { width: 168px; }
+  .hud__column--right { width: 140px; gap: 8px; }
+  .hud__stats { min-width: 0; gap: 10px; padding: 10px 12px; }
+  .stat__value { font-size: 1.5rem; }
+  .hud__face { padding: 6px 10px; }
+  .slot { padding: 6px 10px; }
+  .slot__body { min-height: 48px; min-width: 64px; }
+  .lcd { left: 12px; top: auto; bottom: 68px; transform: none; width: 168px; height: 32px; }
+  .lcd__btn { width: 32px; }
+  .lcd__text { font-size: 0.55rem; padding-inline: 4px; }
+  .hud__pause { right: max(12px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); }
+  .hud__collapse { right: max(12px, env(safe-area-inset-right)); }
+  .prompt { left: 12px; right: auto; width: 168px; }
+  .prompt__pill { padding: 8px 2px; gap: 3px; }
+  .prompt__choice { min-width: 64px; }
+}
+
+/* The last look: ledger beside the solid, with no scrim or blur over its colour. */
+.screens[data-screen='over'] {
+  background: transparent;
+  backdrop-filter: none;
+  justify-items: end;
+  padding: max(16px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right));
+}
+.screens[data-screen='over'] .panel--over {
+  width: min(32vw, 26rem);
+  gap: 12px;
+  padding: 12px;
+  background: radial-gradient(ellipse, rgb(5 6 10 / 0.94) 45%, transparent 75%);
+}
+@media (max-aspect-ratio: 4/5) {
+  .screens[data-screen='over'] { align-items: end; justify-items: center; }
+  .screens[data-screen='over'] .panel--over { width: 100%; gap: 8px; }
+  .screens[data-screen='over'] .over { padding: 8px 16px; gap: 8px; }
+  .screens[data-screen='over'] .over__value { font-size: 2.8rem; }
+  .screens[data-screen='over'] .panel__actions { gap: 6px; }
+}
+@media (max-height: 500px) and (min-aspect-ratio: 3/2) {
+  .screens[data-screen='over'] .panel--over { gap: 6px; }
+  .screens[data-screen='over'] .over { padding: 4px; gap: 6px; }
+  .screens[data-screen='over'] .over__value { font-size: 2.4rem; }
+  .screens[data-screen='over'] .over__mast { gap: 4px; }
+  .screens[data-screen='over'] .over__title { font-size: 0.85rem; }
+  .screens[data-screen='over'] .panel__actions { gap: 4px; }
+  .screens[data-screen='over'] .button { min-height: 44px; padding: 8px; font-size: 0.65rem; }
+  .screens[data-screen='over'] .panel__hint { display: none; }
+}

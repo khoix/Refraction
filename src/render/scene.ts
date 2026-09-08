@@ -41,6 +41,15 @@ const CAMERA_DISTANCE = 60;
 
 /** Camera elevation at the midpoint of a turn. Zero while settled. */
 export const TURN_ELEVATION_DEG = 12;
+/** Zero velocity and acceleration at either end; no midpoint speed cusp. */
+export function shiftYawProgress(progress: number): number {
+  const t = THREE.MathUtils.clamp(progress, 0, 1);
+  return t * t * t * (t * (t * 6 - 15) + 10);
+}
+/** Open, examine, settle: hold the existing elevation through the middle 40%. */
+export function shiftReveal(progress: number): number {
+  return shiftYawProgress(Math.min(progress, 1 - progress) / 0.3);
+}
 
 /** Empty space kept around the well when fitting the camera. */
 const FIT_MARGIN = 1.6;
@@ -104,6 +113,22 @@ export function createColumnPanel(): THREE.Mesh {
     opacity: 0.95,
     depthWrite: false,
   });
+  // The backing remains depth-tested behind gameplay, with a broad soft edge
+  // that meets the room instead of outlining a rectangular black slab.
+  material.onBeforeCompile = (shader) => {
+    shader.vertexShader = shader.vertexShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vBackingUv;')
+      .replace('#include <begin_vertex>', '#include <begin_vertex>\nvBackingUv = uv;');
+    shader.fragmentShader = shader.fragmentShader
+      .replace('#include <common>', '#include <common>\nvarying vec2 vBackingUv;')
+      .replace(
+        '#include <alphatest_fragment>',
+        `
+        vec2 edge = min(vBackingUv, 1.0 - vBackingUv);
+        diffuseColor.a *= smoothstep(0.0, 0.18, edge.x) * smoothstep(0.0, 0.10, edge.y);
+        #include <alphatest_fragment>`
+      );
+  };
   const mesh = new THREE.Mesh(geometry, material);
   mesh.renderOrder = -5;
   mesh.frustumCulled = false;
@@ -112,8 +137,8 @@ export function createColumnPanel(): THREE.Mesh {
 
 export function orientColumnPanel(mesh: THREE.Mesh, yawDegrees: number, opacity: number): void {
   const yaw = THREE.MathUtils.degToRad(yawDegrees);
-  const width = projectedFootprintWidth(yawDegrees) + 0.9;
-  const height = BOARD_HEIGHT + 1.8;
+  const width = projectedFootprintWidth(yawDegrees) + 5;
+  const height = BOARD_HEIGHT + 4;
   mesh.scale.set(width, height, 1);
   mesh.rotation.y = yaw;
   const depth = projectedFootprintDepth(yawDegrees) / 2 + 0.8;
@@ -463,7 +488,8 @@ export function setWellFlatness(
   well: Well,
   flatness: number,
   recede = 0,
-  brightGrid = false
+  brightGrid = false,
+  shift = 0
 ): void {
   const shown = 1 - THREE.MathUtils.clamp(recede, 0, 1);
   const dimensional = 1 - THREE.MathUtils.clamp(flatness, 0, 1);
@@ -479,11 +505,11 @@ export function setWellFlatness(
   const grid = well.grid.material as THREE.LineBasicMaterial;
   grid.color.setHex(gridLook.color);
   const gridDim = gridLook.faceFloor + (1 - gridLook.faceFloor) * dimensional;
-  grid.opacity = gridLook.opacity * gridDim * shown;
+  grid.opacity = gridLook.opacity * gridDim * shown * (1 - 0.7 * shift);
   well.grid.visible = shown > 0.01;
 
   const frame = well.frame.material as THREE.LineBasicMaterial;
   const frameBase = (frame.userData.baseOpacity as number | undefined) ?? 1;
-  frame.opacity = frameBase * shown;
+  frame.opacity = frameBase * shown * (1 - shift);
   well.frame.visible = shown > 0.01;
 }
