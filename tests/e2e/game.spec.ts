@@ -4167,7 +4167,14 @@ test.describe('on a phone', () => {
       const bar = await page.locator('.hud__shift').boundingBox();
       const well = await page.evaluate(() => window.__refraction?.renderer.wellScreenRect());
       if (!bar || !well) throw new Error('no geometry');
-      expect(bar.y).toBeGreaterThanOrEqual(well.top + well.height);
+      // Portrait parks the meter below the well; the landscape composition
+      // deliberately uses the left gutter. Assert separation on either axis.
+      expect(
+        bar.y >= well.top + well.height ||
+          bar.y + bar.height <= well.top ||
+          bar.x + bar.width <= well.left ||
+          bar.x >= well.left + well.width
+      ).toBe(true);
     }
   });
 

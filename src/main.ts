@@ -825,7 +825,6 @@ function boot(root: HTMLElement): void {
     hud.setTurnPromptAllowed(!tutorial.running || tutorial.showsTurnPrompt());
     renderer.setTutorialBrightGrid(tutorial.running && touchPrimary());
     hud.update(game, elapsed);
-    hud.layoutWell(renderer.wellScreenRect(), null);
     const next = game.preview[0];
     renderer.setPreview(
       save.settings.spinPreview && next && screens.screen === 'playing' ? hud.nextSlotRect() : null,
@@ -833,6 +832,9 @@ function boot(root: HTMLElement): void {
       next?.lane ?? 0
     );
     renderer.render(game, elapsed);
+    // Project chrome after rendering updates the camera matrices. Using the
+    // previous frame's matrices makes the gauge lag the well during Shift.
+    hud.layoutWell(renderer.wellScreenRect(), null);
     requestAnimationFrame(frame);
   };
 

@@ -1,6 +1,26 @@
 import { expect, test } from '@playwright/test';
 import type { OrthographicCamera } from 'three';
 import type { VoxelLayer } from '../../src/render/voxels';
+
+test('Shift chrome follows the rendered camera without a frame of lag', async ({ page }) => {
+  await page.goto('/?debug=1&mode=ascent&seed=shift-chrome');
+  await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
+  const errors = await page.evaluate(async () => {
+    const { game, renderer } = window.__refraction!;
+    game.status = 'paused';
+    renderer.startTurn('right');
+    const offsets = [];
+    for (let i = 0; i < 20; i++) {
+      await new Promise<void>((resolve) => requestAnimationFrame(() => resolve()));
+      const well = renderer.wellScreenRect();
+      const gauge = document.querySelector('.gauge')!.getBoundingClientRect();
+      offsets.push(Math.abs(gauge.left - (well.left + well.width + 6)));
+    }
+    return offsets;
+  });
+  expect(Math.max(...errors)).toBeLessThan(1);
+});
+
 for (const reduced of [false, true]) {
   test(`Shift preserves construction, lens and exact settlement (reduced=${reduced})`, async ({
     page,

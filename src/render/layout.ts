@@ -1,8 +1,9 @@
-import * as THREE from 'three';
+import type * as THREE from 'three';
 
 /** Same boundary as the focused landscape CSS, independent of device branding. */
 export function landscapePhone(): boolean {
-  return window.matchMedia('(max-height: 500px) and (min-aspect-ratio: 3/2) and (pointer: coarse)').matches;
+  return window.matchMedia('(max-height: 500px) and (min-aspect-ratio: 3/2) and (pointer: coarse)')
+    .matches;
 }
 
 /** 18 cos(12°) + 8√2 sin(12°) = 19.96 cells at the turn's tallest silhouette.

@@ -534,7 +534,7 @@ export class GameRenderer {
   }
 
   /** Yaw the camera is easing away from, and the one it is heading to. */
-  private finalLook: { yaw: number; elevation: number; flatness: number; elapsed: number;
+  private finalLook: { yaw: number; elevation: number; flatness: number; separation: number; elapsed: number;
     left: number; right: number; top: number; bottom: number } | null = null;
   private renderedElevation = 0;
 
@@ -544,7 +544,9 @@ export class GameRenderer {
     if (enabled) {
       const yaw = this.yaw;
       const flatness = this.flatness;
-      this.finalLook = { yaw, elevation: this.renderedElevation, flatness, elapsed: 0,
+      const separation = this.isTurning && !this.tutorialLook && !this.tutorialLoop
+        ? 1 : THREE.MathUtils.lerp(1, 0.78, 1 - flatness);
+      this.finalLook = { yaw, elevation: this.renderedElevation, flatness, separation, elapsed: 0,
         left: this.camera.left, right: this.camera.right, top: this.camera.top, bottom: this.camera.bottom };
       this.tutorialLook = null;
       this.tutorialLoop = null;
@@ -1339,7 +1341,9 @@ export class GameRenderer {
     // Preserve the completed Shift: one fixed-size construction, with only
     // yaw-driven colours changing. Tutorial/final look retain their own spacing.
     const shifting = this.isTurning && !this.finalLook && !this.tutorialLook && !this.tutorialLoop;
-    const separation = shifting ? 1 : THREE.MathUtils.lerp(1, 0.78, dimensional);
+    const separation = this.finalLook
+      ? THREE.MathUtils.lerp(this.finalLook.separation, 0.78, this.finalProgress)
+      : shifting ? 1 : THREE.MathUtils.lerp(1, 0.78, dimensional);
 
     // Orthographic throughout, so a cube's size on screen never depends on how
     // far back it is. Only the yaw and a small turn-time elevation change.
