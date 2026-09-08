@@ -7,6 +7,37 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Voxel, Shift, and room integration
+
+**Branch:** `astra/refraction-visual-checkpoint`
+
+Production cubes gain cleaner bevel catches, filtered fine detail, a normalized
+rim, and peripheral gel density. Face-centre colour remains the intended depth
+colour; no transmission, environment map, or tone mapping is introduced.
+
+Shift retains its 750ms orthographic quarter-turn and fixed cube scale. Quintic
+yaw easing and a held elevation reveal the construction before it settles flat.
+The room uses independently moving instanced floaters, fewer finer dust points,
+static neutral light pools, and a feathered backing behind the board. Gameplay
+drops menu colour immediately; clear ripples are restrained and absent under
+reduced motion.
+
+The retained checkpoint also includes board/voxel/edge invalidation, shared
+geometry, cached next-piece placement, landscape side-gutter composition, and an
+orthographic final-board examination with a readable side/bottom ledger.
+These are included in integration validation, not a claim that all M16 work or
+real-device performance validation is complete.
+
+Integration repairs keep HUD projection in step with the rendered camera and
+preserve cube scale when game over interrupts Shift. The landscape non-overlap
+test now covers the side-gutter placement instead of requiring portrait placement.
+
+Validation and retained before/after measurements are recorded in
+[the final integration report](docs/EXECUTION-4-INTEGRATION.md). Earlier execution
+notes remain historical handoffs, including their capture-recovery limitations.
+
+---
+
 ## Glass gel, pivot rotation, and drop-in music
 
 **Branch:** `cursor/refraction-kendega-desktop`
