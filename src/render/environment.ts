@@ -154,6 +154,18 @@ function backdropMaterialSettings(material: THREE.Material): void {
   material.transparent = false;
 }
 
+/** Alpha blend scenery in the early opaque queue, before every gameplay layer.
+ * Moving it to the transparent queue would let floaters paint over board cubes.
+ */
+function floaterBlendSettings(material: THREE.Material): void {
+  material.transparent = false;
+  material.blending = THREE.CustomBlending;
+  material.blendSrc = THREE.SrcAlphaFactor;
+  material.blendDst = THREE.OneMinusSrcAlphaFactor;
+  material.blendSrcAlpha = THREE.OneFactor;
+  material.blendDstAlpha = THREE.OneMinusSrcAlphaFactor;
+}
+
 /**
  * A neutral at a given brightness, very slightly cool.
  *
@@ -249,28 +261,42 @@ function voxelField(): THREE.Group {
   const sizes = new THREE.InstancedBufferAttribute(new Float32Array(VOXEL_COUNT), 1).setUsage(
     THREE.DynamicDrawUsage
   );
+  const opacities = new THREE.InstancedBufferAttribute(new Float32Array(VOXEL_COUNT), 1).setUsage(
+    THREE.DynamicDrawUsage
+  );
   geometry.setAttribute('roomStrength', strength);
   geometry.setAttribute('roomSize', sizes);
+  geometry.setAttribute('roomOpacity', opacities);
   const sharedMaterial = createFloaterMaterial();
+  floaterBlendSettings(sharedMaterial);
   const gelCompile = sharedMaterial.onBeforeCompile;
   sharedMaterial.onBeforeCompile = (shader, renderer) => {
     gelCompile.call(sharedMaterial, shader, renderer);
     shader.vertexShader = shader.vertexShader
       .replace(
         '#include <common>',
-        '#include <common>\nattribute float roomStrength;\nattribute float roomSize;\nvarying float vRoomStrength;'
+        '#include <common>\nattribute float roomStrength;\nattribute float roomSize;\nattribute float roomOpacity;\nvarying float vRoomStrength;\nvarying float vRoomOpacity;'
       )
       .replace(
         'vGelPosition = position * uGelPositionScale;',
-        'vRoomStrength = roomStrength; vGelPosition = position * roomSize;'
+        'vRoomStrength = roomStrength; vRoomOpacity = roomOpacity; vGelPosition = position * roomSize;'
       )
       .replace('vGelNormal = normal;', 'vGelNormal = normalize(mat3(instanceMatrix) * normal);')
       .replace('normalMatrix * normal', 'normalMatrix * mat3(instanceMatrix) * normal');
     shader.fragmentShader = shader.fragmentShader
-      .replace('uniform float uGelStrength;', 'varying float vRoomStrength;')
-      .replaceAll('uGelStrength', 'vRoomStrength');
+      .replace(
+        'uniform float uGelStrength;',
+        'varying float vRoomStrength;\nvarying float vRoomOpacity;'
+      )
+      .replaceAll('uGelStrength', 'vRoomStrength')
+      // OPAQUE sets alpha to one; apply coverage afterwards so specular and
+      // gel catches fade with the silhouette, without changing their colour.
+      .replace(
+        '#include <opaque_fragment>',
+        '#include <opaque_fragment>\ngl_FragColor.a = vRoomOpacity;'
+      );
   };
-  sharedMaterial.customProgramCacheKey = () => 'room-instanced-gel-v1';
+  sharedMaterial.customProgramCacheKey = () => 'room-instanced-gel-fade-v2';
   const instances = new THREE.InstancedMesh(geometry, sharedMaterial, VOXEL_COUNT);
   instances.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
   instances.frustumCulled = false;
@@ -304,6 +330,18 @@ function voxelField(): THREE.Group {
      */
     const size = hero ? HERO_SIZE : 0.7 + rng.next() * 1.1;
     const material = hero ? createFloaterMaterial(size) : sharedMaterial;
+    if (hero) {
+      floaterBlendSettings(material);
+      const compile = material.onBeforeCompile;
+      material.onBeforeCompile = (shader, renderer) => {
+        compile.call(material, shader, renderer);
+        shader.fragmentShader = shader.fragmentShader.replace(
+          '#include <opaque_fragment>',
+          '#include <opaque_fragment>\ngl_FragColor.a = opacity;'
+        );
+      };
+      material.customProgramCacheKey = () => 'room-hero-gel-fade-v1';
+    }
     const voxel = new THREE.Mesh(hero ? acquireVoxelGeometry() : geometry, material);
     // Scenery cannot claim gameplay depth, even when its physical position is
     // in front of the camera's play plane. The board always paints over it.
@@ -586,6 +624,9 @@ export class Environment {
       'roomStrength'
     ) as THREE.InstancedBufferAttribute;
     const sizes = instances.geometry.getAttribute('roomSize') as THREE.InstancedBufferAttribute;
+    const opacities = instances.geometry.getAttribute(
+      'roomOpacity'
+    ) as THREE.InstancedBufferAttribute;
     let count = 0;
     for (const child of this.voxels.userData['floaters'] as THREE.Mesh[]) {
       const voxel = child as THREE.Mesh;
@@ -598,10 +639,10 @@ export class Environment {
         PLAY_COLUMN_HALF_WIDTH * 2
       );
       const shown = this.chroma + (1 - this.chroma) * clear;
-      voxel.visible = shown > 0.01;
+      voxel.visible = shown > 0;
       if (!voxel.visible) continue;
       const dim = PLAY_DIM + (1 - PLAY_DIM) * this.chroma;
-      const own = ((voxel.userData['level'] as number) + glow * 0.4) * shown * dim;
+      const own = ((voxel.userData['level'] as number) + glow * 0.4) * dim;
       const { r, g, b } = voxel.userData['colour'] as { r: number; g: number; b: number };
 
       /*
@@ -613,6 +654,7 @@ export class Environment {
        * rather than fighting the material for control of it.
        */
       const material = voxel.material as THREE.MeshStandardMaterial;
+      if (voxel.userData['hero']) material.opacity = shown;
       material.color
         .copy(light(own))
         .lerp(this.scratch.setRGB(r * own, g * own, b * own, THREE.SRGBColorSpace), this.chroma);
@@ -645,6 +687,7 @@ export class Environment {
         instances.setColorAt(count, material.color);
         strengths.setX(count, Math.min(1, own));
         sizes.setX(count, voxel.userData['size'] as number);
+        opacities.setX(count, shown);
         count++;
       }
     }
@@ -655,6 +698,7 @@ export class Environment {
     if (instances.instanceColor) instances.instanceColor.needsUpdate = true;
     strengths.needsUpdate = true;
     sizes.needsUpdate = true;
+    opacities.needsUpdate = true;
 
     // Nothing at all when the board is dead-on, where this would be a hard white
     // rule rather than a floor. See `floorLattice`.

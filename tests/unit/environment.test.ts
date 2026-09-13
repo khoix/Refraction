@@ -7,6 +7,47 @@ function field(environment: Environment): THREE.Group {
 }
 
 describe('production environment', () => {
+  it('fades complete ordinary and hero silhouettes continuously before excluding them', () => {
+    const room = new Environment(false);
+    const group = field(room);
+    const floaters = group.userData['floaters'] as THREE.Mesh[];
+    const instances = group.userData['instances'] as THREE.InstancedMesh;
+    for (const target of [floaters[0]!, floaters[1]!]) {
+      group.userData['floaters'] = [target];
+      const material = target.material as THREE.MeshStandardMaterial;
+      // Alpha blending must not move scenery behind the transparent gameplay
+      // queue: it still draws first and cannot overwrite the board.
+      expect(material.transparent).toBe(false);
+      expect(material.blending).toBe(THREE.CustomBlending);
+      expect(material.blendSrc).toBe(THREE.SrcAlphaFactor);
+      expect(material.blendDst).toBe(THREE.OneMinusSrcAlphaFactor);
+      const radius = ((target.userData['size'] as number) * Math.sqrt(3)) / 2;
+      let previous = 0;
+      for (const t of [0, 0.01, 0.04, 0.065, 0.25, 0.5, 0.75, 1]) {
+        target.position.set(7 + radius + 7 * t, 0, 0);
+        room.update(0, 0, true);
+        expect(target.visible).toBe(t > 0);
+        if (t === 0) continue;
+        const alpha = target.userData['hero']
+          ? material.opacity
+          : instances.geometry.getAttribute('roomOpacity').getX(0);
+        expect(alpha).toBeCloseTo(t * t * (3 - 2 * t), 6);
+        expect(alpha).toBeGreaterThan(previous);
+        previous = alpha;
+      }
+      // Menu palette permission restores the entire field, including the hero.
+      room.setChroma(true);
+      target.position.set(0, 0, 0);
+      room.update(1000, 0, false);
+      expect(target.visible).toBe(true);
+      room.setChroma(false);
+      room.update(0, 0, false);
+      expect(target.visible).toBe(false);
+    }
+    group.userData['floaters'] = floaters;
+    room.dispose();
+  });
+
   it('excludes the complete floater silhouette immediately when a menu becomes gameplay', () => {
     const room = new Environment(false);
     room.setChroma(true);
