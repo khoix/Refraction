@@ -1382,6 +1382,10 @@ export class GameRenderer {
     // Same ease as bloom: well and column leave together when the front door opens.
     const backdropEase = easeInOutCubic(this.backdrop);
     setWellFlatness(this.well, flatness, backdropEase, this.tutorialBrightGrid, shifting ? dimensional : 0);
+    // The flat camera-facing silhouette is useful during normal play, but it
+    // reads as a screen-stuck grid line once Game Over begins its examination
+    // orbit. Let the real 3D grid/posts carry the well in the final look.
+    if (this.finalLook) this.well.frame.visible = false;
     orientWell(this.well, yaw);
     this.scene.background = this.environment.backdrop;
     // The panel dips during Prism so the whiteout can still wash the column.
