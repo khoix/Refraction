@@ -3769,6 +3769,16 @@ text.diagram-finger-emoji {
   padding: 12px;
   background: radial-gradient(ellipse, rgb(5 6 10 / 0.94) 45%, transparent 75%);
 }
+@media (hover: hover) and (pointer: fine) and (min-width: 60rem) {
+  .screens[data-screen='over'] {
+    grid-template-columns: 58% 42%;
+    justify-items: center;
+  }
+
+  .screens[data-screen='over'] .panel--over {
+    grid-column: 2;
+  }
+}
 @media (max-aspect-ratio: 4/5) {
   .screens[data-screen='over'] { align-items: end; justify-items: center; }
   .screens[data-screen='over'] .panel--over { width: 100%; gap: 8px; }
