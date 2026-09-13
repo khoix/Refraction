@@ -7,6 +7,34 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Smooth floater exclusion at the well
+
+**Branch:** `astra/environment-boundary-fade`
+
+Fixed a hard disappearance shared by gameplay Shift and the game-over orbit.
+The old exclusion ramp darkened albedo but kept cubes opaque, then removed them
+at a 1% threshold. Ordinary and hero floaters now blend their entire silhouette,
+including specular/gel highlights, through the existing smooth spatial ramp.
+They disappear only at zero coverage. The protected well region is unchanged.
+
+Custom alpha blending preserves the early scenery draw order and disabled depth
+writes/tests; floaters do not enter the later transparent gameplay queue.
+Instancing is retained: one extra 28-float opacity buffer (112 bytes maximum),
+no new draw calls, geometry, material, or per-frame allocations.
+
+Production before/after boundary captures were inspected for both floater types
+in gameplay and final-camera views. The focused capture command is
+`node scripts/floater-fade-capture.mjs <new-output-directory>` after a build.
+New unit and numerical pixel tests protect continuity at the old visibility
+threshold and immediate exclusion/menu restoration.
+
+Validation: production build and `npm run verify` passed (444 unit tests);
+15 focused Playwright tests passed across the main run and one isolated retry
+of a test that initially timed out. Palette/readability assertions are unchanged.
+Capture console reported no shader/runtime errors.
+
+---
+
 ## Voxel, Shift, and room integration
 
 **Branch:** `astra/refraction-visual-checkpoint`
