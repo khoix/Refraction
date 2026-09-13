@@ -577,7 +577,6 @@ export class Screens {
       result,
       actions,
       element('p', 'panel__hint panel__hint--keys', 'Press Enter to play again'),
-      element('p', 'panel__hint panel__hint--touch', 'Tap Play Again to restart')
     );
   }
 
