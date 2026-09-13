@@ -354,7 +354,18 @@ export class Screens {
     this.panels.set('settings-controls', this.buildSettingsControls());
     this.panels.set('challenge', this.buildChallenge());
     for (const panel of this.panels.values()) this.root.append(panel);
-    this.root.addEventListener('keydown', (event) => this.handleArrow(event));
+    this.root.addEventListener('keydown', (event) => {
+    // Game Over auto-focuses PLAY AGAIN. Browsers activate a focused
+    // button with Space, which makes the gameplay hard-drop key double
+    // as an accidental restart. Keep Enter as the explicit keyboard
+    // restart action, but make Space inert on this screen.
+    if (this.current === 'over' && event.code === 'Space') {
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    this.handleArrow(event);
+  });
     // The front door, not the title. A deep link overrides this from the host
     // before the first frame; see `main.ts`.
     this.show('boot');

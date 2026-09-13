@@ -3771,7 +3771,9 @@ text.diagram-finger-emoji {
 }
 @media (hover: hover) and (pointer: fine) and (min-width: 60rem) {
   .screens[data-screen='over'] {
-    grid-template-columns: 58% 42%;
+    /* Keep the result ledger beside the revolving column rather than
+       centered in the whole right half of a wide viewport. */
+    grid-template-columns: 44% 40% 16%;
     justify-items: center;
   }
 
