@@ -268,3 +268,26 @@ describe('the session log', () => {
     expect(migrate({ session: 'gone' }).session).toEqual([]);
   });
 });
+
+describe('channel volume persistence', () => {
+  it('keeps the legacy master level and defaults new channels to unity', () => {
+    const settings = migrate({ settings: { volume: 0.25, muted: true } }).settings;
+    expect(settings).toMatchObject({ volume: 0.25, muted: true, musicVolume: 1, sfxVolume: 1 });
+  });
+
+  it('round-trips independent channel levels, including silence', () => {
+    const save = withSettings(defaultSave(), { musicVolume: 0, sfxVolume: 0.35 });
+    expect(migrate(JSON.stringify(save))).toEqual(save);
+  });
+
+  it('sanitizes malformed and out-of-range channel levels', () => {
+    expect(migrate({ settings: { musicVolume: -2, sfxVolume: 4 } }).settings).toMatchObject({
+      musicVolume: 0,
+      sfxVolume: 1,
+    });
+    expect(migrate({ settings: { musicVolume: NaN, sfxVolume: 'quiet' } }).settings).toMatchObject({
+      musicVolume: 1,
+      sfxVolume: 1,
+    });
+  });
+});

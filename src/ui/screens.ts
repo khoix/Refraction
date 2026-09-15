@@ -705,21 +705,31 @@ export class Screens {
       this.syncers.push(row.sync);
     }
 
-    // Volume is the one continuous control, so it gets a slider rather than a
-    // toggle. Muting is separate on purpose: turning the sound off should not
-    // lose the level you had set.
-    const volume = element('input');
-    volume.type = 'range';
-    volume.min = '0';
-    volume.max = '100';
-    volume.className = 'field__range';
-    volume.addEventListener('input', () =>
-      this.handlers.onSettings({ volume: Number(volume.value) / 100 })
-    );
-    const volumeRow = element('label', 'field');
-    volumeRow.dataset['field'] = 'volume';
-    volumeRow.append(volume, element('span', 'field__label', 'Volume'));
-    fields.append(volumeRow);
+    // Master mute keeps all three levels intact. New channel levels default to
+    // unity, so an existing player's master volume keeps its previous balance.
+    for (const [key, label] of [
+      ['volume', 'Master volume'],
+      ['musicVolume', 'Music volume'],
+      ['sfxVolume', 'SFX volume'],
+    ] as const) {
+      const slider = element('input');
+      slider.type = 'range';
+      slider.min = '0';
+      slider.max = '100';
+      slider.step = '1';
+      slider.className = 'field__range';
+      slider.addEventListener('input', () =>
+        this.handlers.onSettings({ [key]: Number(slider.value) / 100 })
+      );
+      const row = element('label', 'field');
+      row.dataset['field'] = key;
+      row.append(slider, element('span', 'field__label', label));
+      fields.append(row);
+      this.syncers.push(() => {
+        slider.value = String(Math.round(this.save.settings[key] * 100));
+        slider.setAttribute('aria-valuetext', `${slider.value}%`);
+      });
+    }
 
     /*
      * Touch sensitivity: how far a drag travels to move the piece one column.
@@ -750,9 +760,6 @@ export class Screens {
     fields.append(sensitivityRow);
     this.syncers.push(() => {
       sensitivity.value = String(Math.round(this.save.settings.touchSensitivity * 100));
-    });
-    this.syncers.push(() => {
-      volume.value = String(Math.round(this.save.settings.volume * 100));
     });
 
     const preferences = element('section', 'settings-preferences');

@@ -243,6 +243,8 @@ function boot(root: HTMLElement): void {
     });
     audio.setMuted(settings.muted);
     audio.setVolume(settings.volume);
+    audio.setMusicVolume(settings.musicVolume);
+    audio.setSfxVolume(settings.sfxVolume);
     hud.setMuted(settings.muted);
     hud.setDepthColour(mode.depthColour);
     hud.setSpinPreview(settings.spinPreview);

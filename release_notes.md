@@ -7,6 +7,33 @@ revisiting later. The full milestone roadmap lives in [`docs/PLAN.md`](docs/PLAN
 
 ---
 
+## Independent music and SFX volume
+
+**Branch:** `astra/music-sfx-volume`
+
+Settings now provide Master, Music, and SFX volume sliders. Global mute retains
+all three levels. Existing saves keep their master level, with new channel
+multipliers defaulting to 100%; no scores or other preferences are migrated away.
+
+Music previously used `HTMLMediaElement.volume`, which iOS ignores, so only
+pause-at-zero worked there. Streamed music now uses a separate Web Audio gain
+bus, with short smoothing on level changes. The earlier direct-media workaround
+is superseded for attenuation: same-origin network URLs and the existing
+playback audio-session declaration remain essential safeguards against the
+historical WebKit blob/ambient-path problems. Tracks still stream rather than
+being decoded in full. Replaced source nodes are disconnected. Explicit music
+transport pause now survives settings and mute changes.
+
+Validation: `npm run verify` passed (451 unit tests). Production browser tests
+measure independent output amplitude using a steady streamed signal while
+emulating ignored media-volume writes, on desktop and phone layouts. Both passed,
+as did five existing playback, mute, settings-label and keyboard tests. The
+production build passed, and settings screenshots were inspected. Real iPhone
+hardware/silent-switch behavior
+still needs device validation; Chromium emulation cannot certify that path.
+
+---
+
 ## Smooth floater exclusion at the well
 
 **Branch:** `astra/environment-boundary-fade`
