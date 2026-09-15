@@ -40,15 +40,7 @@ type MusicBed = 'theme' | 'gameplay';
 export class Audio {
   private context: AudioContext | null = null;
   private master: GainNode | null = null;
-  /**
-   * Music does *not* go through the master gain.
-   *
-   * It used to, and on mobile that made it silent -- routing a media element
-   * into the Web Audio graph turns it into ambient audio, which iOS treats
-   * differently from media. `music.ts` has the full account. The rule that
-   * mattered was that mute and volume reach the music, and that is preserved by
-   * pushing the level at it from `applyGain` instead.
-   */
+  /** Separate streaming-music bus; `master` carries synthesised and sampled SFX. */
   private readonly music = new Music();
   private theme: MusicTrack | null = null;
   private gameplay: MusicTrack[] = [];
@@ -72,6 +64,8 @@ export class Audio {
    * player set. Unmuting returns to exactly where they left it.
    */
   private level = 0.7;
+  private musicLevel = 1;
+  private sfxLevel = 1;
   /** Injectable so a suite can pin the shuffle without stubbing Math. */
   private readonly pick: (count: number) => number;
 
@@ -91,8 +85,9 @@ export class Audio {
       if (!Ctor) return;
       this.context = new Ctor();
       this.master = this.context.createGain();
-      this.master.gain.value = this.gainValue;
+      this.master.gain.value = this.gainValue * this.sfxLevel;
       this.master.connect(this.context.destination);
+      this.music.connect(this.context);
     }
     if (this.context.state === 'suspended') void this.context.resume();
     void this.decodePendingSfx();
@@ -352,15 +347,29 @@ export class Audio {
     this.applyGain();
   }
 
+  setMusicVolume(volume: number): void {
+    this.musicLevel = Math.min(Math.max(volume, 0), 1);
+    this.applyGain();
+  }
+
+  setSfxVolume(volume: number): void {
+    this.sfxLevel = Math.min(Math.max(volume, 0), 1);
+    this.applyGain();
+  }
+
   private get gainValue(): number {
     return this.enabled ? this.level : 0;
   }
 
   private applyGain(): void {
-    // Music is not downstream of `master`, so it is told separately. Same
-    // number, two destinations.
-    this.music.setLevel(this.gainValue);
-    if (this.master) this.master.gain.value = this.gainValue;
+    this.music.setLevel(this.gainValue * this.musicLevel);
+    if (this.master && this.context) {
+      this.master.gain.setTargetAtTime(
+        this.gainValue * this.sfxLevel,
+        this.context.currentTime,
+        0.015
+      );
+    }
   }
 
   toggleMute(): boolean {
