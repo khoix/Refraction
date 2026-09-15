@@ -1,45 +1,12 @@
 /**
- * Streamed music, played as media rather than through the Web Audio graph.
+ * Streamed music with Web Audio gain control. The media element stays at unity:
+ * iOS ignores element.volume, so attenuation and fades belong to a GainNode.
  *
- * ## Why this is not a `MediaElementAudioSourceNode`
- *
- * It was one, and on mobile it was silent. The symptom was specific and worth
- * recording, because it is the kind that looks like nothing is happening: Safari
- * showed the tab as producing audio -- so something *was* playing -- but nothing
- * was audible and neither the tab's mute nor the game's volume changed that.
- *
- * Routing an `<audio>` element through `createMediaElementSource` takes its
- * output off the media path and onto the Web Audio path. Those are not the same
- * thing on iOS. Web Audio output is treated as *ambient* audio: the hardware
- * silent switch kills it, while a plain media element plays like a video and is
- * not affected. The same routing is also the long-standing WebKit bug where a
- * source node fed from a `blob:` URL yields silence downstream while the element
- * itself reports playing -- which matches the symptom exactly.
- *
- * Both failure modes come from the same architectural choice, so the fix is to
- * stop making it. The element plays itself. Nothing about music touches the
- * `AudioContext` any more.
- *
- * ## Keeping the player's settings in charge
- *
- * The rule that mattered was never "music goes through `master`" -- it was that
- * mute and volume reach the music. That still holds, by a different mechanism:
- * `Audio` pushes its level here whenever it changes, and this applies it to the
- * element.
- *
- * With one platform caveat that has to be designed around rather than papered
- * over. **iOS ignores `volume` on a media element** -- it is read-only there,
- * because volume belongs to the hardware. So the slider genuinely cannot attenuate
- * music on an iPhone, and pretending otherwise would be a control that lies.
- * Muting is therefore implemented as a *pause*, not as a zero volume: pausing
- * works on every platform, so the one setting that must be obeyed always is.
- *
- * ## Streamed, not decoded
- *
- * `tracks.ts` has the arithmetic. Short version: decoding the theme costs about
- * fifty megabytes of resident float32 for a 1.8 MB file, and the element streams
- * the compressed bytes instead. The trade is that a `MediaElement` loop is not
- * sample-exact, so there is a small seam at the wrap.
+ * Keep same-origin network URLs (not blob URLs) for WebKit's media/range loader,
+ * and keep Audio.declarePlayback() before the gesture-created context so recent
+ * iOS treats the graph as playback. The old direct-media workaround avoided a
+ * silent graph but left every nonzero volume equally loud on iPhones.
+ * Streaming still avoids decoding an entire music track into resident PCM.
  */
 
 import { touchPrimary } from '../touch/primary';
@@ -63,6 +30,10 @@ export interface LoadOptions {
 
 export class Music {
   private element: HTMLAudioElement | null = null;
+  private context: AudioContext | null = null;
+  private gain: GainNode | null = null;
+  private source: MediaElementAudioSourceNode | null = null;
+  private holding = false;
   /** Whether the player should be hearing music right now. */
   private wanted = false;
   /** Master level from `Audio`: volume, already folded with mute. */
@@ -110,8 +81,27 @@ export class Music {
       element.addEventListener('ended', options.onEnded);
     }
     this.element = element;
+    this.connectSource();
     this.currentUrl = url;
     this.apply();
+  }
+
+  /** Attach once to the gesture-unlocked shared context, before or after load. */
+  connect(context: AudioContext): void {
+    if (this.context === context) return;
+    this.context = context;
+    this.gain = context.createGain();
+    this.gain.gain.value = 0;
+    this.gain.connect(context.destination);
+    this.connectSource();
+    this.applyVolume();
+  }
+
+  private connectSource(): void {
+    if (!this.context || !this.gain || !this.element || this.source) return;
+    this.source = this.context.createMediaElementSource(this.element);
+    this.source.connect(this.gain);
+    this.element.volume = 1;
   }
 
   /** True once there is a track loaded. */
@@ -160,16 +150,13 @@ export class Music {
   }
 
   /**
-   * LCD transport pause — freeze in place at full level.
-   *
-   * Must not go through the fade. On mobile Chrome, a fade-out that parks the
-   * element at near-zero volume and a fade-in that calls `play()` from there
-   * can freeze `volume` at that quiet value for the life of the element; Next
-   * appeared to "fix" it only because it built a new element. Holding at
-   * `fade === 1` and pausing outright avoids the trap.
+   * LCD transport pause, retaining the position and full fade level. A settings
+   * change must not undo this explicit hold. Historically this also avoided
+   * mobile element-volume freezing; gain control now bypasses that property.
    */
   hold(): void {
     this.wanted = false;
+    this.holding = true;
     if (this.fadeTimer !== undefined) {
       clearInterval(this.fadeTimer);
       this.fadeTimer = undefined;
@@ -181,6 +168,7 @@ export class Music {
   /** Undo a transport hold. Restarts at full level on the same element. */
   unhold(): void {
     this.wanted = true;
+    this.holding = false;
     if (this.fadeTimer !== undefined) {
       clearInterval(this.fadeTimer);
       this.fadeTimer = undefined;
@@ -197,6 +185,7 @@ export class Music {
   private want(playing: boolean): void {
     if (this.wanted === playing) return;
     this.wanted = playing;
+    this.holding = false;
     this.apply();
   }
 
@@ -210,15 +199,8 @@ export class Music {
     }
     const target = this.wanted ? 1 : 0;
 
-    /*
-     * Touch-primary: snap, do not fade.
-     *
-     * Mobile Chrome can freeze `volume` for the life of an element after a
-     * fade that parks near silence and then calls `play()` — the LCD hold path
-     * already avoids that for pause, and bed changes have the same trap. A
-     * phone also does not need the room-coming-up fade; an instant cut is the
-     * honest control.
-     */
+    // Preserve the existing immediate phone transport. Desktop keeps its bed
+    // fades; both now attenuate through the gain rather than element.volume.
     if (touchPrimary()) {
       this.fade = target;
       this.applyVolume();
@@ -243,22 +225,21 @@ export class Music {
     this.applyVolume();
   }
 
-  /**
-   * Push the level at the element, and start or stop it.
-   *
-   * Pausing at silence is what makes mute work where `volume` does not, and it
-   * also means a muted game is not quietly decoding a track nobody can hear.
-   */
+  /** Apply gain, pausing at silence to avoid decoding an inaudible stream. */
   private applyVolume(): void {
     const element = this.element;
     if (!element) return;
 
     const target = this.level * MUSIC_LEVEL * this.fade;
-    // Assigning is a no-op on iOS rather than an error; the pause below is what
-    // carries the setting there.
-    element.volume = Math.min(1, Math.max(0, target));
+    if (this.gain && this.context) {
+      this.gain.gain.setTargetAtTime(target, this.context.currentTime, 0.015);
+    } else {
+      // Compatibility path for browsers without Web Audio; normal playback
+      // attaches the graph in the first gesture before music starts.
+      element.volume = Math.min(1, Math.max(0, target));
+    }
 
-    if (target <= SILENT) {
+    if (target <= SILENT || this.holding) {
       if (!element.paused) element.pause();
       return;
     }
@@ -281,12 +262,20 @@ export class Music {
     this.fade = 0;
     this.failure = null;
     this.element?.pause();
+    this.source?.disconnect();
+    this.source = null;
+    this.element?.removeAttribute('src');
+    this.element?.load();
     this.element = null;
+    this.holding = false;
     this.currentUrl = null;
   }
 
   dispose(): void {
     this.release();
+    this.gain?.disconnect();
+    this.gain = null;
+    this.context = null;
     this.wanted = false;
   }
 }

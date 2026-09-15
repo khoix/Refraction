@@ -35,6 +35,9 @@ export interface Settings {
   readonly muted: boolean;
   /** 0 to 1. */
   readonly volume: number;
+  /** Independent channel levels, multiplied by the master volume. */
+  readonly musicVolume: number;
+  readonly sfxVolume: number;
   readonly reducedMotion: boolean;
   readonly screenShake: boolean;
   readonly bloom: boolean;
@@ -104,6 +107,8 @@ export interface SaveData {
 export const DEFAULT_SETTINGS: Settings = {
   muted: false,
   volume: 0.7,
+  musicVolume: 1,
+  sfxVolume: 1,
   reducedMotion: false,
   screenShake: true,
   bloom: true,
@@ -172,6 +177,8 @@ function readSettings(raw: unknown): Settings {
   return {
     muted: bool(raw['muted'], DEFAULT_SETTINGS.muted),
     volume: num(raw['volume'], DEFAULT_SETTINGS.volume, 0, 1),
+    musicVolume: num(raw['musicVolume'], DEFAULT_SETTINGS.musicVolume, 0, 1),
+    sfxVolume: num(raw['sfxVolume'], DEFAULT_SETTINGS.sfxVolume, 0, 1),
     reducedMotion: bool(raw['reducedMotion'], DEFAULT_SETTINGS.reducedMotion),
     screenShake: bool(raw['screenShake'], DEFAULT_SETTINGS.screenShake),
     bloom: bool(raw['bloom'], DEFAULT_SETTINGS.bloom),

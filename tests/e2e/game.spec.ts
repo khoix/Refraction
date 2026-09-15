@@ -953,15 +953,8 @@ test.describe('the front door', () => {
   });
 
   test('mute stops the music outright, rather than turning it down', async ({ page }) => {
-    /*
-     * The one control that has to work on every platform.
-     *
-     * iOS ignores `volume` on a media element -- it is the hardware's business
-     * there -- so a mute implemented as "set the gain to zero" is a mute that
-     * does nothing on a phone. Implemented as a pause it works everywhere, and
-     * this asserts the pause rather than the level, because the level is exactly
-     * the thing that silently fails on the platform that matters.
-     */
+    // Mute also pauses the stream to avoid decoding inaudible music. GainNode
+    // attenuation handles intermediate levels, including on iOS.
     await page.goto('/?debug=1');
     await expect(page.locator('#app')).toHaveAttribute('data-ready', 'true');
     await enter(page);
@@ -2793,9 +2786,7 @@ test.describe('arrow keys move through the menus', () => {
     await enter(page);
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
-    // Named rather than "the range input": there are two now -- volume, and the
-    // touch sensitivity added with the relative controls -- and an unscoped
-    // locator matches both.
+    // Scope the master slider: channel volume and touch sensitivity use ranges too.
     const volume = page.locator('.field[data-field="volume"] .field__range');
     await volume.focus();
     const before = await volume.inputValue();
@@ -3313,7 +3304,7 @@ test.describe('interface corrections', () => {
     await page.getByRole('button', { name: 'SETTINGS' }).click();
 
     const row = page.locator('.field[data-field="volume"]');
-    await expect(row.locator('.field__label')).toHaveText('Volume');
+    await expect(row.locator('.field__label')).toHaveText('Master volume');
     await expect(row.locator('.field__hint')).toHaveCount(0);
   });
 
